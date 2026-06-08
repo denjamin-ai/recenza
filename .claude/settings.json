@@ -1,0 +1,35 @@
+{
+  "_comment": "Базовые настройки Claude Code. Разрешаем безопасные команды и Playwright MCP; мутации БД/прод-команды держим под подтверждением.",
+  "permissions": {
+    "allow": [
+      "Bash(npm run build)",
+      "Bash(npm run lint)",
+      "Bash(npm run dev:test)",
+      "Bash(npm run test:e2e*)",
+      "Bash(npm run seed:test)",
+      "Bash(npm run test:reset)",
+      "Bash(npx drizzle-kit generate)",
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(bash .claude/playwright-tester/*)",
+      "Read(*)",
+      "Edit(*)",
+      "mcp__playwright__*"
+    ],
+    "ask": [
+      "Bash(npx drizzle-kit migrate)",
+      "Bash(git push*)",
+      "Bash(git commit*)"
+    ],
+    "deny": [
+      "Bash(npm run dev)",
+      "Read(.env.local)",
+      "Read(.env.test)",
+      "Bash(rm -rf*)"
+    ]
+  },
+  "env": {
+    "TEST_BASE_URL": "http://localhost:3001",
+    "TEST_DB_PATH": "blog.test.db"
+  }
+}

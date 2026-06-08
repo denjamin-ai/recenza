@@ -1,0 +1,27 @@
+{
+  "_comment": "Скрипты, которые Claude Code дотянет в Фазах 0–2. Слей этот блок scripts в реальный package.json после create-next-app.",
+  "scripts": {
+    "dev": "next dev",
+    "dev:test": "npm run seed:test && next dev -p 3001",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "seed": "tsx src/lib/db/seed.ts",
+    "seed:test": "tsx src/lib/db/seed-test.ts",
+
+    "test:reset": "drizzle-kit migrate && npm run seed:test",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report testing/reports/playwright-html",
+    "test:smoke": "playwright test --grep @smoke",
+    "test:critical": "playwright test --grep @critical"
+  },
+  "_env": {
+    "dev": ".env.local  (port 3000, file:blog.db)",
+    "test": ".env.test  (port 3001, file:blog.test.db, ADMIN_PASSWORD_PLAIN)",
+    "prod": "Vercel env  (Turso, CRON_SECRET)"
+  }
+}
