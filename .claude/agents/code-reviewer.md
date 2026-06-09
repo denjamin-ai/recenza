@@ -35,7 +35,9 @@ color: yellow
 - Drizzle ORM: никакого raw SQL
 - dialect в drizzle.config: "turso", не "sqlite"
 - dynamic params — Promise в Next.js 16: `await params`
-- Версионирование: при обновлении статьи — сначала снимок в articleVersions
+- Версионирование: при обновлении главы — снапшот предыдущей ревизии в `chapter_revisions` (`prev_blocks`) **до** записи
+- FK — на суррогатные `*.id` (не `handle`/`slug`); `PRAGMA foreign_keys=ON` на каждом соединении
+- Гейтинг (binding): ревьюер не комментирует; автор не комментирует/не читает чужие блоги; engagement — только `reader`; админ не создаёт блоги/главы
 
 # Процесс ревью
 
@@ -62,7 +64,8 @@ color: yellow
 - JSON.parse без try-catch
 - Timestamps не в Unix seconds
 - Сырой SQL вместо Drizzle
-- Отсутствие версионирования при обновлении статьи
+- Отсутствие версионирования при обновлении главы (снапшот ревизии)
+- FK на `handle`/`slug` вместо `*.id`; забытый `PRAGMA foreign_keys=ON`
 - Неконсистентная обработка ошибок
 
 **P3 — UX и качество** (улучшение)
@@ -76,20 +79,20 @@ color: yellow
 Результаты ревью
 P0 — Безопасность
 
-❌ src/app/api/articles/[id]/route.ts:15 — PUT без requireAdmin()
-→ Добавить await requireAdmin() первой строкой
+❌ src/app/api/author/chapters/[id]/route.ts:15 — PUT без проверки ownership (blog.authorId === session.userId)
+→ Добавить requireAuthor() + проверку ownership первыми строками
 
 P1 — Корректность
 
-⚠️ src/components/article-card.tsx:23 — JSON.parse(tags) без try-catch
+⚠️ src/components/blog-card.tsx:23 — JSON.parse(tags) без try-catch
 → Обернуть: try { JSON.parse(tags) } catch { [] }
 
 P2 — Паттерны
 (нет нарушений)
 P3 — UX
 
-💡 src/app/blog/[slug]/page.tsx — нет loading.tsx
-→ Создать loading.tsx со скелетоном статьи
+💡 src/app/(reader)/[blogSlug]/page.tsx — нет loading.tsx
+→ Создать loading.tsx со скелетоном главы
 
 Сводка: 1 P0 (блокер), 1 P1, 0 P2, 1 P3
 Вердикт: ❌ НЕ ГОТОВ К МЕРЖУ (есть P0)

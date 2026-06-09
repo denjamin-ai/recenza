@@ -1,11 +1,13 @@
 {
-  "_comment": "Базовые настройки Claude Code. Разрешаем безопасные команды и Playwright MCP; мутации БД/прод-команды держим под подтверждением.",
+  "_comment": "Базовые настройки Claude Code. Разрешаем безопасные команды и Playwright MCP; мутации БД/прод-команды держим под подтверждением. ПРИМЕЧАНИЕ: npm run test:reset/seed:test обёрнуты в dotenv -e .env.test и бьют ТОЛЬКО по blog.test.db (APP_ENV=test) — поэтому в allow, в отличие от голого drizzle-kit migrate (ask), который может задеть dev/prod.",
   "permissions": {
     "allow": [
       "Bash(npm run build)",
       "Bash(npm run lint)",
       "Bash(npm run dev:test)",
       "Bash(npm run test:e2e*)",
+      "Bash(npm run test:smoke)",
+      "Bash(npm run test:critical)",
       "Bash(npm run seed:test)",
       "Bash(npm run test:reset)",
       "Bash(npx drizzle-kit generate)",
@@ -29,7 +31,7 @@
     ]
   },
   "env": {
-    "TEST_BASE_URL": "http://localhost:3001",
-    "TEST_DB_PATH": "blog.test.db"
+    "BASE_URL": "http://localhost:3001",
+    "DB_PATH": "blog.test.db"
   }
 }

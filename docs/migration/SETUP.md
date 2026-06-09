@@ -11,6 +11,9 @@
 - `sqlite3` CLI (для `db-query.sh`)
 - Аккаунт GitHub (CI), Claude Code (CLI)
 - Turso/Vercel — **не нужны на старте**, только к Фазе 13
+- ⚠ На Windows тест-скрипты `.claude/playwright-tester/*.sh` запускаются через **git-bash**
+  (POSIX: `/tmp`, `/dev/null`); `sqlite3` и (для отдельных скриптов) `python3` поставить отдельно.
+  В CI (Linux) — из коробки.
 
 ## Шаг 1. Создать репозиторий и каркас
 ```bash
@@ -33,10 +36,10 @@ recenza/
 ├── .claude/
 │   ├── settings.json              ← из bootstrap/.claude/settings.json
 │   ├── rules/*.md                 ← из bootstrap/.claude/rules/
-│   ├── agents/*.md                ← из uploads/: playwright-tester, code-reviewer,
-│   │                                 security-reviewer, design-watcher, seo-optimizer
-│   ├── skills/                    ← qa-test-planner (SKILL.md), playwright-best-practices
-│   │                                 (SKILL-d54f14eb.md) → next-best-practices (создать)
+│   ├── agents/*.md                ← playwright-tester, code-reviewer, security-reviewer,
+│   │                                 design-watcher, seo-optimizer (адаптированы под главу)
+│   ├── skills/                    ← qa-test-planner/SKILL.md, playwright-best-practices/SKILL.md;
+│   │                                 next-best-practices/SKILL.md (создать)
 │   └── playwright-tester/*.sh     ← скрипты тест-стенда (создаются в Фазе 2)
 ├── .mcp.json                      ← из bootstrap/.mcp.json
 ├── .env.example                   ← из bootstrap/.env.example
@@ -48,7 +51,7 @@ recenza/
 ```bash
 npm i @libsql/client drizzle-orm iron-session bcryptjs ulid next-themes \
       next-mdx-remote rehype-pretty-code shiki
-npm i -D drizzle-kit tsx @playwright/test
+npm i -D drizzle-kit tsx dotenv-cli @playwright/test
 npx playwright install
 ```
 
@@ -56,12 +59,16 @@ npx playwright install
 ```bash
 cp .env.example .env.local
 cp .env.example .env.test
-# Сгенерировать значения:
+# Сгенерировать значения (в оба файла):
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"   # SESSION_SECRET
 node -e "console.log(require('bcryptjs').hashSync('admin-pass',10))"        # ADMIN_PASSWORD_HASH ('$' → '\$')
-# В .env.test добавить ADMIN_PASSWORD_PLAIN=admin-pass (открытый пароль ТОЛЬКО здесь)
+# В .env.test дополнительно:
+#   APP_ENV=test                              (выбор file:blog.test.db)
+#   NEXT_PUBLIC_BASE_URL=http://localhost:3001
+#   ADMIN_PASSWORD_PLAIN=admin-pass           (та же пара, что хэш; ТОЛЬКО здесь; '$' → '\$')
 ```
-`.gitignore`: `.env.local`, `.env.test`, `blog.db`, `blog.test.db`, `/.auth`, `node_modules`, `.next`.
+`.gitignore` (уже в репозитории): `.env.local`, `.env.test`, `.env*.local`, `blog.db`, `blog.test.db`,
+`*.db-journal`, `*.db-wal`, `*.db-shm`, `/testing/reports/`, `/testing/e2e/.auth/`, `node_modules`, `.next`.
 
 ## Шаг 5. Настроить Playwright MCP в Claude Code
 `.mcp.json` уже подключает сервер. Проверь, что инструменты `mcp__playwright__*` доступны

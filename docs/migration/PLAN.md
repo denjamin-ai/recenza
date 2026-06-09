@@ -46,12 +46,12 @@
 **Todo.**
 - [ ] Инициализировать Next.js 16 (App Router) + TypeScript + Tailwind CSS v4. Path alias `@/* → src/*`.
 - [ ] Установить ядро: `@libsql/client` + `drizzle-orm` + `drizzle-kit` (dialect `turso`), `iron-session`,
-      `bcryptjs`, `ulid`, `next-mdx-remote/rsc` + `rehype-pretty-code` (Shiki), `next-themes`.
+      `bcryptjs`, `ulid`, `next-mdx-remote/rsc` + `rehype-pretty-code` (Shiki), `next-themes`; dev: `dotenv-cli`.
 - [ ] Положить `CLAUDE.md` (из этого пакета) в корень. Создать `.claude/rules/`:
       `security.md`, `next-app-router.md`, `drizzle-queries.md`, `mdx-components.md`, `frontend-design.md`.
 - [ ] Перенести сабагентов в `.claude/agents/`: `playwright-tester`, `code-reviewer`, `security-reviewer`,
-      `design-watcher`, `seo-optimizer` (из `/recenza-prototype/uploads/`, адаптировать терминологию
-      «статья»→«глава/ревизия»).
+      `design-watcher`, `seo-optimizer` (адаптировать терминологию «статья»→«глава/ревизия» по
+      `docs/prototype/legacy-article-model-CLAUDE.md`).
 - [ ] Перенести скиллы в `.claude/skills/`: `qa-test-planner`, `playwright-best-practices`; создать
       `next-best-practices`.
 - [ ] Настроить **Playwright MCP** (`.mcp.json` / конфиг Claude Code) — проверить, что `mcp__playwright__*`
@@ -83,9 +83,14 @@
 - [ ] Зафиксировать перечисления: `role` (`reader|author|reviewer|admin`),
       `revision.status` (`draft|under-review|changes-requested|published`),
       `verdict` (`approve|request-changes`), `thread.status` (`open|resolved`),
-      `complexity` (`simple|medium|complex`), `block.type` (p/h2/h3/quote/list/code/callout/mermaid/image/table/embed).
+      `complexity` (`simple|medium|complex`),
+      `block.type` (p/h2/h3/quote/list/code/callout/mermaid/latex/image/table/embed — **12 типов**).
 - [ ] Блоки главы — `JSONB`-массив в `chapter_revisions.blocks`; снапшот последней публикации — `prev_blocks`.
-- [ ] FK + каскады + уникальные индексы (engagement-таблицы — `uniqueIndex` для race-safe toggle).
+      Статус блока (added/edited) для диффа НЕ хранится — вычисляется из `prev_blocks` (`diffWords`).
+- [ ] FK **только на суррогатные id** (`users.id`/`chapters.id`/`blogs.id`; `handle`/`slug` мутабельны →
+      денормализуются, не ключи). `public_comments`/`removed_reviewers` ключевать `chapter_id`(+`revision_number`).
+      Каскады + `PRAGMA foreign_keys=ON` на каждом соединении (`db/index.ts`; в libsql FK по умолчанию off).
+      Engagement-таблицы — `uniqueIndex` для race-safe toggle. `users.pinned_blog_id→blogs.id` (закреплённый блог).
 - [ ] `src/lib/db/index.ts` — libsql-клиент (env Turso → fallback `file:blog.db`). `drizzle.config.ts`.
 - [ ] `src/types/index.ts` — общие типы (`UserRole`, `RevisionStatus`, `Verdict`, `BlockType`, `ApiError`, …).
 - [ ] `npx drizzle-kit generate` → миграции в репозитории.
@@ -93,7 +98,9 @@
 **DoD.**
 - `drizzle-kit generate` создаёт миграции без ошибок; `drizzle-kit migrate` применяет их на чистый `file:`.
 - Схема покрывает **всю** модель из `README.md` (главы, ревизии, треды/правки/чат, кредит ревьюеров
-  по версиям, комментарии с привязкой к блоку и ревизии, портфолио, жалобы, смена ведущего).
+  по версиям, комментарии с привязкой к блоку и ревизии, портфолио, жалобы, смена ведущего, пин блога).
+- `PRAGMA foreign_keys=ON` включается в `db/index.ts`; каскады реально срабатывают на `file:` БД (проверено
+  удалением блога/главы). FK ведут на суррогатные id, не на `handle`/`slug`.
 - `code-reviewer` не находит P0/P1; raw SQL отсутствует; все timestamps — Unix seconds.
 
 ---
@@ -159,15 +166,16 @@
 - [ ] `BlogReader`: широкая колонка чтения + правый `SeriesNav` (список глав, вложенный ToC активной
       главы; одна глава → только ToC), прогресс, режим **«Весь блог»**. Рендер всех типов блоков
       (p/h2/h3/quote/list/code/callout/mermaid/image/table/embed) идентично ревью-виду.
-- [ ] Реакции: голоса (±1), закладки — race-safe `db.transaction()`, `uniqueIndex`, rate-limit.
-      `BookmarksScreen`. Подписки (follow автора) + лента по подпискам (`/reader`).
+- [ ] Реакции (**только роль `reader`**; author/reviewer не голосуют/не закладывают/не подписываются):
+      голоса (±1), закладки — race-safe `db.transaction()`, `uniqueIndex`, rate-limit. `BookmarksScreen`.
+      Подписки (follow) + лента по подпискам (`/reader`).
 - [ ] Уведомления: polling-бейдж (новые главы в подписках + «ваш ход» в ревью), read-state.
 - [ ] Кредит ревьюеров в конце главы: текущие чипами, прошлые версии — за раскрытием.
 - [ ] SEO/Feed: `generateMetadata`, OG, `/feed.xml`, `/sitemap.ts`, `/robots.ts`, JSON-LD.
 
 **DoD.**
 - Открытие разных блогов рендерит **разный** контент; `document.title`/OG обновляются (регресс-ловушка из README §3).
-- Гость, голосуя/закладывая, уходит на логин, intent реплеится после входа.
+- Гость, голосуя/закладывая/подписываясь/комментируя, уходит на логин; intent (`vote`/`bookmark`/`follow`/`comment`) реплеится после входа.
 - Закладки/голоса/подписки идемпотентны и race-safe; гонок нет (тест на дабл-клик).
 - Lighthouse/`seo-optimizer`: у каждой публичной страницы уникальные title/description/OG.
 
@@ -178,15 +186,17 @@
 **Цель.** Кабинет автора, управление многоглавными блогами и блочный редактор «writing-first».
 
 **Todo.**
-- [ ] `AuthorPortal` (карточки блогов; плитка «создать» первой; пин блога сортирует вперёд + кольцо).
-      `BlogDetail` (список глав блога: пин/превью/+глава).
+- [ ] `AuthorPortal` (карточки блогов; плитка «создать» первой; пин блога — `users.pinned_blog_id`
+      (один на автора) — сортирует вперёд + кольцо, всплывает на публичном профиле).
+      `BlogDetail` (список глав блога: превью/+глава; тумблер пина блога).
 - [ ] `Editor` (Variant B): минимальный топбар (save-state, превью, split-preview ≥lg, ⚙ настройки,
       «Отправить на ревью →»); тело-документ (хлебные крошки → авто-растущий заголовок → dashed-чип
-      строки настроек → блоки); слэш-меню (`/`, 4 группы, 14 типов); markdown-шорткаты; инлайн-тулбар
+      строки настроек → блоки); слэш-меню (`/`, 4 группы, **12 типов блоков / 14 пунктов**); markdown-шорткаты; инлайн-тулбар
       выделения (B/I/Code/Link); левый рельс-гаттер (add/drag).
 - [ ] `ChapterSettingsPopover` — только метаданные публикации (slug авто+override, теги, обложка).
 - [ ] `SubmitSheet` (правая шторка): чек-лист готовности (гейт), уровень сложности, ревьюеры + выбор
-      ведущего, заметка ревьюерам. Submit заблокирован, пока не пройден гейт. **Без поля дедлайна.**
+      ведущего, заметка ревьюерам. Submit заблокирован, пока не пройден гейт. **Без поля дедлайна**
+      (намеренно: README §5; в коде прототипа `Editor3.jsx` дедлайн есть — **не переносить**, в схеме его нет).
       Новая глава префиллит ревьюеров из последней отрецензированной главы блога.
 - [ ] Версионирование: при `PUT` главы — снапшот предыдущей ревизии перед обновлением.
 
@@ -204,8 +214,10 @@
 вердиктами, чатом сессии и кросс-экранной синхронизацией статусов. Сердце продукта.
 
 **Todo.**
-- [ ] Модель ревью: назначения ревьюеров на главу, **ведущий (primary)**, статусы вердиктов на handle,
-      `reviewer_history` (кредит по ревизиям), чат сессии (вне тредов), чек-лист готовности.
+- [ ] Модель ревью: назначения ревьюеров на главу, **ведущий (primary)**, вердикты на ревьюера/ревизию
+      (`chapter_reviewers`), `reviewer_history` (кредит по ревизиям), **чат сессии** (`review_chat`, вне
+      тредов), чек-лист готовности. Per-block `BlockVerdictStamp` (approve/fix/discuss) — **эфемерный UI**,
+      не персистится; статус блока (added/edited) — вычисляется из `prev_blocks` (`diffWords`), не хранится.
 - [ ] `ReviewHeaderV2`: топбар (назад / составной тайтл Блог→Глава / ревизия / статус / выбор POV /
       триггер модалки команды); strip глав (`role="tablist"`); presence-strip (онлайн-точки).
 - [ ] `ConvoCanvas`: колонка статьи (инлайн-дифф `diffWords(prev,curr)`, правый гаттер: **bauble**
@@ -216,6 +228,9 @@
       `chapter.blocks[i].text` ← replace(suggestion), тред → resolved, бродкаст стора.
 - [ ] `ActionBar` (sticky): POV ревьюера (Нужны правки / Одобрить — только когда `under-review`);
       POV автора (Сменить ведущего / Опубликовать при всех approve / Отправить v{N+1}).
+- [ ] **Чат сессии (`review_chat`)** — отдельная панель/вкладка рядом с тредами (UX-эталона в прототипе
+      НЕТ, см. REVIEW-REPORT P2-10): хронологический список сообщений сессии, видимый всем участникам
+      (ревьюеры + автор + админ), presence/typing; не смешивается с привязанными к блокам тредами.
 - [ ] `PrimaryChangeModal`, `TeamSheet` (мобайл), `Toast` (`aria-live`). Кросс-экранный стор статусов
       (на проде — серверное состояние; задел под websocket вместо fake-presence).
 - [ ] Указание ревьюеров в опубликованной главе **по версиям** (связь с фазой 4 кредитом).
@@ -243,7 +258,8 @@
       клик по цитате — скролл к блоку. Новый комментарий наследует текущую главу+ревизию.
 - [ ] **Гейтинг:** комментируют только читатели (и автор — в своих блогах как участник диалога);
       ревьюеры не комментируют; автор не комментирует чужие блоги. `commentingBlocked` блокирует.
-- [ ] Голоса за комментарии (±1, race-safe). Stale-детект по `articleVersionId`-аналогу (ревизии).
+- [ ] Голоса за комментарии (±1, race-safe; **только `reader`**). Stale-детект по номеру ревизии
+      (`public_comments.revision_number` vs текущая ревизия главы).
 - [ ] Уведомления: ответ автора читателю и наоборот — нить читатель↔автор↔читатель.
 
 **DoD.**
@@ -381,16 +397,13 @@
 
 **Todo.**
 - [ ] Прод-БД: Turso, `drizzle-kit migrate`, bootstrap-админ через env (без self-registration).
-- [ ] Прод-env (Vercel): `SESSION_SECRET`, `ADMIN_PASSWORD_HASH` (`\$`-escape), `TURSO_*`, `CRON_SECRET`,
-      `NEXT_PUBLIC_BASE_URL`.
-- [ ] Cron публикации отложенных глав (`/api/cron/publish`, Bearer `CRON_SECRET`, расписание в `vercel.json`).
+- [ ] Прод-env (Vercel): `SESSION_SECRET`, `ADMIN_PASSWORD_HASH` (`\$`-escape), `TURSO_*`, `NEXT_PUBLIC_BASE_URL`.
 - [ ] Прод-проверки: RSS/sitemap/robots с прод-URL; security-заголовки; финальный `npm run build`;
       smoke на prod-preview (не на тестовом стенде!).
 - [ ] Runbook отката и бэкапов; разделение секретов dev/test/prod.
 
 **DoD.**
 - Прод поднимается, миграции применены, админ заходит, гость читает опубликованные блоги.
-- Cron публикует отложенную главу по расписанию; защищён `CRON_SECRET`.
 - Smoke на prod-preview зелёный; секреты не утекли (нет в репозитории/логах).
 - Тестовый и продовый стенды полностью изолированы (разные БД, env, URL).
 

@@ -10,6 +10,12 @@ A comprehensive skill for QA engineers to create test plans, generate manual tes
 
 > **Activation:** This skill is triggered only when explicitly called by name (e.g., `/qa-test-planner`, `qa-test-planner`, or `use the skill qa-test-planner`).
 
+> ⚠ **Recenza-примечание.** Бандл-файлы скилла (`./scripts/*.sh`, `references/*.md`) в этот репозиторий
+> **не включены** — используй инлайн-шаблоны ниже (тест-кейс, тест-план, баг-репорт) и общие знания QA.
+> **Figma MCP не подключён** (`.mcp.json` — только Playwright), поэтому раздел Figma-валидации **не применяй**.
+> Тест-данные — из детерминированного seed тест-стенда (`ENVIRONMENTS.md` §5); приоритеты P0–P3 и
+> вердикт GO/NO-GO — как в `TESTING.md` §7. Доменная модель — глава-ориентированная (Blog→Chapter→Revision).
+
 ---
 
 ## Quick Start

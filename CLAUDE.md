@@ -42,7 +42,9 @@
   `review_checklists`, `public_comments`, `comment_votes`, `chapter_votes`, `bookmarks`, `follows`,
   `notifications`, `portfolios`, `reports`, `primary_change_requests`, `removed_reviewers`.
 - Перечисления: `role`, `revision.status` (`draft|under-review|changes-requested|published`),
-  `verdict` (`approve|request-changes`), `thread.status` (`open|resolved`), `complexity`, `block.type`.
+  `verdict` (`approve|request-changes`), `thread.status` (`open|resolved`), `complexity`, `block.type` (12 типов).
+- FK — только на суррогатные `users.id`/`chapters.id`/`blogs.id` (`handle`/`slug` мутабельны → денормализуются,
+  не ключи). `PRAGMA foreign_keys=ON` на каждом соединении (в libsql FK по умолчанию off). Пин блога — `users.pinned_blog_id`.
 - Engagement-таблицы — `uniqueIndex` + `db.transaction()` для race-safe toggle.
 
 ### Auth (`src/lib/auth.ts`)
@@ -54,15 +56,15 @@
   `GET /api/auth/user`. Rate-limit логина (5/15мин). CSRF — same-origin на мутациях.
 
 ### Ролевой гейтинг (binding — нарушать нельзя)
-- **Читатель** комментирует везде, голосует, закладывает, подписывается.
+- **Читатель** комментирует везде; **engagement (голос/закладка/подписка) — только у читателя**.
 - **Автор** видит/читает/комментирует **только свои** блоги; чужие фильтруются из ленты/каталога и
-  блокируются в ридере. Не комментирует чужое, не рецензирует.
-- **Ревьюер** только рецензирует (треды/вердикты/правки/чат); **никогда не комментирует**, нет блогов;
-  публичный профиль — «что отрецензировал».
+  блокируются в ридере. Не комментирует чужое, не рецензирует, **не голосует/не закладывает/не подписывается**.
+- **Ревьюер** только рецензирует (треды/вердикты/правки/чат); **никогда не комментирует**, нет блогов,
+  **нет engagement**; публичный профиль — «что отрецензировал».
 - **Админ** модерирует; **не создаёт блоги/главы**; роль пользователя не меняется обычным API.
 
 ### Review-flow
-- Назначение ревьюеров на главу + **ведущий (primary)**; вердикты на handle/ревизию; `reviewer_history`
+- Назначение ревьюеров на главу + **ведущий (primary)**; вердикты на ревьюера/ревизию (`chapter_reviewers`); `reviewer_history`
   хранит кредит по версиям. Чат сессии (`review_chat`) — вне тредов. Чек-лист готовности — гейт отправки.
 - Публикация главы доступна автору **только при всех `approve`** (или force-approve админом).
 - Опубликованная глава указывает ревьюеров текущей версии + прошлых (за раскрытием).
@@ -71,9 +73,10 @@
 
 ### Редактор (Variant B) и блоки
 - Writing-first: чистый документ, обвязка ревью — в правой шторке `SubmitSheet`, метаданные — в
-  `ChapterSettingsPopover`. Слэш-меню (14 типов), markdown-шорткаты, инлайн-тулбар выделения.
-- Типы блоков: `p/h2/h3/quote/list/code/callout/mermaid/image/table/embed` — рендерятся идентично в
-  ридере и ревью. Mermaid → mermaid-js; LaTeX → KaTeX; изображения → загрузка в сторедж.
+  `ChapterSettingsPopover`. Слэш-меню (**12 типов блоков**; 14 пунктов меню — list ×3 подтипа),
+  markdown-шорткаты, инлайн-тулбар выделения. **Без поля дедлайна** (см. README §5).
+- Типы блоков: `p/h2/h3/quote/list/code/callout/mermaid/latex/image/table/embed` — рендерятся идентично в
+  ридере и ревью. Mermaid → mermaid-js; LaTeX (`latex`-блок, `$$`) → KaTeX; изображения → загрузка в сторедж.
 
 ### Комментарии
 - Только читатели (и автор как участник своего блога). Привязка к блоку (`anchor`), ключ ревизии,
@@ -88,11 +91,12 @@
 ### API-паттерн (`src/app/api/`)
 - Admin-роуты: `await requireAdmin()` первой строкой. Author-роуты: `requireAuthor()` + проверка
   ownership (`blog.authorId === session.userId`). Reviewer-роуты: `requireReviewer()` + проверка назначения.
-- Смешанный доступ — паттерн `resolveAccess()` (auth → fetch → ownership). Cron — `Bearer CRON_SECRET`.
+- Смешанный доступ — паттерн `resolveAccess()` (auth → fetch → ownership).
 - Мутация главы — снапшот ревизии до записи. Все мутации требуют same-origin.
 
 ## Тестирование
 - Тест-стенд: **:3001**, `blog.test.db`, `.env.test`, `workers:1`, sequential. Никогда не трогать `:3000`/прод.
+  Изоляция — `APP_ENV=test` в `.env.test` + обёртка `dotenv -e .env.test --` в тест-скриптах (`next dev` сам `.env.test` не грузит).
 - Двухуровнево: Playwright **MCP** (исследование) + **TS-автотесты** `@playwright/test` (CI). См. `TESTING.md`.
 - `npm run build` — необходимое, прохождение smoke — достаточное условие готовности.
 
@@ -104,7 +108,9 @@
 - MCP: **Playwright MCP** (`mcp__playwright__*`).
 
 ## Gotchas
-- bcrypt в `.env*` экранирует `$` как `\$` (dotenv-expand).
+- Значения с `$` в `.env*` (bcrypt-хэши **и** `ADMIN_PASSWORD_PLAIN`) экранировать как `\$` (dotenv-expand); хэш и plain — одна пара.
+- В libsql `PRAGMA foreign_keys` по умолчанию off — включать на каждом соединении, иначе `CASCADE`/`SET NULL` молча не сработают.
+- Тест-стенд грузит `.env.test` только через `dotenv -e .env.test` (обёртка скриптов); `next dev`/`tsx` сами его не читают.
 - `SESSION_SECRET` без fallback — падение при старте, если не задан.
 - Seed-скрипты нужен `process.exit()` (libsql держит соединение).
 - `requireUser()` кидает `NextResponse` (не Error) — в хендлере его нужно `return`.

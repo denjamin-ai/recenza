@@ -53,5 +53,5 @@ recenza/
 - Все БД — миграциями Drizzle. Timestamps — Unix seconds. ID — `ulid()`. Интерфейс на русском.
 - Эстетика: Lora / Literata / Fira Code, teal-акцент, тонкие границы, без теней, dark/light.
 
-> Примечание: файлы в `.claude/agents/` и `.claude/skills/` внутри ссылаются на пути вида
-> `.agents/...` (исходная конвенция автора) — при необходимости поправь на `.claude/...`.
+> Примечание: пути в `.claude/agents/` и `.claude/skills/` приведены к `.claude/...`; скрипты
+> тест-стенда живут в `.claude/playwright-tester/*.sh` (создаются в Фазе 2).

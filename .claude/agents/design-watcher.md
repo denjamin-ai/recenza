@@ -28,7 +28,8 @@ color: cyan
 # Контекст
 
 Прочитай CLAUDE.md для контекста проекта.
-Прочитай docs/design/impeccable.md для дизайн-ограничений (если существует).
+Прочитай `.claude/rules/frontend-design.md` для дизайн-ограничений
+(шрифты Lora/Literata/Fira Code, teal-акцент, тонкие границы без теней, dark/light, a11y).
 
 # Чеклист аудита
 
@@ -45,7 +46,8 @@ grep -rn '#[0-9a-fA-F]\{3,8\}' src/ \
 ## 2. Запрещённые шрифты (P1)
 
 ```bash
-grep -rni 'Inter\|Roboto\|Arial\|Open Sans\|Montserrat\|Space Grotesk' src/ \
+# Разрешены только Lora / Literata / Fira Code. Ловим чужие, включая легаси article-версии (Playfair, Manrope):
+grep -rni 'Inter\|Roboto\|Arial\|Open Sans\|Montserrat\|Space Grotesk\|Playfair\|Manrope' src/ \
   --include='*.tsx' --include='*.css' \
   | grep -v 'fallback' | grep -v 'node_modules'
 ```
@@ -86,7 +88,7 @@ npm run build 2>&1 | tail -20
 Дата: YYYY-MM-DD
 
 P0 — Сломано (исправить немедленно)
-❌ src/components/article-card.tsx:15 — hardcoded #333333
+❌ src/components/blog-card.tsx:15 — hardcoded #333333
 → Заменить на var(--color-text)
 
 P1 — Заметно (исправить до релиза)

@@ -1,8 +1,8 @@
 {
-  "_comment": "Скрипты, которые Claude Code дотянет в Фазах 0–2. Слей этот блок scripts в реальный package.json после create-next-app.",
+  "_comment": "Скрипты, которые Claude Code дотянет в Фазах 0–2. Слей этот блок scripts в реальный package.json после create-next-app. Тест-стенд изолируется через dotenv-cli: команды грузят .env.test (там APP_ENV=test), а db/index.ts + drizzle.config.ts выбирают БД по TURSO_* → иначе APP_ENV==='test' ? blog.test.db : blog.db. Нужна dev-зависимость dotenv-cli.",
   "scripts": {
     "dev": "next dev",
-    "dev:test": "npm run seed:test && next dev -p 3001",
+    "dev:test": "npm run seed:test && dotenv -e .env.test -- next dev -p 3001",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -10,9 +10,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "seed": "tsx src/lib/db/seed.ts",
-    "seed:test": "tsx src/lib/db/seed-test.ts",
+    "seed:test": "dotenv -e .env.test -- tsx src/lib/db/seed-test.ts",
 
-    "test:reset": "drizzle-kit migrate && npm run seed:test",
+    "test:reset": "dotenv -e .env.test -- drizzle-kit migrate && npm run seed:test",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:report": "playwright show-report testing/reports/playwright-html",
@@ -21,7 +21,7 @@
   },
   "_env": {
     "dev": ".env.local  (port 3000, file:blog.db)",
-    "test": ".env.test  (port 3001, file:blog.test.db, ADMIN_PASSWORD_PLAIN)",
-    "prod": "Vercel env  (Turso, CRON_SECRET)"
+    "test": ".env.test  (port 3001, file:blog.test.db, APP_ENV=test, ADMIN_PASSWORD_PLAIN; грузится через dotenv-cli)",
+    "prod": "Vercel env  (Turso)"
   }
 }

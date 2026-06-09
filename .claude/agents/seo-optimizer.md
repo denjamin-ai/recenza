@@ -25,24 +25,24 @@ color: orange
 # Контекст
 
 - Metadata API: `generateMetadata()` или статический `metadata` export
-- Блог на русском языке (lang="ru")
-- Статьи хранятся в БД (articles table), slug уникален
-- MDX-рендеринг через next-mdx-remote/rsc
+- Платформа на русском языке (lang="ru")
+- Контент хранится в БД (`blogs` → `chapters` → `chapter_revisions`), slug уникален
+- MDX/блоки-рендеринг через next-mdx-remote/rsc
 
 # Чеклист
 
 1. **Metadata**: каждая page.tsx имеет уникальные `title` и `description`?
-   - Root layout: проверь `title.template` (должен быть `"%s | Название блога"`)
-   - Статьи: `generateMetadata()` заполняет title, description из БД
+   - Root layout: проверь `title.template` (должен быть `"%s | Recenza"`)
+   - Главы/блоги: `generateMetadata()` заполняет title, description из БД
 
-2. **Open Graph**: для каждой статьи заполнены:
+2. **Open Graph**: для каждой главы заполнены:
    - `og:title`, `og:description`, `og:type` (= "article")
    - `og:image` (есть ли OG-изображение?)
    - `article:published_time`, `article:modified_time`
 
 3. **Заголовки**: один `<h1>` на страницу, иерархия h1→h2→h3 (без пропусков)
 
-4. **sitemap.ts**: существует ли `app/sitemap.ts`? Включает ли все опубликованные статьи?
+4. **sitemap.ts**: существует ли `app/sitemap.ts`? Включает ли все опубликованные блоги/главы?
 
 5. **robots.ts**: существует ли `app/robots.ts`? Закрыт ли /admin от индексации?
 

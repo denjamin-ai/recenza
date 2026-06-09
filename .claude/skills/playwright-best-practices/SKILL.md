@@ -11,6 +11,12 @@ metadata:
 
 This skill provides comprehensive guidance for all aspects of Playwright test development, from writing new tests to debugging and maintaining existing test suites.
 
+> ⚠ **Recenza-примечание.** Файлы-референсы по ссылкам ниже (`core/*.md`, `advanced/*.md`,
+> `testing-patterns/*.md`, `infrastructure-ci-cd/*.md` и т.п.) в этот репозиторий **не включены** —
+> используй дерево решений на этой странице и общие знания Playwright. Конкретику проекта бери из
+> `TESTING.md` (стенд :3001, `workers:1`, `fullyParallel:false`, `reuseExistingServer`, теги
+> `@smoke`/`@critical`/`@regression`, auth-state в `testing/e2e/.auth/`) и `PLAN.md` Фаза 11.
+
 ## Activity-Based Reference Guide
 
 Consult these references based on what you're doing:

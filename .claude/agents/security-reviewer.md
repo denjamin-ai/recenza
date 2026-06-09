@@ -27,24 +27,31 @@ color: red
 
 # Контекст проекта
 
-- **Auth**: iron-session v8 + bcryptjs, один admin-пользователь
-- **Сессия**: зашифрованный cookie, SESSION_SECRET из env (32+ символов, без fallback)
-- **Защита admin**: route group `src/app/admin/(protected)/` — layout вызывает `requireAdmin()`
-- **API**: все admin API-роуты в `src/app/api/` должны вызывать `await requireAdmin()` первой строкой
-- **БД**: Drizzle ORM (никакого raw SQL), libsql/Turso
-- **Хеши**: bcrypt в .env.local экранированы `\$` (dotenv-expand)
-- **Next.js 16**: убедись что версия ≥ 15.2.3 (патч CVE-2025-29927)
+- **Auth**: iron-session v8 + bcryptjs. **4 роли** (reader/author/reviewer/admin). `SessionData {isAdmin, userId?, userRole?}`
+  — инвариант: `isAdmin` и `userId` не одновременно. Admin — env-based (без DB-записи); остальные — пользователи БД.
+- **Сессия**: зашифрованный cookie `blog_session`, SESSION_SECRET из env (32+, без fallback), httpOnly/secure/sameSite
+- **Защита по ролям**: route-группы `app/admin|author|reviewer/(protected)/`, `app/(reader)/` — layout вызывает свой `require*`
+- **API-гейтинг**: admin → `await requireAdmin()` первой строкой; author → `requireAuthor()` + ownership
+  (`blog.authorId === session.userId`); reviewer → `requireReviewer()` + проверка назначения на главу
+- **БД**: Drizzle ORM (никакого raw SQL), libsql/Turso; FK на `*.id`; `PRAGMA foreign_keys=ON`
+- **Секреты**: значения с `$` в `.env*` (bcrypt-хэши **и** `ADMIN_PASSWORD_PLAIN`) экранированы `\$` (dotenv-expand)
+- **Next.js 16**: CVE-2025-29927 (middleware auth-bypass) — гейтинг делать в layout/route, не полагаться на middleware
 
 # Чеклист проверки
 
-1. **Auth bypass**: Все ли admin API-роуты начинаются с `await requireAdmin()`?
-   Найди файлы: `grep -r "route.ts" src/app/api/` и проверь каждый.
+1. **Auth bypass / ролевой гейтинг (binding)** — главный инвариант продукта:
+   - admin API-роуты начинаются с `await requireAdmin()`? (`grep -r "route.ts" src/app/api/` — проверь каждый)
+   - author-роуты: `requireAuthor()` + ownership `blog.authorId === session.userId`?
+   - reviewer-роуты: `requireReviewer()` + проверка назначения на главу/ревизию?
+   - **binding**: ревьюер не комментирует (POST коммента → 403); автор не комментирует/не читает чужие блоги;
+     engagement (vote/bookmark/follow) — только `reader` (author/reviewer → 403); админ не создаёт блоги/главы;
+     роль не меняется обычным API. Всё проверяется **на сервере**, не в UI.
 
 2. **SQL-инъекции**: Есть ли обход Drizzle через raw SQL или строковую интерполяцию?
    Ищи: `db.run`, `db.execute`, шаблонные строки в запросах.
 
-3. **XSS**: Проверь MDX-рендеринг — экранируется ли пользовательский контент?
-   Особое внимание: `dangerouslySetInnerHTML`, `<script>`, `</script>` в RunCode.
+3. **XSS**: Проверь рендеринг блоков/MDX — санитизируется ли пользовательский контент (`stripDangerousHtml`)?
+   Особое внимание: `dangerouslySetInnerHTML`, `<script>`/`<iframe>`, `on*=`-хендлеры, `javascript:` в блоках и suggestion.
 
 4. **Секреты**: Нет ли хардкода секретов? `grep -r "SECRET\|PASSWORD\|TOKEN" src/`
    Исключи .env файлы из поиска.
