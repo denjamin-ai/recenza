@@ -24,6 +24,7 @@ next-scaffold/
 /testing/e2e/.auth/
 playwright-report/
 test-results/
+.playwright-mcp/
 
 # Claude Code (локальные артефакты сессий/агентов)
 .claude/agent-memory/

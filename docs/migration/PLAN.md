@@ -49,7 +49,7 @@
 | # | Фаза | Слой | Статус |
 |---|------|------|--------|
 | 0 | Окружение и репозиторий (bootstrap, запускается первой) | Инфраструктура | `done` |
-| 1 | Архитектура Claude Code + токены | Инфраструктура | `todo` |
+| 1 | Архитектура Claude Code + токены | Инфраструктура | `done` |
 | 2 | Доменная модель и схема БД | Данные | `todo` |
 | 3 | Два стенда + seed + флоу БД | Инфраструктура | `todo` |
 | 4 | Auth, роли, гейтинг + UI-обвязка ролей | Платформа | `todo` |
@@ -243,7 +243,7 @@
 
 ## Фаза 1 — Архитектура Claude Code + токены
 
-**Статус:** `todo`
+**Статус:** `done`
 **Контекст входа.** Требует Фазу 0 (`done`) — каркас, зависимости, env и репозиторий готовы. Читать:
 `PROMPT.md`, `CLAUDE.md`, `DESIGN-TOKENS.md`, `ENVIRONMENTS.md`, `README.md` §1–2.
 **Разблокирует.** Все продуктовые фазы (без токенов и проверенной обвязки работать нельзя).
@@ -283,10 +283,53 @@
 - [ ] Дизайн-токены подключены, тема переключается, hardcoded-цветов нет.
 
 **Журнал фазы.**
-- Статус-история:
+- Статус-история: `todo` → `in progress` (2026-06-22, сессия Фазы 1) → `done` (2026-06-22).
 - Решения/отклонения:
-- Backlog:
+  - **Темизация через `html[data-theme]`.** `next-themes` с `attribute="data-theme"`,
+    `defaultTheme="system"` + `enableSystem` — селектор `html[data-theme="dark"]` в `globals.css`
+    совпадает с выводом провайдера. **Scaffold-блок `@media (prefers-color-scheme: dark)` удалён**
+    (иначе тёмная ОС перебивала бы ручной выбор «светлая»); системную тему резолвит next-themes.
+    `suppressHydrationWarning` на `<html>` (провайдер мутирует атрибут до гидрации).
+  - **Гидрационный гард `ThemeToggle` — `useSyncExternalStore`, не `setState`-в-эффекте.**
+    Новый eslint-rule `react-hooks/set-state-in-effect` (React 19) запрещает классический
+    `useEffect(() => setMounted(true))` — заменён на SSR-false / client-true через `useSyncExternalStore`.
+  - **Шрифты — переменные (variable) Lora/Literata/Fira Code** через `next/font/google`,
+    subsets `latin`+`cyrillic`, имена next/font — `--ff-*`; токенные стеки `--font-display/--font-sans/--font-mono`
+    в `:root`. Утилиты Tailwind `font-*` регистрируются в `@theme inline` ссылкой на `--ff-*`
+    (а не самоссылкой `var(--font-*)`) — поправлено по ревью, убрана хрупкость.
+  - **Отклонение от DESIGN-TOKENS: вес h1 = 700, не 800.** Переменная-ось Lora (Google Fonts)
+    ограничена 700; 800 недостижим. Зафиксировано комментарием в `globals.css` (`--weight-h1: 700`).
+  - **Tailwind v4 CSS-first:** токены — `@theme inline` (цвета/шрифты) + `@custom-variant dark`
+    на `[data-theme="dark"]` (задел под `dark:`-утилиты); JS-конфига `tailwind.config` нет (решение Фазы 0).
+  - **Подфаза 1.1:** `.claude/rules/frontend-design.md` реконсилирован к DESIGN-TOKENS.md
+    (`--font-lora/literata/fira` → `--font-display/sans/mono`; тёмный акцент `#2dd4bf` → `#4a9d92`) —
+    источник правды авторитетен; иначе `design-watcher` ловил бы ложные срабатывания в фазах 4–12.
+  - **`.claude/settings.json`:** `Bash(npm run dev)` перенесён `deny`→`allow` (по согласованию
+    с владельцем) — для живой проверки темы через Playwright MCP. `Read(.env*)` и `rm -rf` — в `deny`.
+  - **`.gitignore`:** добавлен `.playwright-mcp/` (локальные артефакты MCP не коммитятся).
+  - Удалены boilerplate-svg из `public/` и шрифты Geist.
+- Доработки сверх плана:
+  - **Витрина токенов** (`page.tsx`) вместо create-next-app boilerplate: типошкала, акцент,
+    поверхности (границы, не тени), статус-чипы, моно-slug + stagger `.animate-in`.
+  - По ревью: `ring-offset-2` на интерактиве, skip-link `focus:fixed`, дедуп `antialiased`,
+    один `<h1>` на странице (образец H1 — стилизованный `<p>`).
+- Backlog (P2/P3):
+  - **(P3)** Единый источник стека шрифтов `--stack-*`, если дублирование fallback в
+    `:root`/`@theme inline` начнёт мешать.
+  - **(P3)** Витринная «Акцентная кнопка» без `onClick` — заменить на реальный элемент/`disabled`,
+    когда появятся компоненты.
+  - **(P3)** Фавикон/брендинг (пока дефолтный next favicon) — отдельная задача брендинга.
+  - **(P2, унаследовано)** `npm audit`: ~6 moderate в dev-зависимостях — Фаза 12 (hardening).
 - Риски для следующих фаз:
+  - **Фаза 2 (схема БД):** первый код с БД — проверить правило выбора драйвера
+    (`TURSO_CONNECTION_URL` → `file:${DB_FILE_NAME}`) в `db/index.ts` и `drizzle.config.ts`;
+    страницы с запросом к БД → `export const dynamic = "force-dynamic"`.
+  - **`dev:test` (3001) пока неработоспособен** — нет схемы/seed (Фаза 3). Живая проверка в фазах
+    до 3 — только через `npm run dev` (3000).
+  - **`dark:`-утилиты Tailwind** привязаны к `[data-theme="dark"]` (через `@custom-variant`) —
+    использовать их, не `prefers-color-scheme`.
+  - `TaskStop` останавливает обёртку фоновой задачи, но не дочерний `next dev` (порт может остаться
+    занят) — при необходимости добивать процесс `taskkill /PID <pid> /F` (в Git Bash — с `MSYS_NO_PATHCONV=1`).
 
 **Что дальше.** Фаза 2 — доменная модель и схема БД.
 
