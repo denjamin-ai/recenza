@@ -25,6 +25,9 @@ next-scaffold/
 playwright-report/
 test-results/
 
+# Claude Code (локальные артефакты сессий/агентов)
+.claude/agent-memory/
+
 # системное
 .DS_Store
 *.log
