@@ -1,0 +1,30 @@
+# env / секреты
+.env.local
+.env.test
+.env*.local
+
+# базы данных (генерируются миграциями + seed)
+blog.db
+blog.test.db
+*.db-journal
+
+# Next.js / Node
+node_modules/
+.next/
+out/
+dist/
+next-env.d.ts
+
+# временный каркас bootstrap (Фаза 0)
+.next-scaffold/
+next-scaffold/
+
+# Playwright
+/testing/reports/
+/testing/e2e/.auth/
+playwright-report/
+test-results/
+
+# системное
+.DS_Store
+*.log
