@@ -8,9 +8,10 @@ globs:
 
 # Правило: Frontend-дизайн
 
-- **Шрифты:** Lora (заголовки, `--font-lora`), Literata (текст, `--font-literata`), Fira Code (код,
-  `--font-fira`). Через `next/font/google`, subsets `["latin","cyrillic"]`. Других шрифтов не вводить.
-- **Цвет:** акцент — teal (light `#0f766e` / dark `#2dd4bf`) + семантические (success/warning/danger/info).
+- **Шрифты:** Lora (заголовки, `--font-display`), Literata (текст, `--font-sans`), Fira Code (код,
+  `--font-mono`). Через `next/font/google`, subsets `["latin","cyrillic"]`. Других шрифтов не вводить.
+  (Имена CSS-переменных — по `DESIGN-TOKENS.md` §2, источник правды.)
+- **Цвет:** акцент — teal (light `#0f766e` / dark `#4a9d92`) + семантические (success/warning/danger/info).
   Только **CSS-переменные** через Tailwind-утилиты. Запрещены raw-цвета (`text-red-500`, hex в TSX).
 - **Поверхности:** спокойная редакторская эстетика — **тонкие границы, без теней** (box-shadow только
   для focus-ring). Тёмная/светлая темы (`next-themes`); никаких `bg-white/bg-black/text-white/text-black`
