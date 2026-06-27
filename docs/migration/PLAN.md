@@ -51,7 +51,7 @@
 | 0 | Окружение и репозиторий (bootstrap, запускается первой) | Инфраструктура | `done` |
 | 1 | Архитектура Claude Code + токены | Инфраструктура | `done` |
 | 2 | Доменная модель и схема БД | Данные | `done` |
-| 3 | Два стенда + seed + флоу БД | Инфраструктура | `todo` |
+| 3 | Два стенда + seed + флоу БД | Инфраструктура | `done` |
 | 4 | Auth, роли, гейтинг + UI-обвязка ролей | Платформа | `todo` |
 | 5 | Читательский слой (публичный) | Продукт | `todo` |
 | 6 | Авторский слой: кабинет, редактор, портфолио | Продукт | `todo` |
@@ -447,7 +447,7 @@
 
 ## Фаза 3 — Два стенда + seed + флоу БД
 
-**Статус:** `todo`
+**Статус:** `done`
 **Контекст входа.** Требует фазы 1–2 (`done`). Читать: `ENVIRONMENTS.md` целиком; `README.md` §8.
 **Разблокирует.** Фазу 4 и весь слой качества (тесты гоняются на тест-стенде).
 **Старт сессии.** Проверь статусы; фазы 1–2 — `done`. Заведи todo по стендам/seed.
@@ -492,10 +492,72 @@
 - [ ] Тестовый и dev-стенды изолированы (разные БД/порты).
 
 **Журнал фазы.**
-- Статус-история:
+- Статус-история: `todo` → `in progress` (2026-06-28, сессия Фазы 3) → `done` (2026-06-28). Цикл
+  качества полностью зелёный (build/lint/code-reviewer/security-reviewer/playwright-tester); гейт
+  **3.6 Turso dry-run** выполнен реально (см. ниже).
+- Артефакты: `src/lib/db/seed-core.ts` (детерминированный построитель, все 28 таблиц), `seed.ts`,
+  `seed-test.ts` (раннеры); `.claude/playwright-tester/` — `db-helper.ts` + 7 bash-скриптов
+  (`reset-test-db`, `healthcheck`, `login`, `api-check`, `db-query`, `session-manager`,
+  `cleanup-test-data`); правки `tsconfig.json` / `eslint.config.mjs` (исключение `.claude/**`).
+- Ключевая находка: 3.1–3.3 уже были на месте с фаз 0/2 (scripts в `package.json`, `.env.example`,
+  `.env.local`/`.env.test`, правило выбора БД в `db/index.ts`+`drizzle.config.ts`, devDeps) —
+  это была **проверка**, не создание. Схему не меняли (миграция `0000` Фазы 2), новой миграции нет.
 - Решения/отклонения:
-- Backlog:
+  - **Детерминизм = стабильные идентификаторы + относительные времена.** `id`/`handle`/`slug`/связи/
+    counts фиксированы (читаемые строковые id: `usr_*`, `blog_*`, `chp_*`, `rev_*`, `cmt_*`); timestamps
+    выводятся из единственного `NOW = Math.floor(Date.now()/1000)`. Причина: требования seed включают
+    «комментарий в окне правки ≤15 мин» и «свежие» уведомления — это валидно ТОЛЬКО относительно времени
+    прогона; абсолютные фикс-времена сделали бы их невалидными. Снимок структурно идентичен между
+    прогонами (проверено: re-seed → diff пуст, 28 контрольных строк). ⚠️ recency-кейсы «протухают» —
+    тест окна правки запускать сразу после seed (помечено в коде).
+  - **Пароль — захардкоженный bcrypt-хэш `'password'` (cost 10)** для reader/author/reviewer: и
+    детерминизм снимка, и нет стоимости bcrypt на каждый seed. Проверено `compareSync('password',hash)
+    === true` для всех трёх. **Админ — env-based** (`POST /api/auth`, `ADMIN_PASSWORD_HASH`), строки
+    `users` не имеет — seed его не создаёт (соответствует разделению эндпоинтов).
+  - **«Логинятся» в Фазе 3 = construction-level** (bcrypt верифицирует seeded-хэши). Живой логин через
+    эндпоинт — Фаза 4 (auth ещё нет); `login.sh`/`api-check.sh` написаны по контракту и станут live тогда.
+  - **Единый seed-core для dev и test.** `seed.ts`/`seed-test.ts` — тонкие раннеры; контент идентичен,
+    БД выбирается env-файлом (dotenv-cli) через `db/index.ts`. Импорты в seed-core — relative + `import
+    type` (esbuild стирает type-only), чтобы tsx резолвил без tsconfig-paths.
+  - **Очистка перед вставкой.** seed чистит все таблицы child→parent, затем вставляет parent→child
+    (идемпотентность; самоссылка `public_comments.parent_id` — родители раньше детей).
+  - **Harness (`.claude/playwright-tester/`) — тулинг, не код приложения:** исключён из `tsconfig`
+    (`exclude: .claude/**`) и `eslint` (`globalIgnores`), как ранее `docs/**`. БД-скрипты ходят в БД
+    через `db-helper.ts` (@libsql/client, allowlist таблиц) — без зависимости от `sqlite3` CLI на Windows.
+  - **db-query `sql`-режим — одобренное tooling-исключение** из «no raw SQL»: только одиночный
+    SELECT/PRAGMA (снимаем завершающий `;`, запрещаем внутренние) — вне `src/`, read-only.
+- **3.6 Turso (выполнено реально):** владелец создал staging-БД `recenza-staging-denjamin-ai`
+  (Turso CLI), креды — в `.env.prod.local` (gitignored). `dotenv -e .env.prod.local -- drizzle-kit
+  migrate` применил миграцию `0000` → **28 таблиц на Turso, 0 строк** (прод-флоу = только миграции,
+  без seed; bootstrap-админ через env — Фаза 4). DoD «сухой прогон без ошибок» закрыт буквально.
+  ⚠️ Токен был показан в чате — владельцу рекомендована ротация (staging-throwaway, при желании БД переиспользуется под прод).
+- Цикл качества (полностью зелёный):
+  - `npm run build` ✓, `npm run lint` ✓ (0). Скиллы `drizzle-schema` + `next-best-practices` применены.
+  - Чистый клон (удалены `*.db`): `test:reset` создаёт+наполняет `blog.test.db`; `db:migrate`+`seed` —
+    `blog.db`. Детерминизм подтверждён (re-seed → идентичный снимок). Все 28 таблиц непусты; все 4
+    статуса ревизий; engagement (votes/bookmarks/follows) непуст.
+  - `dev:test` поднимает `:3001` на `blog.test.db` (Ready ~1.7с); `healthcheck.sh` = GO (200). dev-стенд
+    не затронут. `db-query.sh`/guard проверены (trailing `;` ок, составной запрос отклонён).
+  - **code-reviewer:** GO — 0 P0/0 P1 (2 P2, 2 P3 → backlog/исправлено). **security-reviewer:** GO —
+    0 critical/0 high (2 medium harness-only, 2 low — учтены). **playwright-tester:** healthcheck = GO.
+  - По ревью исправлено в этом PR: db-helper `sql` запрещает составные запросы (`;`); `login.sh`
+    JSON-экранирует пароль/handle; пометки edge-case/staleness в seed; коммент про статичный список в cleanup.
+- Backlog (P2/P3 — отложено):
+  - **(P3, harness)** `login.sh` без `jq` (ручное JSON-экранирование); при появлении `jq` в зависимостях
+    harness перейти на `jq -n --arg`.
+  - **(P3, Фаза 4)** db-query `sql`-режим читает любые таблицы (вкл. `password_hash`) — harness-only,
+    ФС-доступ; при желании сузить allowlist колонок.
+  - **(унаследовано, P2, Фаза 12)** `npm audit`: ~6 moderate в dev/build-зависимостях (esbuild через
+    старую цепочку drizzle-kit; postcss в бандле Next — фикс ломает Next, ждать релиз Next с postcss≥8.5.10).
+    Не эксплуатируется в проде.
 - Риски для следующих фаз:
+  - **(Фаза 4)** `login.sh`/`api-check.sh` ждут эндпоинты `/api/auth` (admin) и `/api/auth/user`
+    (reader/author/reviewer); форма тела `{handle,password}` в `login.sh` — провизорная, сверить с
+    реализацией Фазы 4. Тогда же «тестовые аккаунты логинятся» проверяется вживую.
+  - **(Фаза 5+)** recency-зависимые seed-строки (`cmt_fresh`, свежие уведомления) «протухают» —
+    E2E на окно правки/бейджи запускать сразу после `test:reset` (или мокать время).
+  - **(Фаза 12)** Прод-деплой: env в Vercel (`TURSO_*`, `SESSION_SECRET`, `ADMIN_PASSWORD_HASH`,
+    `CRON_SECRET`, `NEXT_PUBLIC_BASE_URL`); bootstrap-админ из env, без self-registration.
 
 **Что дальше.** Фаза 4 — auth + UI-обвязка ролей.
 
