@@ -15,6 +15,8 @@ const eslintConfig = defineConfig([
     // Прототип/эталоны и временный каркас — не код приложения, не линтуем:
     "docs/**",
     "next-scaffold/**",
+    // Harness тест-стенда (tsx-скрипты для playwright-tester) — тулинг, не код приложения:
+    ".claude/**",
   ]),
 ]);
 
