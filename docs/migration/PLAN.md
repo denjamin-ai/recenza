@@ -50,7 +50,7 @@
 |---|------|------|--------|
 | 0 | Окружение и репозиторий (bootstrap, запускается первой) | Инфраструктура | `done` |
 | 1 | Архитектура Claude Code + токены | Инфраструктура | `done` |
-| 2 | Доменная модель и схема БД | Данные | `todo` |
+| 2 | Доменная модель и схема БД | Данные | `done` |
 | 3 | Два стенда + seed + флоу БД | Инфраструктура | `todo` |
 | 4 | Auth, роли, гейтинг + UI-обвязка ролей | Платформа | `todo` |
 | 5 | Читательский слой (публичный) | Продукт | `todo` |
@@ -337,7 +337,7 @@
 
 ## Фаза 2 — Доменная модель и схема БД
 
-**Статус:** `todo`
+**Статус:** `done`
 **Контекст входа.** Требует фазу 1 (`done`). Читать: `README.md` §1–2, §8, §11.9; `ENVIRONMENTS.md` §«Схема БД».
 **Разблокирует.** Фазу 3 (без схемы нет seed) и все продуктовые фазы.
 **Старт сессии.** Проверь статусы фаз; фаза 1 должна быть `done`. Заведи todo по таблицам схемы.
@@ -382,10 +382,64 @@
 - [ ] Миграции в репозитории; применяются идемпотентно на чистую БД.
 
 **Журнал фазы.**
-- Статус-история:
-- Решения/отклонения:
-- Backlog:
+- Статус-история: `todo` → `in progress` (2026-06-27, сессия Фазы 2) → `done` (2026-06-28).
+- Артефакты: `src/lib/db/schema.ts` (28 таблиц), `src/lib/db/index.ts`, `src/lib/db/json.ts`,
+  `drizzle.config.ts`, `src/types/index.ts`, миграция `drizzle/0000_quiet_lady_deathstrike.sql`.
+- Решения/отклонения (валидированы против установленных версий drizzle-orm 0.45.2 / drizzle-kit 0.31.10 / @libsql/client 0.17.4):
+  - **JSON-поля — `text`, не `{mode:"json"}`.** Drizzle json-mode парсит в маппинге драйвера при SELECT
+    и роняет весь запрос на битой строке; `text` + единый `parseJson()` в `try/catch` (`db/json.ts`) даёт
+    безопасный дефолт. Прямой `JSON.parse` вне `json.ts` запрещён.
+  - **Timestamps — plain `integer` Unix seconds** (приложение пишет `Math.floor(Date.now()/1000)`),
+    не `{mode:"timestamp"}` (он гоняет `Date`/мс).
+  - **Booleans — `integer({mode:"boolean"})`** с `.notNull().default(...)`.
+  - **Enum — `text({enum})`** (типобезопасность на компиляции); DB-level `CHECK` НЕ добавляли (валидация
+    значений и диапазонов — на API-слое; CHECK в прототипе был Postgres-псевдокодом). `reviewer_ratings.stars`
+    1..5 — валидация на API.
+  - **PK — `text("id").$defaultFn(() => ulid())`** (генерация на каждую вставку, не замороженный default).
+  - **FK на `users.handle`** (UNIQUE non-PK) для всех ревью-таблиц — следуем спеку; `handle` объявлен
+    иммутабельным (запрет переименования — на API-слое). Прочие FK — на `id`.
+  - **Правило выбора БД: пустую строку трактуем как отсутствие** (`?.trim() || file:…`, не `??`). `.env.local`
+    задаёт `TURSO_CONNECTION_URL=` пустым; `??` не откатывался → `drizzle-kit migrate` падал. Соответствует
+    прозе ENVIRONMENTS §2 «если … пуст → file:». Правило идентично в `db/index.ts` и `drizzle.config.ts`.
+  - **`PRAGMA foreign_keys = ON`** в `db/index.ts` — connection-setup (не data-запрос), с `.catch`-логом,
+    чтобы каскады не отключались молча.
+  - **JSON-ключи внутри блобов — camelCase** (`CommentAnchor.blockId`, `Suggestion.from/to`), тип в
+    `src/types` — единый источник; snake_case только у DB-колонок. (Снимает P1 код-ревью.)
+  - Отклонения от источников: `chapter_revisions.deadline` **опущен** (ENVIRONMENTS §4 + редактор «без
+    дедлайна» переопределяют README §8); `chapter_reviewers` PK **per-revision** `(chapter_id, revision_number,
+    handle)` (ENVIRONMENTS §4, не §8); `follows` **автор-центрично** `(user_id, author_id)` (PLAN-решение,
+    не `blog_id`); добавлена KV-таблица **`app_settings`** под singleton `donations_enabled` (§11.9
+    «settings/kv»); `recruit_requests.chapter_id` **nullable**; `removed_reviewers.by_admin` — **text**
+    (идентификатор админа, не флаг); `primary_change_requests.status` — plain text (не в §2.4-списке enum'ов).
+- Доработки сверх плана: `app_settings` KV-таблица; `stringifyJson()` (зеркало `parseJson`); `.catch`-лог на
+  PRAGMA; JSDoc у `parseJson` (единая точка разбора JSON).
+- Цикл качества: `npm run build` зелёный, `npm run lint` чистый; `drizzle-kit generate` без ошибок;
+  `db:migrate` (`blog.db`) и `db:migrate:test` (`blog.test.db`) применяют 28 таблиц, идемпотентно;
+  оба `.db` в `.gitignore`. Сабагент `code-reviewer`: **0 P0/P1-блокеров** (1 P1 — несоответствие
+  `CommentAnchor` — исправлен в этом PR); `security-reviewer`: **0 критических / 0 high**.
+- Backlog (P2/P3 — для будущих фаз; в схеме менять не нужно):
+  - **(P2, Фаза 4)** Эскалация роли: API-апдейты пользователя — только явный allowlist полей, **никогда**
+    spread тела в Drizzle `update()` (`users.role` записываемая).
+  - **(P2, Фаза 4)** `users.password_hash` входит в `$inferSelect` (`User`). Ввести `PublicUser =
+    Omit<User,"passwordHash">` и не сериализовать полный `User` в ответах API.
+  - **(P2, Фаза 9)** `reviewer_ratings.stars` — валидация диапазона 1..5 на API.
+  - **(P3, Фаза 6)** `Block` имеет широкий `[key:string]: unknown` — заменить на дискриминированный union
+    по `type` в редакторе.
+  - **(P3, Фаза 10)** URL-поля (`promo_banners.target`, `donation_methods.url/qr_url`) без фильтра схемы —
+    валидировать `^https?://` / `^/`, отклонять `javascript:`/`data:`; санитайзить при рендере.
+  - **(P3)** `primary_change_requests.status` без enum — при появлении валидных значений завести enum-массив.
+  - **(унаследовано, P2)** `npm audit`: ~6 moderate в dev-зависимостях — Фаза 12 (hardening).
 - Риски для следующих фаз:
+  - **(Фаза 7)** `chapter_reviewers.online/typing` — эфемерное presence-состояние в БД: нужен TTL/heartbeat
+    (иначе `online=true` зависнет при разрыве) и осторожность с write-amplification; апдейт этих колонок —
+    только владельцем (`session.handle === row.handle`).
+  - **(Фазы 4/10)** FK на `users.handle` — `ON DELETE no action` (restrict): пользователя с ревью-историей
+    нельзя жёстко удалить — удаление делать soft (бан), не hard-delete.
+  - **(Фаза 3)** FK-каскады зависят от `PRAGMA foreign_keys=ON` (рантайм); `drizzle-kit migrate` применяет
+    DDL без рантайм-FK — seed вставляет строки **в порядке зависимостей** независимо от PRAGMA. Seed-скрипты
+    (`seed.ts`/`seed-test.ts`) ещё не существуют — это Фаза 3.
+  - **(Фаза 5)** `follows` автор-центрично; если понадобятся уведомления о новой главе по блогу —
+    пересмотреть (выводимо из автор→блоги).
 
 **Что дальше.** Фаза 3 — стенды + seed.
 
