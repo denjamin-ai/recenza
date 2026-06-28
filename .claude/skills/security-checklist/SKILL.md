@@ -15,6 +15,8 @@ description: >
 - [ ] `iron-session`, cookie `blog_session`, httpOnly + secure (prod) + sameSite=lax, срок 7д.
 - [ ] `SESSION_SECRET` — из env, без fallback (приложение падает при старте, если не задан).
 - [ ] Пароли — `bcryptjs`; в `.env*` `$` экранируется как `\$` (dotenv-expand).
+- [ ] `password_hash` НЕ сериализуется наружу: API/RSC отдают `PublicUser` (`toPublicUser()`), не полный `User`.
+- [ ] Апдейты `users` — только явный allowlist полей, НИКОГДА spread тела в Drizzle `update()` (`role` записываема).
 
 ## Гейтинг роутов (binding)
 - [ ] Каждый `/api/admin/*` — `await requireAdmin()` первой строкой.
