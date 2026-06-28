@@ -38,6 +38,7 @@ export async function SiteNav() {
                 user={{
                   displayName: user.displayName,
                   handle: user.handle,
+                  slug: user.slug,
                   role: user.role,
                   avatarUrl: user.avatarUrl,
                 }}

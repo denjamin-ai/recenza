@@ -1,7 +1,6 @@
 "use client";
 
-// Меню аватара: вход в ролевой кабинет (автор/ревьюер) + выход. Профиль/закладки появятся в
-// своих фазах (6/5) — здесь только реально существующие в Фазе 4 переходы, чтобы не было битых ссылок.
+// Меню аватара: профиль (автор/ревьюер) + закладки + вход в ролевой кабинет (автор/ревьюер) + выход.
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -10,6 +9,7 @@ import type { Role } from "@/types";
 type AvatarUser = {
   displayName: string;
   handle: string;
+  slug: string;
   role: Role;
   avatarUrl: string | null;
 };
@@ -93,6 +93,15 @@ export function AvatarMenu({ user }: { user: AvatarUser }) {
           </div>
 
           <div className="pt-1">
+            {/* Публичный профиль есть только у автора/ревьюера (у читателя — нет). */}
+            {(user.role === "author" || user.role === "reviewer") && (
+              <Link role="menuitem" href={`/u/${user.slug}`} className={menuItem} onClick={() => setOpen(false)}>
+                Мой профиль
+              </Link>
+            )}
+            <Link role="menuitem" href="/bookmarks" className={menuItem} onClick={() => setOpen(false)}>
+              Закладки
+            </Link>
             {portal && (
               <Link role="menuitem" href={portal.href} className={menuItem} onClick={() => setOpen(false)}>
                 {portal.label}

@@ -44,3 +44,32 @@ export function recordLoginFailure(key: string): void {
 export function clearLoginRate(key: string): void {
   store.delete(key);
 }
+
+// ───────────────────────────── реакции (голоса/закладки/подписки) ─────────────────────────────
+// Лёгкий лимит «не чаще 1/сек на пользователя» (CLAUDE.md §Безопасность: голоса 1/сек, 429 при превышении).
+// Combined check+record: вызов И проверяет, И отмечает попытку (это гейт мутации, не read-only).
+// ⚠️ in-memory, как и логин-лимит — для проды (Vercel) вынести в общий стор (Фаза 12).
+
+const ACTION_WINDOW_MS = 1000;
+const actionStore = new Map<string, number>(); // key → timestamp последней допущенной попытки
+
+/**
+ * Допустить действие, если с предыдущего прошло ≥1с. При успехе фиксирует время.
+ * @returns ok=false + retryAfter(сек) при срабатывании лимита.
+ */
+export function hitActionRate(key: string, windowMs = ACTION_WINDOW_MS): {
+  ok: boolean;
+  retryAfter?: number;
+} {
+  const now = Date.now();
+  const last = actionStore.get(key);
+  if (last != null && now - last < windowMs) {
+    return { ok: false, retryAfter: Math.max(1, Math.ceil((windowMs - (now - last)) / 1000)) };
+  }
+  actionStore.set(key, now);
+  // Грубая защита от роста карты на стенде: периодически чистим протухшие ключи.
+  if (actionStore.size > 5000) {
+    for (const [k, t] of actionStore) if (now - t > windowMs) actionStore.delete(k);
+  }
+  return { ok: true };
+}
