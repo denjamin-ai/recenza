@@ -167,7 +167,10 @@
 - Команды (`git commit*`, `git push*`, `gh pr *`) разрешены; деструктивные (`git reset --hard`, `push --force`) — спрашивать.
 
 ## Gotchas
-- bcrypt в `.env*` экранирует `$` как `\$` (dotenv-expand).
+- bcrypt в `.env*` экранирует `$` как `\$` (dotenv-expand). ⚠️ На **тест-стенде** значение проходит
+  **два** expand-прохода (dotenv-cli → `@next/env`), поэтому `ADMIN_PASSWORD_HASH` в `.env.test`
+  экранируется **двойно** (`\\$`); в `.env.local` (dev :3000, один проход) — одинарно (`\$`);
+  в проде (Vercel env, без `.env`-файлов) — без экранирования. (Фаза 4.)
 - `SESSION_SECRET` без fallback — падение при старте, если не задан.
 - Seed-скрипты нужен `process.exit()` (libsql держит соединение).
 - `requireUser()` кидает `NextResponse` (не Error) — в хендлере его нужно `return`.

@@ -52,7 +52,7 @@
 | 1 | Архитектура Claude Code + токены | Инфраструктура | `done` |
 | 2 | Доменная модель и схема БД | Данные | `done` |
 | 3 | Два стенда + seed + флоу БД | Инфраструктура | `done` |
-| 4 | Auth, роли, гейтинг + UI-обвязка ролей | Платформа | `in progress` |
+| 4 | Auth, роли, гейтинг + UI-обвязка ролей | Платформа | `done` |
 | 5 | Читательский слой (публичный) | Продукт | `todo` |
 | 6 | Авторский слой: кабинет, редактор, портфолио | Продукт | `todo` |
 | 7 | Редакционный review-flow (ReviewPage) | Продукт | `todo` |
@@ -565,7 +565,7 @@
 
 ## Фаза 4 — Auth, роли, гейтинг + UI-обвязка ролей
 
-**Статус:** `in progress`
+**Статус:** `done`
 **Контекст входа.** Требует фазы 1–3 (`done`). Читать: `README.md` §1 (роли), §3 (карта экранов); `CLAUDE.md` (ролевой гейтинг).
 **Разблокирует.** Все продуктовые фазы (5–10) — они наполняют готовые ролевые оболочки.
 **Старт сессии.** Проверь статусы; фазы 1–3 — `done`. Эту фазу **делаем за одну сессию** двумя
@@ -607,10 +607,61 @@
 - [ ] Все 4 ролевые оболочки рендерятся под своей ролью, навигация и layout-гейтинг работают, функционал — заглушки.
 
 **Журнал фазы.**
-- Статус-история: `todo` → `in progress` (2026-06-28, сессия Фазы 4).
+- Статус-история: `todo` → `in progress` (2026-06-28, сессия Фазы 4) → `done` (2026-06-28). Цикл качества
+  полностью зелёный (build/lint + 4 сабагента GO + живая проверка на :3001).
+- Артефакты: `src/lib/{auth,csrf,rate-limit}.ts`; `src/app/api/auth/{route,user/route}.ts`; route-группы
+  `(reader)`, `author/(protected)`, `reviewer/(protected)`, `admin/(protected)` + `/login` + `/admin/login`;
+  компоненты `nav/{site-nav,app-frame,avatar-menu,notification-bell}`, `auth/{login-form,admin-login-form}`;
+  каркасы кабинетов (`*_components/*-shell.tsx`); типы `PublicUser`/`SessionData`; дополнен скилл
+  `security-checklist`; удалён showcase `src/app/page.tsx` (home → `(reader)/page.tsx`).
 - Решения/отклонения:
-- Backlog:
+  - **Handler-гарды возвращают `SessionData | NextResponse`** (в хендлере `if (x instanceof NextResponse) return x`) —
+    по конвенции CLAUDE.md «requireUser возвращает NextResponse». **Page-гарды** (`require*Page`) — отдельные,
+    делают `redirect()` (RSC read-only по cookies; запись только в route handlers).
+  - **`SessionData` объявлен канонически в `src/types`** (а не в `auth.ts`, как предполагал план «зеркалить») —
+    общие типы импортируются из `@/types`, `auth.ts` импортирует тип (нет цикла, клиент-safe).
+  - **Вход админа — отдельный неафишируемый `/admin/login`** (решение владельца): публичный `/login` — только
+    пользователи (`/api/auth/user`), админ — только пароль (`/api/auth`), без ссылок из UI, `robots: noindex`.
+  - **`secure` cookie только в проде** (`NODE_ENV==="production"`) — иначе cookie не ставится по `http://localhost`
+    и логин «молча» не работает на стенде.
+  - **`snapshot()` гарантирует инвариант** (админ — без `userId/userRole`); **`requireUser` отдаёт роль из БД**
+    (актуальна), а не из cookie (фикс P1 ревью — задел против stale-роли в фазах 5–10).
+  - **🔴 Блокер (исправлен): двойной dotenv-expand ломал `ADMIN_PASSWORD_HASH`.** На тест-стенде значение проходит
+    ДВА expand-прохода (dotenv-cli `-e .env.test`, затем `@next/env` при `next dev`); `$2b$10$…` дважды
+    интерпретировался как переменные → мусор → `bcrypt.compare=false` → admin login 401. Прод **не затронут**
+    (Vercel задаёт env напрямую, без `.env`-файлов → `@next/env` не запускает expand на этой переменной — проверено
+    prod-sim). Фикс: `ADMIN_PASSWORD_HASH` в `.env.test` экранирован **двойно** (`\\$`: dotenv-cli `\\$`→`\$`,
+    затем `@next/env` `\$`→`$` = валидный 60-симв.). Проверено полным пайплайном и живым логином. Гочи занесён в
+    `CLAUDE.md`. `.env.local` не трогали (нет владельческого plain) → backlog.
+- Доработки сверх плана:
+  - A11y: skip-link на `/login`, `/admin/login` и в admin-fullscreen; `role=tablist/tab` + `aria-selected/controls`
+    в admin-sidebar; Escape возвращает фокус на триггер + закрытие при уходе фокуса в `AvatarMenu`; `min-h-9`
+    (хит-таргеты ≥36px); `autoCapitalize/autoCorrect/spellCheck=off` на поле никнейма.
+  - `security-checklist` дополнен: не сериализовать `password_hash` (`PublicUser`/`toPublicUser`); апдейты `users` —
+    только allowlist полей (никогда spread, `role` записываема).
+- Цикл качества (зелёный): `npm run build` ✓, `npm run lint` ✓ (0); скиллы `next-best-practices` +
+  `security-checklist` применены. Живая проверка на :3001: harness-логины reader/author/reviewer/admin = OK;
+  `ghost` (isBlocked) отклонён, `troll` входит; `GET /api/auth/user` без `passwordHash`; гость на
+  `/admin|/author|/reviewer` → редирект; чужая роль → `/`; CSRF cross-origin → 403; rate-limit 6-я → 429,
+  parse-ошибка НЕ засчитывается; logout гасит сессию; admin fullscreen (0 footer, 0 site-nav). Сабагенты:
+  **code-reviewer** GO (0 P0, 2 P1 исправлены), **security-reviewer** GO (0 critical/high; 2 medium),
+  **design-watcher** GO (0 P0, 3 P1 исправлены), **playwright-tester** GO (8/8).
+- Backlog (P2/P3):
+  - **(P2, Ф12)** rate-limit **in-memory** не шарится между serverless-инстансами (Vercel) — вынести в Turso/KV
+    (в коде помечено). До прод-деплоя — повышается до HIGH.
+  - **(P2, владелец/Ф12)** `.env.local` `ADMIN_PASSWORD_HASH` тоже мисэскейпнут → admin login на **dev :3000** сломан;
+    владельцу перегенерировать с одинарным `\$` (его plain известен только ему). Прод и тест-стенд не затронуты.
+  - **(P3, Ф5)** `NotificationBell` — server-заглушка; при поллинге добавить `"use client"`.
+  - **(P3)** `toPublicUser` через `delete`+`as` → деструктуризация при случае. **(P3, Ф12)** `bcryptjs` timing →
+    рассмотреть native/`timingSafeEqual`. **(P3)** login: бренд визуально крупнее `<h1>` (косметика).
+  - **(унаследовано P2, Ф12)** `npm audit` ~6 moderate (dev/build-зависимости).
 - Риски для следующих фаз:
+  - **(Ф5–8)** `require*`-гарды только **аутентифицируют роль**; ownership (`blog.authorId===userId`) и assignment
+    (назначение ревьюера на главу) каждый новый `/api/{author,reviewer}/*` обязан проверять явно.
+  - **(Ф5)** В `AvatarMenu`/`SiteNav` профиль/закладки/«Руководство» **не выведены** (нет маршрутов) — добавить ссылки
+    в своих фазах; в `(reader)/page.tsx` оставлен комментарий-слот под карусель промо-баннеров (Ф10).
+  - **(env-гочи)** секреты с `$` в `.env.test` требуют **двойного** `\\$` (двойной expand на тест-стенде), в
+    `.env.local` — одинарного `\$`, в проде — без экранирования (см. `CLAUDE.md` §Gotchas).
 
 **Что дальше.** Фаза 5 — читательский слой.
 
