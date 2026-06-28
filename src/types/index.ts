@@ -79,6 +79,24 @@ export type NotificationPayload = Record<string, unknown>;
 // --- типы строк таблиц (Select / Insert) ---
 export type User = typeof schema.users.$inferSelect;
 export type NewUser = typeof schema.users.$inferInsert;
+/**
+ * Безопасная проекция пользователя для сериализации в API/RSC — БЕЗ `passwordHash`.
+ * Полный `User` наружу не отдавать (Phase 2 backlog P2). Строить через `toPublicUser()` (src/lib/auth.ts).
+ */
+export type PublicUser = Omit<User, "passwordHash">;
+
+/**
+ * Данные сессии iron-session (cookie `blog_session`).
+ * Инвариант (binding): `isAdmin` и `userId` НИКОГДА не заданы одновременно
+ *   — админ аутентифицируется по env-паролю и не имеет строки `users`;
+ *   — пользователь (reader/author/reviewer) имеет `userId` + `userRole`, `isAdmin: false`.
+ * Канонический источник типа — здесь (общие типы импортируются из @/types). Логика — в src/lib/auth.ts.
+ */
+export interface SessionData {
+  isAdmin: boolean;
+  userId?: string;
+  userRole?: Role;
+}
 export type AppSetting = typeof schema.appSettings.$inferSelect;
 export type NewAppSetting = typeof schema.appSettings.$inferInsert;
 export type Blog = typeof schema.blogs.$inferSelect;
