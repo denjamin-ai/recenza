@@ -68,6 +68,13 @@ export function AdminPortalShell() {
 
   return (
     <div className="flex min-h-screen flex-col bg-[var(--background)] md:flex-row">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-[var(--radius-md)] focus:bg-[var(--bg-elevated)] focus:px-4 focus:py-2 focus:ring-2 focus:ring-[var(--accent)]"
+      >
+        К содержимому
+      </a>
+
       {/* Боковая навигация */}
       <aside className="flex shrink-0 flex-col border-b border-[var(--border)] bg-[var(--bg-elevated)] md:w-56 md:border-b-0 md:border-r">
         <div className="flex items-baseline gap-2 px-5 py-4">
@@ -79,11 +86,16 @@ export function AdminPortalShell() {
           </span>
         </div>
 
-        <nav className="flex-1 px-3 pb-4" aria-label="Навигация админ-портала">
+        <nav
+          className="flex-1 px-3 pb-4"
+          aria-label="Навигация админ-портала"
+          role="tablist"
+          aria-orientation="vertical"
+        >
           {GROUPS.map((group, gi) => (
             <div key={group.label ?? `g${gi}`} className="mb-3">
               {group.label && (
-                <p className="px-2 pb-1 pt-2 text-[10px] uppercase tracking-wider text-[var(--text-muted)]">
+                <p className="px-2 pb-1 pt-2 text-[10px] uppercase tracking-wider text-[var(--muted-foreground)]">
                   {group.label}
                 </p>
               )}
@@ -94,8 +106,11 @@ export function AdminPortalShell() {
                     key={item.id}
                     type="button"
                     onClick={() => setTab(item.id)}
-                    aria-current={active ? "page" : undefined}
-                    className={`mb-0.5 block w-full rounded-[var(--radius-md)] px-3 py-2 text-left text-[length:var(--type-small)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                    role="tab"
+                    id={`admin-tab-${item.id}`}
+                    aria-selected={active}
+                    aria-controls="main"
+                    className={`mb-0.5 flex min-h-9 w-full items-center rounded-[var(--radius-md)] px-3 py-2 text-left text-[length:var(--type-small)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
                       active
                         ? "bg-[var(--muted)] font-medium text-[var(--foreground)]"
                         : "text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
@@ -137,7 +152,13 @@ export function AdminPortalShell() {
           />
         </header>
 
-        <main className="flex-1 p-6">
+        <main
+          id="main"
+          tabIndex={-1}
+          role="tabpanel"
+          aria-labelledby={`admin-tab-${tab}`}
+          className="flex-1 p-6 focus:outline-none"
+        >
           <h1 className="text-[length:var(--type-h3)]">{TITLES[tab]}</h1>
           <div className="mt-4 rounded-[var(--radius-lg)] border border-[var(--border-secondary)] bg-[var(--bg-secondary)] p-6 text-[length:var(--type-small)] text-[var(--muted-foreground)]">
             {PANEL_NOTE[tab]}

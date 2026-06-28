@@ -44,9 +44,10 @@ export async function getSession(): Promise<IronSession<SessionData>> {
   return getIronSession<SessionData>(await cookies(), sessionOptions);
 }
 
-/** Снимок SessionData (без методов iron-session) с гарантией инварианта isAdmin↔userId. */
+/** Снимок SessionData (без методов iron-session); ГАРАНТИРУЕТ инвариант: админ — без userId/userRole. */
 function snapshot(s: IronSession<SessionData>): SessionData {
-  return { isAdmin: Boolean(s.isAdmin), userId: s.userId, userRole: s.userRole };
+  if (s.isAdmin) return { isAdmin: true };
+  return { isAdmin: false, userId: s.userId, userRole: s.userRole };
 }
 
 /** Проекция строки users без passwordHash (наружу полный User не отдаём — Phase 2 backlog P2). */
@@ -113,7 +114,8 @@ export async function requireUser(role?: Role): Promise<SessionData | NextRespon
     return unauthorized("Сессия недействительна.");
   }
   if (role && row.role !== role) return forbidden();
-  return snapshot(session);
+  // Роль берём из БД (актуальна на момент запроса), а не из cookie — на случай смены роли без перелогина.
+  return { isAdmin: false, userId: row.id, userRole: row.role };
 }
 
 export function requireAuthor(): Promise<SessionData | NextResponse> {

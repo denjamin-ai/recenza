@@ -10,7 +10,14 @@ export const metadata: Metadata = {
 
 export default function AdminLoginPage() {
   return (
-    <main id="main" tabIndex={-1} className="flex flex-1 items-center justify-center px-4 py-20 focus:outline-none">
+    <>
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-[var(--radius-md)] focus:bg-[var(--bg-elevated)] focus:px-4 focus:py-2 focus:ring-2 focus:ring-[var(--accent)]"
+      >
+        К содержимому
+      </a>
+      <main id="main" tabIndex={-1} className="flex flex-1 items-center justify-center px-4 py-20 focus:outline-none">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <Link
@@ -25,6 +32,7 @@ export default function AdminLoginPage() {
         </div>
         <AdminLoginForm />
       </div>
-    </main>
+      </main>
+    </>
   );
 }

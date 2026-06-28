@@ -43,7 +43,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     if (typeof body.handle === "string") handle = body.handle.trim();
     if (typeof body.password === "string") password = body.password;
   } catch {
-    recordLoginFailure(key);
+    // Ошибка разбора JSON — не попытка подбора пароля, в rate-limit не засчитываем.
     return NextResponse.json({ error: "Некорректное тело запроса." }, { status: 400 });
   }
 
