@@ -649,8 +649,12 @@
 - Backlog (P2/P3):
   - **(P2, Ф12)** rate-limit **in-memory** не шарится между serverless-инстансами (Vercel) — вынести в Turso/KV
     (в коде помечено). До прод-деплоя — повышается до HIGH.
-  - **(P2, владелец/Ф12)** `.env.local` `ADMIN_PASSWORD_HASH` тоже мисэскейпнут → admin login на **dev :3000** сломан;
-    владельцу перегенерировать с одинарным `\$` (его plain известен только ему). Прод и тест-стенд не затронуты.
+  - **(✅ исправлено, hotfix-envlocal-admin-hash)** `.env.local` `ADMIN_PASSWORD_HASH` хранился **без**
+    экранирования (`$2b$10$…`) → единственный expand-проход `@next/env` портил `$` → admin login на
+    **dev :3000** был сломан. Исправлено: значение экранировано одинарным `\$` (сам хеш не менялся —
+    валиден; владельческий пароль продолжает подходить). Проверено: оба стенда резолвят валидный
+    60-симв. bcrypt (`:3000` через `@next/env`; `:3001` через dotenv-cli+`@next/env`, `compareSync=true`).
+    Прод не затронут. `.env.local` gitignored — фикс локальный; правило escaping — в `CLAUDE.md` §Gotchas.
   - **(P3, Ф5)** `NotificationBell` — server-заглушка; при поллинге добавить `"use client"`.
   - **(P3)** `toPublicUser` через `delete`+`as` → деструктуризация при случае. **(P3, Ф12)** `bcryptjs` timing →
     рассмотреть native/`timingSafeEqual`. **(P3)** login: бренд визуально крупнее `<h1>` (косметика).
