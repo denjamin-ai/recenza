@@ -14,6 +14,7 @@ node_modules/
 out/
 dist/
 next-env.d.ts
+*.tsbuildinfo
 
 # временный каркас bootstrap (Фаза 0)
 .next-scaffold/

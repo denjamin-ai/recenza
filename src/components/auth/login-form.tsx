@@ -2,10 +2,34 @@
 
 // Форма входа пользователя (reader/author/reviewer) → POST /api/auth/user.
 // После входа — полный переход (window.location) по роли, чтобы серверная шапка перерисовалась с сессией.
+// Гостевой intent (vote/bookmark/follow) реплеится через авторизованный API; next — относительный (anti-open-redirect).
 
 import { useState } from "react";
+import { parseIntent, safeNext } from "@/lib/intent";
 
-export function LoginForm() {
+function roleHome(role?: string): string {
+  return role === "author" ? "/author" : role === "reviewer" ? "/reviewer" : "/";
+}
+
+// Реплей одного гостевого намерения (best-effort, идемпотентно — toggle-API не задваивает).
+async function replayIntent(raw?: string): Promise<void> {
+  const intent = parseIntent(raw);
+  if (!intent) return;
+  const common = { method: "POST", headers: { "Content-Type": "application/json" } } as const;
+  try {
+    if (intent.verb === "vote") {
+      await fetch(`/api/chapters/${intent.id}/vote`, { ...common, body: JSON.stringify({ value: intent.value }) });
+    } else if (intent.verb === "bookmark") {
+      await fetch(`/api/bookmarks`, { ...common, body: JSON.stringify({ blogId: intent.id }) });
+    } else if (intent.verb === "follow") {
+      await fetch(`/api/follows`, { ...common, body: JSON.stringify({ authorId: intent.id }) });
+    }
+  } catch {
+    /* реплей best-effort — игнорируем сетевые ошибки */
+  }
+}
+
+export function LoginForm({ next, intent }: { next?: string; intent?: string }) {
   const [handle, setHandle] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +52,8 @@ export function LoginForm() {
       if (res.ok) {
         const data = (await res.json().catch(() => null)) as { user?: { role?: string } } | null;
         const role = data?.user?.role;
-        const dest = role === "author" ? "/author" : role === "reviewer" ? "/reviewer" : "/";
+        await replayIntent(intent);
+        const dest = next ? safeNext(next, roleHome(role)) : roleHome(role);
         window.location.assign(dest);
         return;
       }

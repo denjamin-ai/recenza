@@ -53,7 +53,7 @@
 | 2 | Доменная модель и схема БД | Данные | `done` |
 | 3 | Два стенда + seed + флоу БД | Инфраструктура | `done` |
 | 4 | Auth, роли, гейтинг + UI-обвязка ролей | Платформа | `done` |
-| 5 | Читательский слой (публичный) | Продукт | `todo` |
+| 5 | Читательский слой (публичный) | Продукт | `done` |
 | 6 | Авторский слой: кабинет, редактор, портфолио | Продукт | `todo` |
 | 7 | Редакционный review-flow (ReviewPage) | Продукт | `todo` |
 | 8 | Комментирование (читатель↔автор↔читатель) | Продукт | `todo` |
@@ -673,7 +673,7 @@
 
 ## Фаза 5 — Читательский слой (публичный)
 
-**Статус:** `todo`
+**Статус:** `done`
 **Контекст входа.** Требует фазы 1–4 (`done`). Читать: `README.md` §3 (ридер, регресс-ловушка), §4 (engagement), §11.1 (навыки-чипы).
 **Разблокирует.** Кредит ревьюеров в ридере (фазы 7, 9) и комментарии (фаза 8).
 **Старт сессии.** Проверь статусы; фазы 1–4 — `done`.
@@ -709,10 +709,92 @@
 - [ ] Закладки/голоса/подписки идемпотентны и race-safe (тест на дабл-клик).
 
 **Журнал фазы.**
-- Статус-история:
+- Статус-история: `todo` → `in progress` (2026-06-28, сессия Фазы 5) → `done` (2026-06-28). Цикл качества
+  полностью зелёный (build/lint/tsc + 4 сабагента + живая верификация на :3001).
+- Решения пользователя (закреплены до старта через AskUserQuestion): URL **namespaced** —
+  `/blog/[slug]`, `/blog/[slug]/[chapter]`, профили `/u/[slug]`, закладки `/bookmarks`; главная `/` —
+  одна страница с **табами** «Лента/Каталог/Подписки» (через `?tab=`).
+- Артефакты:
+  - Общий рендерер блоков `src/components/blocks/` (`block-renderer` + `code-block` (Shiki на сервере,
+    dual-theme) + `copy-button` + `mermaid-block` (source-stub, RSC `<details>`) + `image-block`
+    (next/image + onError-плейсхолдер) + `anchors`/`headings`/`extract-plain-text`). Проп `mode`/`prefix`
+    — задел под идентичный рендер в ревью (Фаза 7).
+  - Data-access `src/lib/queries/` (`feed`, `chapters`, `engagement`, `reviewer-credit`, `bookmarks`,
+    `notifications`, `profile`, `reader-sections`, `sitemap`, `types`) с `cache()` и инвариантами видимости.
+  - Страницы `(reader)/{page, blog/[slug]/page, blog/[slug]/[chapter]/page, blog/[slug]/not-found,
+    u/[slug]/page, bookmarks/page}`; SEO-роуты корня `app/{sitemap.ts, robots.ts, feed.xml/route.ts}`.
+  - API `api/{chapters/[id]/vote, bookmarks, follows, notifications, notifications/read}/route.ts`.
+  - Компоненты ридера/профиля/навигации; `src/lib/{seo,intent,jsonld,format}.ts`; расширен `rate-limit`
+    (`hitActionRate` 1/сек на реакции); апгрейд `notification-bell` (клиентский поллинг); ссылки
+    профиль/закладки в `avatar-menu` (+ `slug` в проп из `site-nav`); intent-replay в `login-form`/`login`.
 - Решения/отклонения:
-- Backlog:
+  - **Регресс-ловушка** закрыта `getReadableBlog(slug)`: контент главы полностью выводится из
+    `(blogSlug, chapterSlug)`, `generateMetadata` зовёт ту же функцию (title/OG = контенту). Разные
+    блоги/главы → разный контент. `/blog/[slug]` без `?mode` → **редирект на первую published-главу**
+    (единственная поверхность контента, без дубликата); `?mode=whole` — режим «Весь блог».
+  - **Видимость (binding)**: заблокированные авторы (`isBlocked`) скрыты везде (лента/каталог/ридер/
+    sitemap/feed → 404 в ридере); публично видна только **последняя published-ревизия** главы (seed
+    `chp_published` rev1+rev2 → отдаём rev2). Неопубликованные главы → 404.
+  - **Ролевая изоляция автора**: viewer-author видит ТОЛЬКО свои блоги (`restrictAuthorId` в ленте/
+    каталоге; `notFound()` в ридере для чужого блога). Профиль читателя/админа → 404 (нет публичного профиля).
+  - **Счёт голосов — на чтении через `SUM`** (drizzle `sql`-агрегат), без денормализации/миграции;
+    транзакционно обновляется только `blogs.bookmarkCount`. `blogs.rating` (1–5, seed) не смешиваем с ±1.
+  - **Гостевой intent-replay без localStorage**: гость видит кнопки реакций → клик шлёт
+    `/login?next=&intent=` (`intent.ts`, allowlist + `safeNext` anti-open-redirect); после входа
+    `login-form` реплеит один intent авторизованным API и уходит на `next`. Проверено вживую: гость →
+    `intent=vote:chp_published:1` → вход → возврат на главу + голос применён (toggle).
+  - **canVote/canFollow для гостя = true** (по находке playwright): голосовать/подписываться может кто
+    угодно, КРОМЕ автора этой главы/блога; гость видит кнопку и уходит на логин (иначе intent-flow
+    невозможен). Автор не голосует за свою главу — дублируется на API (403).
+  - **mermaid/KaTeX/реальная загрузка картинок — Фаза 12.** Mermaid = source-stub (`<details>`),
+    инлайн-`$…$` остаётся текстом; картинки `next/image` `unoptimized` + onError-плейсхолдер; `src`
+    валидируется на `/uploads/`.
+  - **Уведомления — чтение СОХРАнённых строк** (seed создаёт `new_chapter`/`review_turn`); генерация
+    (cron/реалтайм) — позже. Bell: поллинг ~45с + on-focus, `aria-live` бейдж, read-state.
+  - **Главные табы — `nav` + `aria-current`** (не ARIA-виджет `tablist/tab`): это навигация по URL,
+    а не tab-widget с tabpanel (правка по design-review).
+  - **mermaid-block / chapter-reviewer-credit / comments-slot — RSC** (нативный `<details>`), меньше
+    клиентских компонентов, чем предполагал план.
+- Цикл качества (зелёный):
+  - `npm run build` ✓, `npm run lint` ✓ (0), `tsc --noEmit` ✓. Скиллы `next-best-practices` +
+    `security-checklist` применены (self-audit).
+  - **code-reviewer: GO** (0 P0; 1 P1 — неявный guard пустого `chapters[]` — исправлен явным `notFound()`).
+  - **security-reviewer: PASS** (0 critical/0 high; 3 medium — все carry-forward/known: in-memory
+    rate-limit→Ф12, `toPublicUser`-конвенция, CSRF-на-GET-notifications [см. backlog]).
+  - **design-watcher: GO** (0 P0; 2 P1 исправлены: `aria-current="page"`, хит-таргет чипов `h-9`).
+  - **seo-optimizer + живая проверка**: sitemap включает published-главу и исключает `hidden-blog`;
+    robots/feed валидны; canonical/OG/JSON-LD/title корректны.
+  - **playwright-tester**: автопрогон агента ушёл в NO-GO из-за артефактов тестового окружения
+    (MCP-клик деградировал после рестарта dev-сервера под живым браузером; Cyrillic в `evaluate`;
+    onChange формы логина; login rate-limit). **Все спорные пункты перепроверены вручную через
+    Playwright MCP (in-page) = GREEN**: регресс-ловушка, гость→login→intent-replay (голос применён),
+    тоггл закладки через `POST /api/bookmarks` (200), попап колокола с уведомлениями, таб-навигация
+    (`?tab=catalog`), 404 скрытого блога/неопубликованной главы. Единственная реальная находка
+    (vote/follow скрыты у гостя) — исправлена.
+- Backlog (P2/P3 — для будущих фаз):
+  - **(P2, Ф12)** rate-limit (логин + реакции) — in-memory, не шарится между serverless-инстансами;
+    вынести в Turso/KV. До прод-деплоя — HIGH.
+  - **(P2, Ф12)** Seed-картинки `/uploads/*.png` отсутствуют → 404 + console error на стендах (UX уже
+    деградирует в плейсхолдер). Реальная загрузка/сторедж — Фаза 12; либо добавить плейсхолдер-файлы.
+  - **(P3)** `GET /api/notifications` без `assertSameOrigin` (info-disclosure минимизирован `sameSite=lax`;
+    добавлять same-origin к GET нельзя — браузер не шлёт `Origin` на same-origin GET → сломает поллинг.
+    Рассмотреть строгую CORS-политику на API в Ф12).
+  - **(P3)** JSON-LD `<script>` даёт dev-only React-варнинг (в прод-сборке отсутствует; паттерн — по
+    докам Next). При желании заменить на иной механизм инъекции.
+  - **(P3)** `getSubscriptionFeed` — `includes` по массиву подписок (O(n·m)); при росте перейти на `Set`.
+  - **(P3)** Режим «Весь блог» — `buildReaderSections` шлёт 2 запроса на главу; при многоглавных блогах
+    добавить батчинг. **(P3)** профиль `/u/[slug]` без `og:image`; NotificationBell без loading-скелета.
 - Риски для следующих фаз:
+  - **(Ф7)** `BlockRenderer` — общий с ревью: ревью-хром (маркеры тредов, инлайн-дифф) навешивать
+    ОБЁРТКАМИ вокруг (`mode="review"`, `prefix`/`data-block-id` уже есть), не форком рендерера.
+  - **(Ф6)** Редактор обязан писать блоки в тех же seed-формах, что потребляет рендерер
+    (`list{variant,items}`, `code{lang,text}`, `callout{variant}`, `image{src,alt}`, `table{rows}`).
+    Портфолио сейчас рендерится read-only в профиле — редактор портфолио добавляет Фаза 6.
+  - **(Ф8)** Слот комментариев — якорный `<section id="comments">` (ключ ревизии в `data-revision`);
+    наполнять там же.
+  - **(тест-инфра)** Артефакты этой сессии: login rate-limit (5/15мин) копится на стенде — E2E
+    логиниться один раз на роль; рестарт dev-сервера под живым MCP-браузером ломает MCP-клики; Cyrillic
+    в `browser_evaluate`-литералах транскодируется — матчить элементы по индексу/латинице, не по кириллице.
 
 **Что дальше.** Фаза 6 — авторский слой.
 

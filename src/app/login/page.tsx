@@ -6,7 +6,10 @@ import { LoginForm } from "@/components/auth/login-form";
 
 export const metadata: Metadata = { title: "Вход" };
 
-export default function LoginPage() {
+type Search = Promise<{ next?: string; intent?: string }>;
+
+export default async function LoginPage({ searchParams }: { searchParams: Search }) {
+  const { next, intent } = await searchParams;
   return (
     <>
       <a
@@ -28,7 +31,7 @@ export default function LoginPage() {
             Вход в аккаунт
           </h1>
         </div>
-        <LoginForm />
+        <LoginForm next={next} intent={intent} />
       </div>
       </main>
     </>
