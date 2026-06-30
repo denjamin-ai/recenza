@@ -247,3 +247,65 @@ samp {
     animation: none;
   }
 }
+
+/* ============================================================
+   Ревью (Фаза 7): инлайн-дифф, полосы изменённых блоков, flash.
+   Цвета — только токены. Анимация — только opacity (+ reduced-motion выше гасит её).
+   ============================================================ */
+
+/* Инлайн-вставка (diffWords): добавленный текст подсвечивается. */
+.diff-edit {
+  background: var(--success-bg);
+  color: var(--success);
+  border-radius: var(--radius-sm);
+  padding: 0 0.1em;
+}
+
+/* Полностью добавленный текст блока. */
+.diff-add {
+  background: var(--success-bg);
+  color: var(--success);
+  border-radius: var(--radius-sm);
+  padding: 0 0.1em;
+}
+
+/* Полоса слева у изменённого/добавленного блока (review-режим). */
+.diff-stripe-edit,
+.diff-stripe-add {
+  border-left: 2px solid;
+  padding-left: 0.75rem;
+  margin-left: -0.875rem;
+}
+.diff-stripe-edit {
+  border-left-color: var(--warning-border);
+}
+.diff-stripe-add {
+  border-left-color: var(--success-border);
+}
+
+/* Цитата-якорь в карточке треда. */
+.anchor-hi {
+  border-left: 2px solid var(--accent);
+}
+
+/* Вспышка блока при переходе bauble↔тред (scroll + flash). */
+.blog-fragment-flash {
+  position: relative;
+}
+.blog-fragment-flash::after {
+  content: "";
+  position: absolute;
+  inset: -4px -8px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  pointer-events: none;
+  animation: reviewFlash 1.1s ease-out forwards;
+}
+@keyframes reviewFlash {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
