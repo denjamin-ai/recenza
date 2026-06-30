@@ -7,10 +7,10 @@
 > детальная модель — в `README.md` прототипа. План миграции — `PLAN.md`. Стенды/БД — `ENVIRONMENTS.md`.
 > Тесты — `TESTING.md`.
 
-## Текущее состояние репозитория (фазы 0–9 `done`, дальше 10–12 `todo`)
+## Текущее состояние репозитория (фазы 0–10 `done`, дальше 11–12 `todo`)
 
 ⚠️ **Прочти первым.** Каркас существует и работает: Next 16 + `src/`, `node_modules/`, `tsconfig.json`,
-`next.config.ts`, `drizzle.config.ts`, миграции `drizzle/0000_*.sql` + `0001_*.sql` (`users.pinned_blog_id`, **28 таблиц**), `blog.db`/`blog.test.db`,
+`next.config.ts`, `drizzle.config.ts`, миграции `drizzle/0000_*.sql` + `0001_*.sql` (`users.pinned_blog_id`) + `0002_*.sql` (uniqueIndex `review_invitations`) + `0003_*.sql` (`blogs.hidden` — скрытие блога админом; всего **28 таблиц**), `blog.db`/`blog.test.db`,
 два стенда, auth/роли, читательский слой, авторский слой (кабинет/редактор/портфолио), review-flow
 (ReviewPage), публичные комментарии (тред/якоря/голоса/уведомления). npm-скрипты работают.
 
@@ -25,21 +25,26 @@
   `src/lib/queries/comments.ts`, `src/app/api/comments/**`, `src/components/reader/comment*`) ·
   **9** подбор ревьюеров (матчинг+«Топ»/согласие через приглашения/приватная оценка/recruit-запрос автора;
   `src/lib/reviewer-match.ts`, `src/lib/queries/invitations.ts`, `src/app/api/reviewer/invitations/**`,
-  `src/app/api/author/{ratings,recruit-requests}/**`).
+  `src/app/api/author/{ratings,recruit-requests}/**`) ·
+  **10** админка/модерация/монетизация (полноэкранный admin-портал RSC route-сегментами
+  `src/app/admin/(protected)/{dashboard,users,reports,review,recruit,banners,donation}` + `_components/**`;
+  `src/app/api/admin/**`; `src/lib/queries/{admin,settings,monetization,board}.ts`; миграция `0003` `blogs.hidden`;
+  публичная доска `src/app/(reader)/board` + `src/app/api/board/applications`; карусель+DonateModal
+  `src/components/reader/{promo-carousel,promo-carousel-slot,donate-modal,reviewer-board}.tsx`; `src/components/icons.tsx`).
 
 Ещё **не реализовано** — разделы «Архитектура» ниже описывают это как **целевое** состояние (спека для
 будущих фаз, не готовый код):
-- **10** админка/модерация/монетизация (вкл. админ-обработку recruit/доску `board_calls`/заявки
-  `reviewer_applications`/баннеры/пожертвования) · **11** слой качества (`playwright.config.ts` + каталог
-  `testing/` ещё **не созданы**) · **12** hardening + прод-деплой.
+- **11** слой качества (`playwright.config.ts` + каталог `testing/` ещё **не созданы**) ·
+  **12** hardening + прод-деплой.
 
 **Точка входа в фазу:** прочитай `PLAN.md` (статусы всех фаз; если есть `blocked` — сначала чини её) →
 ритуал «Промт запуска фазы» в `docs/migration/PROMPT.md` → веди ветку/PR по git-flow ниже.
-Следующая фаза — **10 (админка/модерация/монетизация)**. Авторский кабинет, редактор (Variant B), `SubmitSheet`,
-портфолио, review-flow (ReviewPage `src/components/review/**`, `src/app/api/review/**`), комментирование
-(`src/components/reader/comment*`, `src/app/api/comments/**`) и подбор ревьюеров (Фаза 9) — уже **готовый код**
-(фазы 6–9 `done`), не спецификация. Для остального (фазы 10–12) перед тем как опереться на путь/таблицу/роут
-из «Архитектуры», **убедись, что фаза, вводящая его, уже `done`** — часть описанного пока только спецификация.
+Следующая фаза — **11 (слой качества: тест-кейсы + Playwright)**. Авторский кабинет, редактор (Variant B),
+`SubmitSheet`, портфолио, review-flow (ReviewPage `src/components/review/**`, `src/app/api/review/**`),
+комментирование (`src/components/reader/comment*`, `src/app/api/comments/**`), подбор ревьюеров (Фаза 9) и
+админка/монетизация (Фаза 10: `src/app/admin/**`, `src/app/api/admin/**`, `src/app/(reader)/board`) — уже
+**готовый код** (фазы 6–10 `done`), не спецификация. Для остального (фазы 11–12) перед тем как опереться на
+путь/файл из «Архитектуры», **убедись, что фаза, вводящая его, уже `done`** (`playwright.config.ts`/`testing/` — Фаза 11).
 
 ## Команды
 - `npm run dev` — dev (:3000, `.env.local` → `blog.db`)

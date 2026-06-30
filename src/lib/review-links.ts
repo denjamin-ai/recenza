@@ -16,6 +16,17 @@ export const REVIEW_NOTIFY = {
   primaryChange: "review_primary_change",
 } as const;
 
+/** Типы уведомлений админ-действий (Фаза 10). payload.href ведёт получателя на нужный экран. */
+export const ADMIN_NOTIFY = {
+  forceApproved: "force_approved", // автору: админ опубликовал главу в обход гейта all-approve
+  reviewerRemoved: "reviewer_removed", // ревьюеру: админ снял его с ревью (+ payload.reason)
+  primaryChanged: "primary_changed", // автору/ревьюерам: админ сменил ведущего по запросу
+  recruitApproved: "recruit_approved", // автору: запрос на подбор одобрен, направление на доске
+  recruitRejected: "recruit_rejected", // автору: запрос на подбор отклонён (+ payload.reason)
+  applicationAccepted: "application_accepted", // заявителю: принят в ревьюеры (роль выдана)
+  applicationDeclined: "application_declined", // заявителю: заявка отклонена
+} as const;
+
 /** Кабинет ревьюера (входящие приглашения, активные ревью). */
 export function reviewerInboxHref(): string {
   return "/reviewer";

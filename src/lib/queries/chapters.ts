@@ -32,7 +32,7 @@ export const getReadableBlog = cache(async (slug: string): Promise<ReadableBlog 
       })
       .from(blogs)
       .innerJoin(users, eq(blogs.authorId, users.id))
-      .where(and(eq(blogs.slug, slug), eq(users.isBlocked, false)))
+      .where(and(eq(blogs.slug, slug), eq(users.isBlocked, false), eq(blogs.hidden, false))) // Фаза 10: скрытый блог → 404 в ридере
       .limit(1)
   )[0];
 

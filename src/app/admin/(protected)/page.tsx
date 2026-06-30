@@ -1,7 +1,6 @@
-import { AdminPortalShell } from "@/app/admin/_components/admin-portal-shell";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
-export default function AdminPage() {
-  return <AdminPortalShell />;
+// /admin → дашборд (экраны — отдельные route-сегменты под (protected)).
+export default function AdminIndexPage() {
+  redirect("/admin/dashboard");
 }

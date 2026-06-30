@@ -1,7 +1,7 @@
 // Уведомления для колокола: читаем СОХРАНённые строки (генерация при публикации/назначении — позже).
 // Только личные строки пользователя (recipientId = userId, не admin-broadcast).
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { notifications } from "@/lib/db/schema";
 import { parseJson, stringifyJson } from "@/lib/db/json";
@@ -10,6 +10,8 @@ import type { NotificationPayload } from "@/types";
 // Исполнитель запроса: db или транзакция (tx). Обе имеют одинаковую сигнатуру .insert — берём её
 // структурно, чтобы createNotifications работал и внутри db.transaction(), и без неё.
 type Executor = Pick<typeof db, "insert">;
+// Исполнитель чтения+записи (для clearAdminNotifications) — db или tx.
+type RWExecutor = Pick<typeof db, "select" | "update">;
 
 export interface NotificationSpec {
   /** Личное уведомление: id получателя. null + isAdminRecipient → админу. */
@@ -37,6 +39,37 @@ export async function createNotifications(executor: Executor, specs: Notificatio
       createdAt: now,
     })),
   );
+}
+
+/**
+ * Гасит (isRead=true) admin-broadcast уведомления указанного типа, у которых payload[key] === value.
+ * Нужно, чтобы очередь «Требует внимания» в дашборде очищалась при разборе соответствующего элемента
+ * (у админа нет колокола). Фильтрация payload — в JS (JSON хранится как text). Вызывать внутри tx события.
+ */
+export async function clearAdminNotifications(
+  executor: RWExecutor,
+  type: string,
+  key: string,
+  value: string,
+): Promise<void> {
+  const rows = await executor
+    .select({ id: notifications.id, payload: notifications.payload })
+    .from(notifications)
+    .where(
+      and(
+        eq(notifications.isAdminRecipient, true),
+        eq(notifications.type, type),
+        eq(notifications.isRead, false),
+      ),
+    );
+  const ids = rows
+    .filter((r) => {
+      const p = parseJson<NotificationPayload>(r.payload, {});
+      return p[key] === value;
+    })
+    .map((r) => r.id);
+  if (ids.length === 0) return;
+  await executor.update(notifications).set({ isRead: true }).where(inArray(notifications.id, ids));
 }
 
 export interface NotificationView {
