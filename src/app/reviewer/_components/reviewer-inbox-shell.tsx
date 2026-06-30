@@ -1,37 +1,36 @@
-// Кабинет ревьюера (Фаза 7): плитки + список активных ревью (getReviewerQueue). Приглашения/рейтинг —
-// Фаза 9 (заглушки). Карточки ведут на /reviewer/review/[chapterId].
+// Кабинет ревьюера (Фаза 7 → 9): плитки + входящие приглашения + список активных ревью.
+// Приглашения — InvitationCard (accept/decline/flag); активные ревью ведут на /reviewer/review/[id].
 
 import Link from "next/link";
 import type { ReviewerQueueItem } from "@/lib/queries/review";
+import type { ReviewerInvitationItem } from "@/lib/queries/invitations";
 import type { RevisionStatus } from "@/types";
+import { InvitationCard } from "./invitation-card";
 
 const STATUS_META: Partial<Record<RevisionStatus, { label: string; cls: string }>> = {
   "under-review": { label: "На ревью", cls: "bg-[var(--info-bg)] text-[var(--info)]" },
   "changes-requested": { label: "Нужны правки", cls: "bg-[var(--warning-bg)] text-[var(--warning)]" },
 };
 
-function StubSection({ title, note }: { title: string; note: string }) {
-  return (
-    <section className="rounded-[var(--radius-lg)] border border-[var(--border-secondary)] bg-[var(--bg-secondary)] p-5">
-      <h2 className="text-[length:var(--type-h4)]">{title}</h2>
-      <p className="mt-2 text-[length:var(--type-small)] text-[var(--muted-foreground)]">{note}</p>
-    </section>
-  );
-}
-
 export function ReviewerInboxShell({
   displayName,
   queue,
+  invitations,
+  rating,
+  ratingsN,
 }: {
   displayName: string;
   queue: ReviewerQueueItem[];
+  invitations: ReviewerInvitationItem[];
+  rating: number | null;
+  ratingsN: number;
 }) {
   const awaitingMe = queue.filter((q) => q.myVerdict === null).length;
   const tiles = [
-    { label: "Приглашения", value: "—" },
+    { label: "Приглашения", value: String(invitations.length) },
     { label: "Ваш ход", value: String(awaitingMe) },
     { label: "Активные ревью", value: String(queue.length) },
-    { label: "Ваш рейтинг", value: "—" },
+    { label: "Ваш рейтинг", value: rating != null ? `${rating.toFixed(1)} (${ratingsN})` : "—" },
   ];
 
   return (
@@ -54,7 +53,20 @@ export function ReviewerInboxShell({
       </div>
 
       <div className="mt-10 flex flex-col gap-4">
-        <StubSection title="Входящие приглашения" note="Приглашения на ревью с процентом совпадения навыков — Фаза 9." />
+        <section className="rounded-[var(--radius-lg)] border border-[var(--border-secondary)] bg-[var(--bg-secondary)] p-5">
+          <h2 className="text-[length:var(--type-h4)]">Входящие приглашения</h2>
+          {invitations.length === 0 ? (
+            <p className="mt-2 text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+              Новых приглашений нет.
+            </p>
+          ) : (
+            <ul className="mt-4 flex flex-col gap-2">
+              {invitations.map((inv) => (
+                <InvitationCard key={inv.id} invitation={inv} />
+              ))}
+            </ul>
+          )}
+        </section>
 
         <section className="rounded-[var(--radius-lg)] border border-[var(--border-secondary)] bg-[var(--bg-secondary)] p-5">
           <h2 className="text-[length:var(--type-h4)]">Активные ревью</h2>

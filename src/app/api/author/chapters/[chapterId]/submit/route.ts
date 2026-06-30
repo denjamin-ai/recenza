@@ -1,43 +1,76 @@
-// Отправка главы на ревью (Фаза 6): draft|changes-requested → under-review. Гейт готовности
-// применяется ПОВТОРНО на сервере (никогда не доверяем клиенту). Навыки обязательны.
+// Отправка главы на ревью (Фаза 6 → согласие в Фазе 9): draft|changes-requested → under-review.
+// Гейт готовности применяется ПОВТОРНО на сервере (никогда не доверяем клиенту). Навыки обязательны.
 //
-// ⚠️ R1 (forward-incompat, PLAN §risks): здесь ревьюеры назначаются НАПРЯМУЮ в chapter_reviewers —
-// это ЗАГЛУШКА. Модель согласия (review_invitations: «ревью стартует только после accept») — Фаза 9.
-// Прямой write изолирован в assignReviewers(): Фаза 9 заменит его на invitation→accept, не трогая редактор.
-// НЕ пишем review_invitations здесь (во избежание двойного моделирования).
+// Фаза 9 (согласие): отправка создаёт ПРИГЛАШЕНИЯ (review_invitations, status=pending), а НЕ пишет
+// chapter_reviewers напрямую. Ревью по приглашению стартует только после accept (accept → пишет
+// chapter_reviewers). Уже принявшие на этой ревизии не переприглашаются (re-consent не требуется).
 
 import { NextResponse } from "next/server";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { blogs, chapterReviewers, chapterRevisions, chapters, users } from "@/lib/db/schema";
+import { blogs, chapterRevisions, chapters, reviewInvitations, users } from "@/lib/db/schema";
 import { requireAuthor } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { hitActionRate } from "@/lib/rate-limit";
 import { parseJson, stringifyJson } from "@/lib/db/json";
 import { createNotifications } from "@/lib/queries/notifications";
-import { REVIEW_NOTIFY, reviewerReviewHref } from "@/lib/queries/review";
+import { REVIEW_NOTIFY, reviewerInboxHref } from "@/lib/queries/review";
 import { COMPLEXITY_TIERS, MAX_SKILLS, readinessChecklist } from "@/lib/blocks/validate";
 import type { Block, Complexity } from "@/types";
 
-/** R1-заглушка: прямое назначение ревьюеров на ревизию. Фаза 9 заменит на согласие/приглашения. */
-async function assignReviewers(
+/**
+ * Фаза 9: создаёт pending-приглашения для выбранных ревьюеров на (главу, ревизию).
+ * Идемпотентно (uniqueIndex chapter+rev+handle): сносит все НЕпринятые приглашения этой ревизии и
+ * пересоздаёт pending по новому набору. Уже принявшие (accepted, есть в chapter_reviewers) — не трогаем.
+ * Возвращает handle тех, кого реально пригласили (для уведомлений).
+ */
+async function createInvitations(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
   chapterId: string,
   revisionNumber: number,
   reviewers: string[],
   primary: string,
-) {
+  note: string | null,
+  now: number,
+): Promise<string[]> {
+  const acceptedRows = await tx
+    .select({ handle: reviewInvitations.toHandle })
+    .from(reviewInvitations)
+    .where(
+      and(
+        eq(reviewInvitations.chapterId, chapterId),
+        eq(reviewInvitations.revision, revisionNumber),
+        eq(reviewInvitations.status, "accepted"),
+      ),
+    );
+  const accepted = new Set(acceptedRows.map((r) => r.handle));
+
+  // Снимаем непринятые приглашения этой ревизии (pending/declined/flagged) — пересоздадим по набору.
   await tx
-    .delete(chapterReviewers)
-    .where(and(eq(chapterReviewers.chapterId, chapterId), eq(chapterReviewers.revisionNumber, revisionNumber)));
-  for (const handle of reviewers) {
-    await tx.insert(chapterReviewers).values({
-      chapterId,
-      revisionNumber,
-      handle,
-      isPrimary: handle === primary,
-    });
+    .delete(reviewInvitations)
+    .where(
+      and(
+        eq(reviewInvitations.chapterId, chapterId),
+        eq(reviewInvitations.revision, revisionNumber),
+        ne(reviewInvitations.status, "accepted"),
+      ),
+    );
+
+  const toInvite = reviewers.filter((h) => !accepted.has(h));
+  if (toInvite.length > 0) {
+    await tx.insert(reviewInvitations).values(
+      toInvite.map((handle) => ({
+        chapterId,
+        revision: revisionNumber,
+        toHandle: handle,
+        asLead: handle === primary,
+        note,
+        status: "pending" as const,
+        invitedAt: now,
+      })),
+    );
   }
+  return toInvite;
 }
 
 export async function POST(
@@ -88,7 +121,7 @@ export async function POST(
     if (!["simple", "medium", "complex"].includes(body.complexity as string)) {
       return NextResponse.json({ error: "Некорректная сложность." }, { status: 400 });
     }
-    skills = [...new Set((body.skills as string[]).map((s) => s.trim()).filter(Boolean))].slice(0, MAX_SKILLS);
+    skills = [...new Set((body.skills as string[]).map((s) => s.trim().slice(0, 100)).filter(Boolean))].slice(0, MAX_SKILLS);
     reviewers = [...new Set((body.reviewers as string[]).map((r) => r.trim()).filter(Boolean))];
     primary = body.primary.trim();
     complexity = body.complexity as Complexity;
@@ -177,19 +210,19 @@ export async function POST(
         .update(chapterRevisions)
         .set({ status: "under-review", submittedAt: now, ...(note !== null ? { summary: note } : {}) })
         .where(eq(chapterRevisions.id, rev.id));
-      await assignReviewers(tx, chapterId, rev.number, reviewers, primary);
-      // Уведомить назначенных ревьюеров (Фаза 7). Модель согласия (приглашение→accept) — Фаза 9;
-      // пока это прямое уведомление о назначении (в одной транзакции с записью chapter_reviewers).
+      // Фаза 9: создаём приглашения (а не chapter_reviewers); ревью стартует только после accept.
+      const invited = await createInvitations(tx, chapterId, rev.number, reviewers, primary, note, now);
+      // Уведомляем приглашённых: ссылка ведёт в кабинет ревьюера (войти в ревью можно лишь после accept).
       await createNotifications(
         tx,
-        reviewers
+        invited
           .map((h) => reviewerIdByHandle.get(h))
           .filter((id): id is string => !!id)
           .map((recipientId) => ({
             recipientId,
             type: REVIEW_NOTIFY.invited,
             payload: {
-              href: reviewerReviewHref(chapterId),
+              href: reviewerInboxHref(),
               chapterTitle: row.chapterTitle,
               blogSlug: row.blogSlug,
               chapterSlug: row.chapterSlug,

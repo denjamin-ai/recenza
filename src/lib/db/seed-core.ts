@@ -215,7 +215,7 @@ export async function seedAll(db: Db): Promise<void> {
       competencies: stringifyJson(["TypeScript", "React", "Архитектура", "Event Loop"]),
       reviewerRating: 4.6,
       reviewerRatingsN: 12,
-      reviewLoad: 1, // 1/3 → busy
+      reviewLoad: 2, // 2/3 → busy (chp_under_review + chp_changes; см. §6/§22)
       reviewCapacity: 3,
       createdAt: ago(100 * DAY),
     },
@@ -229,8 +229,8 @@ export async function seedAll(db: Db): Promise<void> {
       competencies: stringifyJson(["Базы данных", "SQL", "Производительность"]),
       reviewerRating: 4.9,
       reviewerRatingsN: 30,
-      reviewLoad: 3, // 3/3 → full
-      reviewCapacity: 3,
+      reviewLoad: 2, // 2/2 → full (chp_under_review + chp_changes; см. §6/§22)
+      reviewCapacity: 2,
       createdAt: ago(95 * DAY),
     },
     {
@@ -257,7 +257,7 @@ export async function seedAll(db: Db): Promise<void> {
       competencies: stringifyJson(["Безопасность", "Криптография"]),
       reviewerRating: 3.8,
       reviewerRatingsN: 3,
-      reviewLoad: 2, // 2/3 → busy
+      reviewLoad: 0, // 0/3 → free (только pending/flagged-приглашения, не в chapter_reviewers)
       reviewCapacity: 3,
       createdAt: ago(85 * DAY),
     },
@@ -423,6 +423,8 @@ export async function seedAll(db: Db): Promise<void> {
   ]);
 
   // ── 6. РЕВЬЮЕРЫ НА РЕВИЗИЮ (ведущий + вердикты) ──
+  // ⚠️ Инвариант Фазы 9: КАЖДАЯ строка здесь = принятое приглашение (accept пишет chapter_reviewers).
+  // Поэтому у каждого участника есть accepted-приглашение в §22; pending/declined/flagged тут НЕ присутствуют.
   await db.insert(chapterReviewers).values([
     // опубликованная глава, версия 1 — все approve
     { chapterId: "chp_published", revisionNumber: 1, handle: "reviewer", isPrimary: true, verdict: "approve", verdictAt: ago(66 * DAY) },
@@ -430,10 +432,9 @@ export async function seedAll(db: Db): Promise<void> {
     // опубликованная глава, версия 2 — все approve (публикабельно)
     { chapterId: "chp_published", revisionNumber: 2, handle: "reviewer", isPrimary: true, verdict: "approve", verdictAt: ago(16 * DAY) },
     { chapterId: "chp_published", revisionNumber: 2, handle: "max_review", verdict: "approve", verdictAt: ago(16 * DAY) },
-    // под ревью — смешанные вердикты, presence online
+    // под ревью — приняли reviewer (ведущий, online) + lena; sergey лишь приглашён (pending, §22) — НЕ здесь
     { chapterId: "chp_under_review", revisionNumber: 1, handle: "reviewer", isPrimary: true, online: true },
     { chapterId: "chp_under_review", revisionNumber: 1, handle: "lena_review", verdict: "request-changes", verdictAt: ago(2 * DAY) },
-    { chapterId: "chp_under_review", revisionNumber: 1, handle: "sergey_review" },
     // запрошены правки — ведущий request-changes
     { chapterId: "chp_changes", revisionNumber: 1, handle: "lena_review", isPrimary: true, verdict: "request-changes", verdictAt: ago(8 * DAY) },
     { chapterId: "chp_changes", revisionNumber: 1, handle: "reviewer", verdict: "approve", verdictAt: ago(9 * DAY) },
@@ -672,9 +673,21 @@ export async function seedAll(db: Db): Promise<void> {
   ]);
 
   // ── 22. ПРИГЛАШЕНИЯ РЕВЬЮЕРАМ (все 4 статуса) ──
+  // ⚠️ Инвариант: каждая accepted-строка соответствует строке chapter_reviewers (§6) той же ревизии,
+  // и наоборот. pending/declined/flagged НЕ создают chapter_reviewers (ревью стартует только после accept).
   await db.insert(reviewInvitations).values([
-    { id: "inv_pending", chapterId: "chp_under_review", revision: 1, toHandle: "sergey_review", asLead: false, note: "Нужен взгляд по безопасности.", status: "pending", invitedAt: ago(3 * DAY) },
+    // опубликованная глава — историч. accepted (для инварианта; в инбоксе не показываются)
+    { id: "inv_pub1_rev", chapterId: "chp_published", revision: 1, toHandle: "reviewer", asLead: true, status: "accepted", invitedAt: ago(71 * DAY), respondedAt: ago(70 * DAY) },
+    { id: "inv_pub1_lena", chapterId: "chp_published", revision: 1, toHandle: "lena_review", status: "accepted", invitedAt: ago(71 * DAY), respondedAt: ago(70 * DAY) },
+    { id: "inv_pub2_rev", chapterId: "chp_published", revision: 2, toHandle: "reviewer", asLead: true, status: "accepted", invitedAt: ago(21 * DAY), respondedAt: ago(20 * DAY) },
+    { id: "inv_pub2_max", chapterId: "chp_published", revision: 2, toHandle: "max_review", status: "accepted", invitedAt: ago(21 * DAY), respondedAt: ago(20 * DAY) },
+    // под ревью — reviewer (ведущий) + lena приняли; sergey ещё pending (виден в инбоксе ревьюера)
     { id: "inv_accepted", chapterId: "chp_under_review", revision: 1, toHandle: "reviewer", asLead: true, status: "accepted", invitedAt: ago(6 * DAY), respondedAt: ago(5 * DAY) },
+    { id: "inv_ur_lena", chapterId: "chp_under_review", revision: 1, toHandle: "lena_review", status: "accepted", invitedAt: ago(6 * DAY), respondedAt: ago(5 * DAY) },
+    { id: "inv_pending", chapterId: "chp_under_review", revision: 1, toHandle: "sergey_review", asLead: false, note: "Нужен взгляд по безопасности.", status: "pending", invitedAt: ago(3 * DAY) },
+    // запрошены правки — lena (ведущий) + reviewer приняли; max отклонил; sergey пожаловался (flagged)
+    { id: "inv_cr_lena", chapterId: "chp_changes", revision: 1, toHandle: "lena_review", asLead: true, status: "accepted", invitedAt: ago(12 * DAY), respondedAt: ago(11 * DAY) },
+    { id: "inv_cr_rev", chapterId: "chp_changes", revision: 1, toHandle: "reviewer", status: "accepted", invitedAt: ago(12 * DAY), respondedAt: ago(11 * DAY) },
     { id: "inv_declined", chapterId: "chp_changes", revision: 1, toHandle: "max_review", status: "declined", invitedAt: ago(12 * DAY), respondedAt: ago(11 * DAY) },
     { id: "inv_flagged", chapterId: "chp_changes", revision: 1, toHandle: "sergey_review", status: "flagged", flagReason: "Навыки не совпадают (match < 50%).", invitedAt: ago(12 * DAY), respondedAt: ago(11 * DAY) },
   ]);

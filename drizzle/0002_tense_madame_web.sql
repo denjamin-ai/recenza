@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `review_invitations_chapter_rev_handle_uq` ON `review_invitations` (`chapter_id`,`revision`,`to_handle`);
