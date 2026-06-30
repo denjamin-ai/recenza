@@ -8,6 +8,13 @@
       "when": 1782592924579,
       "tag": "0000_quiet_lady_deathstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1782804124598,
+      "tag": "0001_next_timeslip",
+      "breakpoints": true
     }
   ]
 }
