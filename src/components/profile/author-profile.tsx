@@ -1,40 +1,69 @@
-// Профиль автора: «Об авторе» (портфолио, read-only — редактор в Фазе 6) + «Блоги».
+// Профиль автора: табы «Об авторе» (портфолио, read-only) · «Блоги». Владелец видит портфолио
+// даже скрытым (с баннером) + вход в редактор; читатель — только видимое портфолио.
 
+import Link from "next/link";
 import { BlockRenderer } from "@/components/blocks/block-renderer";
 import { BlogCard } from "@/components/reader/blog-card";
+import { ProfileTabs } from "./profile-tabs";
 import type { Block } from "@/types";
 import type { BlogCardView } from "@/lib/queries/types";
 
 export function AuthorProfile({
   blogs,
   portfolio,
+  portfolioVisible,
+  isOwner,
 }: {
   blogs: BlogCardView[];
   portfolio: Block[] | null;
+  portfolioVisible: boolean;
+  isOwner: boolean;
 }) {
-  return (
-    <div className="space-y-12">
-      {portfolio && portfolio.length > 0 && (
-        <section aria-label="Об авторе">
-          <h2 className="text-[length:var(--type-h3)]">Об авторе</h2>
-          <div className="mt-4">
-            <BlockRenderer blocks={portfolio} prefix="portfolio" />
-          </div>
-        </section>
-      )}
+  const hasPortfolio = !!portfolio && portfolio.length > 0;
+  const hasAbout = isOwner || hasPortfolio;
 
-      <section aria-label="Блоги автора">
-        <h2 className="text-[length:var(--type-h3)]">Блоги</h2>
-        {blogs.length > 0 ? (
-          <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2">
-            {blogs.map((b) => (
-              <BlogCard key={b.id} blog={b} />
-            ))}
-          </div>
-        ) : (
-          <p className="mt-4 text-[var(--muted-foreground)]">Пока нет опубликованных блогов.</p>
-        )}
-      </section>
-    </div>
+  const about = (
+    <section aria-label="Об авторе">
+      {isOwner && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+            {hasPortfolio
+              ? portfolioVisible
+                ? "Опубликовано · видно всем"
+                : "Скрыто от читателей — видите только вы"
+              : "Раздел «Об авторе» ещё не создан"}
+          </p>
+          <Link
+            href="/author/portfolio"
+            className="min-h-9 rounded-[var(--radius-sm)] border border-[var(--accent)] px-3 py-1.5 text-[length:var(--type-small)] text-[var(--accent)] transition-colors hover:bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            {hasPortfolio ? "Редактировать" : "Создать «Об авторе»"}
+          </Link>
+        </div>
+      )}
+      {hasPortfolio ? (
+        <BlockRenderer blocks={portfolio!} prefix="portfolio" />
+      ) : (
+        <p className="text-[var(--muted-foreground)]">
+          {isOwner ? "Расскажите о себе — публикуется сразу, без ревью." : "Автор пока не заполнил раздел."}
+        </p>
+      )}
+    </section>
   );
+
+  const blogsPanel = (
+    <section aria-label="Блоги автора">
+      {blogs.length > 0 ? (
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+          {blogs.map((b) => (
+            <BlogCard key={b.id} blog={b} />
+          ))}
+        </div>
+      ) : (
+        <p className="text-[var(--muted-foreground)]">Пока нет опубликованных блогов.</p>
+      )}
+    </section>
+  );
+
+  return <ProfileTabs hasAbout={hasAbout} about={about} blogs={blogsPanel} />;
 }

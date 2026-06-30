@@ -5,6 +5,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getProfileBySlug } from "@/lib/queries/profile";
+import { getPortfolioForAuthor } from "@/lib/queries/author";
+import { getCurrentUser } from "@/lib/auth";
 import { AuthorProfile } from "@/components/profile/author-profile";
 import { ReviewerProfile } from "@/components/profile/reviewer-profile";
 import { absoluteUrl, truncate } from "@/lib/seo";
@@ -35,6 +37,10 @@ export default async function ProfilePage({ params }: { params: Params }) {
   if (!profile) notFound();
 
   const { user } = profile;
+  const viewer = await getCurrentUser();
+  const isOwner = profile.kind === "author" && viewer?.id === profile.user.id;
+  // Владелец видит своё портфолио даже скрытым (профиль-запрос отдаёт только видимое).
+  const ownerPortfolio = isOwner ? await getPortfolioForAuthor(profile.user.id) : null;
   const roleLabel = profile.kind === "author" ? "Автор" : "Ревьюер";
   const initial = (user.displayName || user.handle).charAt(0).toUpperCase();
 
@@ -76,7 +82,12 @@ export default async function ProfilePage({ params }: { params: Params }) {
 
       <div className="mt-10">
         {profile.kind === "author" ? (
-          <AuthorProfile blogs={profile.blogs} portfolio={profile.portfolio} />
+          <AuthorProfile
+            blogs={profile.blogs}
+            portfolio={isOwner ? (ownerPortfolio?.blocks ?? null) : profile.portfolio}
+            portfolioVisible={isOwner ? (ownerPortfolio?.isVisible ?? false) : true}
+            isOwner={isOwner}
+          />
         ) : (
           <ReviewerProfile user={profile.user} reviewed={profile.reviewed} />
         )}
