@@ -7,19 +7,28 @@
 > детальная модель — в `README.md` прототипа. План миграции — `PLAN.md`. Стенды/БД — `ENVIRONMENTS.md`.
 > Тесты — `TESTING.md`.
 
-## Текущее состояние репозитория (Фаза 0 — bootstrap)
+## Текущее состояние репозитория (фазы 0–5 `done`, дальше 6–12 `todo`)
 
-⚠️ **Прочти первым.** Приложения ещё нет. Сейчас в репозитории только: `docs/`, `.claude/`,
-`README.md`, `.env.example`, `.mcp.json` и **шаблонный** `package.json` (блок `scripts` для слияния).
-**Нет** `src/`, `node_modules/`, каркаса Next.js (`next.config`, `tsconfig.json`), lock-файла,
-`drizzle.config.ts`, `playwright.config.ts`, `*.db`.
+⚠️ **Прочти первым.** Каркас существует и работает: Next 16 + `src/`, `node_modules/`, `tsconfig.json`,
+`next.config.ts`, `drizzle.config.ts`, миграция `drizzle/0000_*.sql` (**28 таблиц**), `blog.db`/`blog.test.db`,
+два стенда, auth/роли, читательский слой. npm-скрипты работают.
 
-Поэтому всё ниже — команды, пути `src/lib/...`, схема БД, роуты — описывает **целевое** состояние;
-оно становится реальным по мере прохождения фаз. До завершения bootstrap npm-скрипты не работают
-(нужны `create-next-app` + `npm i`, см. `README.md`).
+**Источник правды по прогрессу — `docs/migration/PLAN.md`** («Карта фаз» + живой Журнал каждой фазы;
+там же — решения и backlog по каждой фазе). На сегодня закрыто:
+- **0** bootstrap (каркас/env/git) · **1** токены+тема · **2** схема БД (Drizzle/turso) ·
+  **3** два стенда+seed · **4** auth/роли/гейтинг+UI-оболочки · **5** читательский слой
+  (лента/ридер/engagement/уведомления/SEO).
 
-**Точка входа в работу:** `README.md` (ручной bootstrap) → вставить `docs/migration/PROMPT.md`
-первым сообщением → идти по `docs/migration/PLAN.md` (12 фаз, живой журнал прогресса).
+Ещё **не реализовано** — разделы «Архитектура» ниже описывают это как **целевое** состояние (спека для
+будущих фаз, не готовый код):
+- **6** авторский кабинет + редактор (Variant B) + портфолио · **7** review-flow (ReviewPage) ·
+  **8** комментирование · **9** подбор ревьюеров/согласие/оценка · **10** админка/модерация/монетизация ·
+  **11** слой качества (`playwright.config.ts` + каталог `testing/` ещё **не созданы**) · **12** hardening + прод-деплой.
+
+**Точка входа в фазу:** прочитай `PLAN.md` (статусы всех фаз; если есть `blocked` — сначала чини её) →
+ритуал «Промт запуска фазы» в `docs/migration/PROMPT.md` → веди ветку/PR по git-flow ниже.
+Перед тем как опереться на путь/таблицу/роут/`Submit`-компонент из «Архитектуры», **убедись, что фаза,
+вводящая его, уже `done`** — часть описанного пока только спецификация.
 
 ## Команды
 - `npm run dev` — dev (:3000, `.env.local` → `blog.db`)
@@ -29,7 +38,8 @@
 - `npm run db:generate` / `db:migrate` / `db:migrate:test` — миграции (какая БД — решает env-файл через dotenv-cli)
 - `npm run seed` / `npm run seed:test` — seed dev / детерминированный seed теста
 - `npm run test:reset` — полный сброс тест-БД (`db:migrate:test` + `seed:test`); создаёт БД с нуля
-- `npm run test:e2e` / `:ui` / `:report` — Playwright
+- `npm run test:e2e` / `:ui` / `:report` — Playwright; `test:smoke` / `test:critical` — `--grep @smoke|@critical`
+  (⚠️ `playwright.config.ts` появится в Фазе 11 — до неё `test:e2e*` падают)
 
 ⚠️ `next dev` НЕ читает `.env.test` автоматически — все команды тест-стенда только через `dotenv -e .env.test --`.
 Выбор БД: `TURSO_CONNECTION_URL` → иначе `file:${DB_FILE_NAME}` (`blog.db` dev / `blog.test.db` test) —
@@ -54,16 +64,22 @@
 ## Архитектура
 
 ### БД (`src/lib/db/`)
-- `index.ts` — libsql-клиент (env Turso → fallback file). `schema.ts` — вся схема. `drizzle.config.ts` (`turso`).
-- Таблицы (полная схема — `ENVIRONMENTS.md` §4): `users`, `blogs`, `chapters`, `chapter_revisions`,
-  `chapter_reviewers`, `reviewer_history`, `threads`, `thread_replies`, `review_chat`,
+- `index.ts` — libsql-клиент (env Turso → fallback file; `PRAGMA foreign_keys = ON` на старте). `schema.ts` —
+  вся схема (`sqliteTable`, snake_case). `drizzle.config.ts` (`turso`). Сиды: `seed-core.ts` (детерминированный
+  построитель) + тонкие раннеры `seed.ts`/`seed-test.ts`.
+- **JSON-поля — `text`, не `{mode:"json"}`** (json-mode роняет весь SELECT на битой строке). Разбор —
+  **только** через `parseJson()` из `db/json.ts` (try/catch → безопасный дефолт); запись — `stringifyJson()`.
+  Прямой `JSON.parse` вне `json.ts` запрещён.
+- **28 таблиц** (полная схема — `ENVIRONMENTS.md` §4): `users`, `app_settings`, `blogs`, `chapters`,
+  `chapter_revisions`, `chapter_reviewers`, `reviewer_history`, `threads`, `thread_replies`, `review_chat`,
   `review_checklists`, `public_comments`, `comment_votes`, `chapter_votes`, `bookmarks`, `follows`,
   `notifications`, `portfolios`, `reports`, `primary_change_requests`, `removed_reviewers`,
   `review_invitations`, `reviewer_ratings`, `recruit_requests`, `board_calls`,
-  `reviewer_applications`, `promo_banners`, `donation_methods`. Поля у `users`:
-  `competencies` (JSONB), `reviewer_rating`/`reviewer_ratings_n`, `review_load`/`review_capacity`;
-  у `chapters` — `skills` (JSONB, ключевые навыки статьи). Полное описание новых таблиц —
-  `docs/prototype/README.md` §11.9.
+  `reviewer_applications`, `promo_banners`, `donation_methods` (`app_settings` — KV-singleton, напр.
+  `donations_enabled`). Поля у `users`: `competencies` (JSON), `reviewer_rating`/`reviewer_ratings_n`,
+  `review_load`/`review_capacity`; у `chapters` — `skills` (JSON, ключевые навыки статьи). Полное описание
+  новых таблиц — `docs/prototype/README.md` §11.9. Ревью-таблицы ссылаются FK на **`users.handle`**
+  (UNIQUE, иммутабелен) — пользователя с ревью-историей нельзя hard-delete (только soft/бан).
 - Перечисления: `role`, `revision.status` (`draft|under-review|changes-requested|published`),
   `verdict` (`approve|request-changes`), `thread.status` (`open|resolved`), `complexity`, `block.type`,
   `invitation.status` (`pending|accepted|declined|flagged`),
@@ -73,11 +89,21 @@
 
 ### Auth (`src/lib/auth.ts`)
 - `SessionData { isAdmin, userId?, userRole? }` — инвариант: `isAdmin` и `userId` не одновременно.
-- `getSession`, `requireUser(role?)`, `requireAuthor`, `requireReviewer`, `requireAdmin`.
+- **Две семьи гардов — не путать:**
+  - **Handler-гарды** (для `app/api/**`): `requireAdmin` / `requireUser(role?)` / `requireAuthor` / `requireReviewer`
+    возвращают `SessionData | NextResponse` — в хендлере результат **нужно вернуть**:
+    `const s = await requireAuthor(); if (s instanceof NextResponse) return s;`.
+  - **Page-гарды** (для `(protected)/layout.tsx`): `requireAdminPage` / `requireAuthorPage` / `requireReviewerPage`
+    **редиректят** (`next/navigation`), не возвращают `NextResponse`.
+- `getSession` (чтение — безопасно в RSC и API; **запись** `save()/destroy()` — только в route handler).
+  `getCurrentUser()` → `PublicUser | null` (self-heal: гасит сессию заблокированного/удалённого).
+  `toPublicUser()` срезает `passwordHash` — наружу отдавать `PublicUser`, не `User`. Роль для гейтинга
+  берётся **из БД** на каждый запрос (не из cookie).
 - Route-группы: `app/admin/(protected)/`, `app/author/(protected)/`, `app/reviewer/(protected)/`,
-  `app/(reader)/`, публичный сегмент — layout каждой вызывает свой `require*`.
+  `app/(reader)/`, публичный сегмент — layout каждой вызывает свой `require*Page`.
 - Эндпоинты: `POST/DELETE /api/auth` (admin), `POST/DELETE /api/auth/user` (пользователи),
-  `GET /api/auth/user`. Rate-limit логина (5/15мин). CSRF — same-origin на мутациях.
+  `GET /api/auth/user`. Rate-limit логина (`src/lib/rate-limit.ts`, 5/15мин). CSRF — same-origin
+  (`src/lib/csrf.ts`) на мутациях.
 
 ### Ролевой гейтинг (binding — нарушать нельзя)
 - **Читатель** комментирует везде, голосует, закладывает, подписывается.
