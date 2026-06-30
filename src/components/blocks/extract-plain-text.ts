@@ -3,6 +3,7 @@
 // заголовков, списков, цитат, ячеек таблиц, callout. Результат нормализуется/обрезается в seo.truncate.
 
 import type { Block } from "@/types";
+import { stripInlineMarks } from "./inline";
 
 const SKIP: ReadonlySet<string> = new Set(["code", "embed", "mermaid", "image"]);
 
@@ -13,19 +14,19 @@ export function extractPlainText(blocks: Block[]): string {
     if (SKIP.has(block.type)) continue;
 
     if (typeof block.text === "string" && block.text.trim()) {
-      parts.push(block.text);
+      parts.push(stripInlineMarks(block.text));
     }
 
     if (block.type === "list" && Array.isArray(block.items)) {
       for (const item of block.items) {
-        if (typeof item === "string") parts.push(item);
+        if (typeof item === "string") parts.push(stripInlineMarks(item));
       }
     }
 
     if (block.type === "table" && Array.isArray(block.rows)) {
       for (const row of block.rows as unknown[]) {
         if (Array.isArray(row)) {
-          for (const cell of row) if (typeof cell === "string") parts.push(cell);
+          for (const cell of row) if (typeof cell === "string") parts.push(stripInlineMarks(cell));
         }
       }
     }

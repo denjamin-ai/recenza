@@ -8,6 +8,7 @@
 
 import type { Block } from "@/types";
 import { blockAnchorId } from "./anchors";
+import { renderInline } from "./inline";
 import { CodeBlock } from "./code-block";
 import { MermaidBlock } from "./mermaid-block";
 import { ImageBlock } from "./image-block";
@@ -41,21 +42,21 @@ function renderBlock(block: Block, prefix?: string) {
     case "h2":
       return (
         <h2 id={blockAnchorId(block.id, prefix)} className="mt-10 scroll-mt-24 text-[length:var(--type-h2)]">
-          {block.text}
+          {renderInline(block.text ?? "")}
         </h2>
       );
     case "h3":
       return (
         <h3 id={blockAnchorId(block.id, prefix)} className="mt-8 scroll-mt-24 text-[length:var(--type-h3)]">
-          {block.text}
+          {renderInline(block.text ?? "")}
         </h3>
       );
     case "p":
-      return <p className="my-4 leading-[var(--leading-body)]">{block.text}</p>;
+      return <p className="my-4 leading-[var(--leading-body)]">{renderInline(block.text ?? "")}</p>;
     case "quote":
       return (
         <blockquote className="my-6 border-l-2 border-[var(--accent)] pl-4 italic text-[var(--muted-foreground)]">
-          {block.text}
+          {renderInline(block.text ?? "")}
         </blockquote>
       );
     case "list": {
@@ -67,7 +68,7 @@ function renderBlock(block: Block, prefix?: string) {
             {items.map((item, i) => (
               <li key={i} className="flex items-start gap-2">
                 <input type="checkbox" disabled aria-hidden="true" className="mt-1.5 accent-[var(--accent)]" />
-                <span>{item}</span>
+                <span>{renderInline(item)}</span>
               </li>
             ))}
           </ul>
@@ -77,13 +78,13 @@ function renderBlock(block: Block, prefix?: string) {
       return variant === "numbered" ? (
         <ol className={`${cls} list-decimal`}>
           {items.map((item, i) => (
-            <li key={i}>{item}</li>
+            <li key={i}>{renderInline(item)}</li>
           ))}
         </ol>
       ) : (
         <ul className={`${cls} list-disc`}>
           {items.map((item, i) => (
-            <li key={i}>{item}</li>
+            <li key={i}>{renderInline(item)}</li>
           ))}
         </ul>
       );
@@ -96,7 +97,7 @@ function renderBlock(block: Block, prefix?: string) {
       return (
         <aside className={`my-6 rounded-[var(--radius-lg)] border px-4 py-3 ${style.box}`}>
           <p className={`mb-1 text-[length:var(--type-small)] font-medium ${style.label}`}>{style.title}</p>
-          <p className="leading-[var(--leading-body)] text-[var(--foreground)]">{block.text}</p>
+          <p className="leading-[var(--leading-body)] text-[var(--foreground)]">{renderInline(block.text ?? "")}</p>
         </aside>
       );
     }
@@ -121,7 +122,7 @@ function renderBlock(block: Block, prefix?: string) {
               <tr className="bg-[var(--bg-secondary)]">
                 {head.map((cell, i) => (
                   <th key={i} className="border-b border-[var(--border)] px-3 py-2 text-left font-medium">
-                    {cell}
+                    {renderInline(cell)}
                   </th>
                 ))}
               </tr>
@@ -131,7 +132,7 @@ function renderBlock(block: Block, prefix?: string) {
                 <tr key={ri} className="border-b border-[var(--border-secondary)] last:border-0">
                   {row.map((cell, ci) => (
                     <td key={ci} className="px-3 py-2 align-top">
-                      {cell}
+                      {renderInline(cell)}
                     </td>
                   ))}
                 </tr>
