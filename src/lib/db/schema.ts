@@ -68,6 +68,11 @@ export const users = sqliteTable("users", {
   reviewLoad: integer("review_load").notNull().default(0),
   reviewCapacity: integer("review_capacity").notNull().default(3),
   createdAt: integer("created_at").notNull(),
+  // Закреплённый блог в кабинете автора (один на автора; Фаза 6). Forward-ref на blogs (ниже) —
+  // ленивый thunk + AnySQLiteColumn для разрыва цикла объявлений. SET NULL: блог удалён → пин гасится.
+  pinnedBlogId: text("pinned_blog_id").references((): AnySQLiteColumn => blogs.id, {
+    onDelete: "set null",
+  }),
 });
 
 // Singleton-флаги вида donations_enabled (§11.9 «settings/kv»).

@@ -3,6 +3,7 @@
 
 import type { Block } from "@/types";
 import { blockAnchorId } from "./anchors";
+import { stripInlineMarks } from "./inline";
 
 export interface Heading {
   id: string;
@@ -16,7 +17,7 @@ export function extractHeadings(blocks: Block[], prefix?: string): Heading[] {
     if ((block.type === "h2" || block.type === "h3") && typeof block.text === "string") {
       out.push({
         id: blockAnchorId(block.id, prefix),
-        text: block.text,
+        text: stripInlineMarks(block.text),
         level: block.type === "h2" ? 2 : 3,
       });
     }

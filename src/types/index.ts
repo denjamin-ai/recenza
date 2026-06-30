@@ -30,21 +30,11 @@ export type ApplicationStatus = (typeof schema.APPLICATION_STATUSES)[number];
 export type BannerAction = (typeof schema.BANNER_ACTIONS)[number];
 export type DonationType = (typeof schema.DONATION_TYPES)[number];
 
-// block.type — перечисление без отдельной колонки (блоки хранятся как JSON), живёт здесь.
-export const BLOCK_TYPES = [
-  "p",
-  "h2",
-  "h3",
-  "quote",
-  "list",
-  "code",
-  "callout",
-  "mermaid",
-  "image",
-  "table",
-  "embed",
-] as const;
-export type BlockType = (typeof BLOCK_TYPES)[number];
+// block.type — перечисление без отдельной колонки (блоки хранятся как JSON). Канонический источник —
+// src/lib/blocks/constants.ts (клиент-безопасный, без drizzle); здесь ре-экспорт для обратной совместимости.
+export { BLOCK_TYPES } from "@/lib/blocks/constants";
+export type { BlockType } from "@/lib/blocks/constants";
+import type { BlockType } from "@/lib/blocks/constants";
 
 // --- формы JSON-полей (хранятся как text, читаются через parseJson) ---
 export interface Block {

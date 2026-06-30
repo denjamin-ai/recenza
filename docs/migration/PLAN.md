@@ -54,7 +54,7 @@
 | 3 | Два стенда + seed + флоу БД | Инфраструктура | `done` |
 | 4 | Auth, роли, гейтинг + UI-обвязка ролей | Платформа | `done` |
 | 5 | Читательский слой (публичный) | Продукт | `done` |
-| 6 | Авторский слой: кабинет, редактор, портфолио | Продукт | `todo` |
+| 6 | Авторский слой: кабинет, редактор, портфолио | Продукт | `done` |
 | 7 | Редакционный review-flow (ReviewPage) | Продукт | `todo` |
 | 8 | Комментирование (читатель↔автор↔читатель) | Продукт | `todo` |
 | 9 | Подбор ревьюеров, согласие, оценка | Продукт | `todo` |
@@ -802,7 +802,7 @@
 
 ## Фаза 6 — Авторский слой: кабинет, редактор, портфолио
 
-**Статус:** `todo`
+**Статус:** `done`
 **Контекст входа.** Требует фазы 1–5 (`done`). Читать: `README.md` §5 (редактор), §6 (портфолио), §11.1 (навыки-гейт).
 **Разблокирует.** Фазу 7 (на ревью отправляет редактор) и фазу 9 (навыки/пикер).
 **Старт сессии.** Проверь статусы; фазы 1–5 — `done`. Три подфазы в одной сессии: кабинет → редактор → портфолио.
@@ -839,10 +839,72 @@
 - [ ] Портфолио публикуется **минуя** review-flow; профиль ролеспецифичен (автор — табы; ревьюер — «что отрецензировал»; читатель — без портфолио).
 
 **Журнал фазы.**
-- Статус-история:
+- Статус-история: `todo` → `in progress` (2026-06-30) → `done` (2026-06-30). Ветка `phase-6-author`,
+  9 подфаз S0–S9 (атомарные коммиты). Цикл качества полностью зелёный.
+- Артефакты: миграция `0001_*` (`users.pinned_blog_id`); `src/lib/queries/author.ts`; `src/lib/slug.ts`;
+  `src/lib/blocks/{constants,normalize,validate}.ts`; `src/components/blocks/inline.tsx`; роуты
+  `src/app/api/author/**` (blogs, blogs/[id], blogs/[id]/chapters, chapters/reorder, chapters/[id],
+  chapters/[id]/submit, pin, portfolio); страницы `src/app/author/(protected)/**` (кабинет, blog/[slug],
+  …/[chapter]/edit, …/preview, new, portfolio); клиент `src/app/author/_components/**`
+  (author-cabinet, blog-detail-view, editor/*); профиль-табы `src/components/profile/{profile-tabs,author-profile}`.
 - Решения/отклонения:
-- Backlog:
+  - **create-then-edit.** Создание блога/главы делает скелет (блог + глава + ПУСТАЯ draft-ревизия);
+    редактор всегда только `PATCH`-ит реальную главу (никогда не создаёт ревизию). `POST /api/author/blogs`
+    принимает лишь `{title}` (контент пишется потом) — отклонение от плана, где POST нёс `blocks`.
+  - **Инлайн-rich-text = безопасный markdown в `block.text`** + расширён `BlockRenderer` (`inline.tsx`):
+    `**b**/*i*/`code`/[l](url)`. Курсив только `*..*` (без `_`, чтобы `snake_case` не курсивился); ссылки —
+    только `^https?://` или `/` (иначе литерал). Fast-path: текст без марок возвращается байт-в-байт →
+    seed не меняется (проверено: 28/28 инлайн-фрагментов идентичны). `extractPlainText`/`headings` снимают
+    марки (`stripInlineMarks`) для SEO/ToC.
+  - **Константы блоков вынесены в клиент-безопасный `src/lib/blocks/constants.ts`** (без drizzle), `@/types`
+    ре-экспортит — чтобы редактор-клиент не тащил схему БД в бандл.
+  - **Новый транслитерирующий `src/lib/slug.ts`** (НЕ кириллический `slugify` из `blocks/anchors.ts`).
+  - **`normalizeBlock` лечит дрейф имён** прототипа → рендерера (`subtype→variant`, `tone→variant`,
+    `caption→alt`). Валидатор + чек-лист готовности (`validate.ts`) изоморфны (клиент-гейт ⇄ сервер-гейт).
+  - **Редактор без `execCommand`/contenteditable** — управляемые textarea с raw-markdown; markdown-шорткаты,
+    слэш-меню, инлайн-тулбар (строковые обёртки), drag + клавиатурные ↑/↓. **LaTeX опущен** (нет block-типа
+    и поддержки в рендерере) — задел на Фазу 12.
+  - **Submit (R1, forward-incompat):** ревьюеры пишутся НАПРЯМУЮ в `chapter_reviewers` — заглушка, изолирована
+    в `assignReviewers()`; модель согласия (`review_invitations`) — Фаза 9. `review_invitations` НЕ пишем
+    (без двойного моделирования). Шейп ровно как ждёт Фаза 7: `verdict=null`, `isPrimary` выставлен,
+    `online/typing=false`.
+  - **Портфолио:** один `PUT /api/author/portfolio` (upsert блоков + видимость) обслуживает и редактор, и
+    тоггл на профиле — консолидация запланированного отдельного visibility-эндпоинта.
+  - **Профиль:** клиентская оболочка табов + RSC-панели (`BlockRenderer` серверный). Владелец видит своё
+    портфолио даже скрытым (баннер) + вход в редактор; не-владелец — только видимое.
+  - **Картинки — только путь `/uploads/`** (без эндпоинта загрузки) — реальная загрузка в Фазе 12.
+  - **Миграция `0001`:** drizzle-kit опускает `onDelete` для `ADD COLUMN` FK в SQLite — `ON DELETE SET NULL`
+    дописан вручную (snapshot уже фиксирует `set null`, дрейфа нет). Применена на blog.db, blog.test.db, Turso.
+  - ⚠️ **Расхождение окружения:** `.env.local` указывает dev (:3000) на **Turso**, а не `blog.db` (CLAUDE.md
+    говорит blog.db). `db:migrate` (dev) применил `0001` к Turso (аддитивно, безопасно). Всё тестирование —
+    на тест-стенде (:3001, `blog.test.db`). `npm run seed` НЕ запускался (он целит в Turso). Уточнить у владельца.
+- Доработки сверх плана: переиспользуемый `BlockListEditor` (главы+портфолио); чип-фильтр «Нужны правки»;
+  `try/catch` вокруг транзакций PATCH/submit; токен `--overlay`; aria `tabpanel↔tab`; хит-таргеты ≥36px;
+  регресс-проверка инлайн-seam на seed.
+- Цикл качества (зелёный): `build`/`lint` чисто; **code-reviewer** GO (0 P0/P1); **security-reviewer** PASS
+  (0 critical/0 high; 1 medium — небезопасный `href` в профиле — **исправлен**; 3 low → backlog);
+  **design-watcher** GO (0 P0; P1 overlay/aria/autofocus + дешёвые P2 хит-таргеты исправлены);
+  **seo-optimizer** GO (профиль-метаданные ок, author-страницы noindex, марки стрипаются);
+  **playwright-tester** GO (7/7: create→editor(## шорткат)→preview→submit 7/7→under-review→pin→portfolio→
+  негативы 404). 0 P0.
+- Backlog (P2/P3):
+  - **(P2)** Полный focus-trap в модалках (autofocus есть; циклический Tab-containment — нет).
+  - **(P2)** `window.prompt/alert` для URL ссылки → инлайн-форма в тулбаре.
+  - **(P3)** Клавиатурный drag (ручка — нефокусируемый `span`; клавиатурный reorder есть через ↑/↓).
+  - **(P2)** `ring-offset-2` на outline/ghost-кнопках (консистентность, унаследовано).
+  - **(P2)** reorder TOCTOU: параллельное создание главы может рассинхронить `order` (низкий риск — один автор).
+  - **(P3)** `uniqueSlug` сдаётся на 50 → полагается на `409`-catch.
+  - **(P2, Фаза 12)** Реальная загрузка изображений (`/api/uploads`).
+  - **(P2, унаследовано Фаза 5)** `jsonld.tsx` — React-warning про `<script>` (косметика, не регресс) — Фаза 12.
+  - **(унаследовано, Фаза 12)** in-memory rate-limit (serverless); `npm audit` moderate в dev-зависимостях.
 - Риски для следующих фаз:
+  - **(Фаза 7)** Потребляет главы с последней ревизией `under-review` + `chapter_reviewers` (verdict=null,
+    isPrimary, online/typing=false) — ровно это оставляет submit. Публикация + снапшот `prev_blocks` +
+    `reviewer_history` — задача Фазы 7. Главу `under-review`/`published` редактор править не даёт (409).
+  - **(Фаза 9)** R1: заменить прямой `assignReviewers()` на согласие (invitation→accept), не трогая редактор.
+    Пикер ревьюеров в SubmitSheet — базовая форма (без match%/скоринга/занятости-фильтра) — Фаза 9 добавит матчинг.
+  - **(Фаза 8)** Блоки имеют стабильные `id` (якоря) — комментарии к блокам привяжутся к ним.
+  - **(всё)** dev=Turso (см. расхождение выше) — осторожно с `seed`/деструктивными командами на :3000.
 
 **Что дальше.** Фаза 7 — review-flow.
 

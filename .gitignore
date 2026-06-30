@@ -29,6 +29,7 @@ test-results/
 
 # Claude Code (локальные артефакты сессий/агентов)
 .claude/agent-memory/
+.claude/scheduled_tasks.lock
 
 # системное
 .DS_Store
