@@ -118,7 +118,7 @@ html[data-theme="dark"] {
   --accent: #4a9d92;
   --accent-hover: #5eb8ac;
   --accent-foreground: #0a0a0a;
-  --accent-bg: rgb(19 78 74 / 0.35);
+  --accent-bg: rgb(19 78 74 / 0.55); /* контраст с --accent для text-[0.7rem] чипов (WCAG AA) */
 
   --success: #4ade80;
   --success-bg: rgb(20 83 45 / 0.3);
@@ -155,6 +155,7 @@ html[data-theme="dark"] {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-accent: var(--accent);
+  --color-accent-bg: var(--accent-bg);
   --color-border: var(--border);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);

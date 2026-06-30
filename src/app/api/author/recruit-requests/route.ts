@@ -43,7 +43,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       return NextResponse.json({ error: "Некорректные навыки." }, { status: 400 });
     }
     chapterId = body.chapterId;
-    skills = [...new Set((body.skills as string[]).map((s) => s.trim()).filter(Boolean))].slice(0, MAX_SKILLS);
+    skills = [...new Set((body.skills as string[]).map((s) => s.trim().slice(0, 100)).filter(Boolean))].slice(0, MAX_SKILLS);
   } catch {
     return NextResponse.json({ error: "Некорректное тело запроса." }, { status: 400 });
   }

@@ -56,7 +56,7 @@ export function InvitationCard({ invitation }: { invitation: ReviewerInvitationI
           ? "text-[var(--warning)]"
           : "text-[var(--muted-foreground)]";
     return (
-      <li className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background)] p-3">
+      <li className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background)] p-3" role="status" aria-live="polite">
         <p className={`text-[length:var(--type-small)] ${tone}`}>{label}</p>
       </li>
     );

@@ -121,7 +121,7 @@ export async function POST(
     if (!["simple", "medium", "complex"].includes(body.complexity as string)) {
       return NextResponse.json({ error: "Некорректная сложность." }, { status: 400 });
     }
-    skills = [...new Set((body.skills as string[]).map((s) => s.trim()).filter(Boolean))].slice(0, MAX_SKILLS);
+    skills = [...new Set((body.skills as string[]).map((s) => s.trim().slice(0, 100)).filter(Boolean))].slice(0, MAX_SKILLS);
     reviewers = [...new Set((body.reviewers as string[]).map((r) => r.trim()).filter(Boolean))];
     primary = body.primary.trim();
     complexity = body.complexity as Complexity;

@@ -218,7 +218,9 @@ export function SubmitSheet({
                     key={key}
                     type="button"
                     role="tab"
+                    id={`reviewer-tab-${key}`}
                     aria-selected={tab === key}
+                    aria-controls="reviewer-tabpanel"
                     onClick={() => setTab(key)}
                     className={`rounded-[var(--radius-pill)] px-2.5 py-1 text-[length:var(--type-small)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
                       tab === key ? "bg-[var(--accent)] text-[var(--accent-foreground)]" : "border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
@@ -239,6 +241,7 @@ export function SubmitSheet({
               className="mb-2 w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1.5 text-[length:var(--type-small)] text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             />
 
+            <div id="reviewer-tabpanel" role="tabpanel" aria-labelledby={`reviewer-tab-${tab}`}>
             {noMatches ? (
               <div className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-secondary)] p-3 text-[length:var(--type-small)]">
                 <p className="text-[var(--muted-foreground)]">
@@ -250,7 +253,7 @@ export function SubmitSheet({
                   <button
                     type="button"
                     onClick={() => setTab("all")}
-                    className="rounded-[var(--radius-sm)] border border-[var(--border)] px-3 py-1.5 transition-colors hover:border-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                    className="min-h-9 rounded-[var(--radius-sm)] border border-[var(--border)] px-3 py-1.5 transition-colors hover:border-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                   >
                     Показать всех
                   </button>
@@ -259,7 +262,7 @@ export function SubmitSheet({
                       type="button"
                       onClick={requestRecruit}
                       disabled={recruit === "sending"}
-                      className="rounded-[var(--radius-sm)] bg-[var(--accent)] px-3 py-1.5 font-medium text-[var(--accent-foreground)] transition-opacity hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+                      className="min-h-9 rounded-[var(--radius-sm)] bg-[var(--accent)] px-3 py-1.5 font-medium text-[var(--accent-foreground)] transition-opacity hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
                     >
                       {recruit === "sending" ? "Отправляем…" : "Запросить ревьюеров у админа"}
                     </button>
@@ -343,6 +346,7 @@ export function SubmitSheet({
                 })}
               </ul>
             )}
+            </div>
           </section>
 
           {/* Заметка */}

@@ -33,7 +33,7 @@ function Stars({
           onClick={() => onPick(n)}
           aria-label={`${n} — ${STAR_LABELS[n]}`}
           aria-pressed={value === n}
-          className={`text-lg leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-50 ${
+          className={`inline-flex h-9 w-9 items-center justify-center text-lg leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 disabled:opacity-50 ${
             n <= shown ? "text-[var(--pin)]" : "text-[var(--border)]"
           }`}
         >

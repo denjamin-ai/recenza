@@ -22,6 +22,20 @@ import { skillMatch } from "@/lib/reviewer-match";
 const ACTIONS = new Set(["accept", "decline", "flag"]);
 const ACTIVE = new Set(["under-review", "changes-requested"]);
 
+/** Гонка: приглашение перестало быть pending между внетранзакционной проверкой и записью → 409. */
+class InviteConflict extends Error {}
+
+/** Перечитывает статус ВНУТРИ транзакции; бросает InviteConflict, если он уже не pending (TOCTOU-защита). */
+async function assertStillPending(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  invitationId: string,
+): Promise<void> {
+  const cur = (
+    await tx.select({ status: reviewInvitations.status }).from(reviewInvitations).where(eq(reviewInvitations.id, invitationId)).limit(1)
+  )[0];
+  if (!cur || cur.status !== "pending") throw new InviteConflict();
+}
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ invitationId: string }> },
@@ -120,6 +134,7 @@ export async function POST(
   if (action === "decline") {
     try {
       await db.transaction(async (tx) => {
+        await assertStillPending(tx, inv.id); // защита от гонки двойного ответа
         await tx
           .update(reviewInvitations)
           .set({ status: "declined", respondedAt: now })
@@ -128,7 +143,8 @@ export async function POST(
           { recipientId: ctx.authorId, type: REVIEW_NOTIFY.inviteDeclined, payload: authorPayload },
         ]);
       });
-    } catch {
+    } catch (e) {
+      if (e instanceof InviteConflict) return NextResponse.json({ error: "На приглашение уже дан ответ." }, { status: 409 });
       return NextResponse.json({ error: "Не удалось отклонить приглашение." }, { status: 500 });
     }
     return NextResponse.json({ ok: true, status: "declined" });
@@ -153,6 +169,7 @@ export async function POST(
     const reason = flagReason ?? "навыки не совпадают";
     try {
       await db.transaction(async (tx) => {
+        await assertStillPending(tx, inv.id); // защита от гонки двойного ответа
         await tx
           .update(reviewInvitations)
           .set({ status: "flagged", flagReason: reason, respondedAt: now })
@@ -184,7 +201,8 @@ export async function POST(
           },
         ]);
       });
-    } catch {
+    } catch (e) {
+      if (e instanceof InviteConflict) return NextResponse.json({ error: "На приглашение уже дан ответ." }, { status: 409 });
       return NextResponse.json({ error: "Не удалось отправить жалобу." }, { status: 500 });
     }
     return NextResponse.json({ ok: true, status: "flagged" });
@@ -205,6 +223,9 @@ export async function POST(
 
   try {
     await db.transaction(async (tx) => {
+      // TOCTOU-защита: перечитываем статус в транзакции — иначе два параллельных accept дважды
+      // инкрементят reviewLoad (status-проверка выше — вне транзакции).
+      await assertStillPending(tx, inv.id);
       await tx
         .update(reviewInvitations)
         .set({ status: "accepted", respondedAt: now })
@@ -227,7 +248,8 @@ export async function POST(
         { recipientId: ctx.authorId, type: REVIEW_NOTIFY.inviteAccepted, payload: authorPayload },
       ]);
     });
-  } catch {
+  } catch (e) {
+    if (e instanceof InviteConflict) return NextResponse.json({ error: "На приглашение уже дан ответ." }, { status: 409 });
     return NextResponse.json({ error: "Не удалось принять приглашение." }, { status: 500 });
   }
   return NextResponse.json({ ok: true, status: "accepted" });
