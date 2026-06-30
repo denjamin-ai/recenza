@@ -50,6 +50,21 @@ function labelOf(item: Item): string {
       return chapterTitle ? `Новое сообщение в ревью: ${chapterTitle}` : "Новое сообщение в ревью";
     case "primary_change_request":
       return chapterTitle ? `Запрос смены ведущего: ${chapterTitle}` : "Запрос смены ведущего ревьюера";
+    // ── админ-действия (Фаза 10) ──
+    case "force_approved":
+      return chapterTitle ? `Администратор опубликовал главу: ${chapterTitle}` : "Администратор опубликовал главу";
+    case "reviewer_removed":
+      return chapterTitle ? `Вы сняты с ревью: ${chapterTitle}` : "Администратор снял вас с ревью";
+    case "primary_changed":
+      return chapterTitle ? `Сменён ведущий ревьюер: ${chapterTitle}` : "Сменён ведущий ревьюер";
+    case "recruit_approved":
+      return "Запрос на подбор ревьюеров одобрен — направление на доске";
+    case "recruit_rejected":
+      return "Запрос на подбор ревьюеров отклонён";
+    case "application_accepted":
+      return "Вас приняли в ревьюеры!";
+    case "application_declined":
+      return "Заявка ревьюера отклонена";
     default:
       return "Уведомление";
   }

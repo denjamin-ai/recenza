@@ -69,7 +69,13 @@ export const getReadableChapters = cache(async (): Promise<BaseRow[]> => {
     .innerJoin(chapters, eq(chapterRevisions.chapterId, chapters.id))
     .innerJoin(blogs, eq(chapters.blogId, blogs.id))
     .innerJoin(users, eq(blogs.authorId, users.id))
-    .where(and(eq(chapterRevisions.status, "published"), eq(users.isBlocked, false)))) as BaseRow[];
+    .where(
+      and(
+        eq(chapterRevisions.status, "published"),
+        eq(users.isBlocked, false),
+        eq(blogs.hidden, false), // Фаза 10: блог скрыт админом → вон из ленты/каталога/подписок/sitemap/feed
+      ),
+    )) as BaseRow[];
 
   // Оставляем по каждой главе ТОЛЬКО ревизию с наибольшим number (последняя публикация).
   const latest = new Map<string, BaseRow>();

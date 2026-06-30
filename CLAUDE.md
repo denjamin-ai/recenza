@@ -10,7 +10,7 @@
 ## Текущее состояние репозитория (фазы 0–9 `done`, дальше 10–12 `todo`)
 
 ⚠️ **Прочти первым.** Каркас существует и работает: Next 16 + `src/`, `node_modules/`, `tsconfig.json`,
-`next.config.ts`, `drizzle.config.ts`, миграции `drizzle/0000_*.sql` + `0001_*.sql` (`users.pinned_blog_id`, **28 таблиц**), `blog.db`/`blog.test.db`,
+`next.config.ts`, `drizzle.config.ts`, миграции `drizzle/0000_*.sql` + `0001_*.sql` (`users.pinned_blog_id`) + `0002_*.sql` (uniqueIndex `review_invitations`; всего **28 таблиц**), `blog.db`/`blog.test.db`,
 два стенда, auth/роли, читательский слой, авторский слой (кабинет/редактор/портфолио), review-flow
 (ReviewPage), публичные комментарии (тред/якоря/голоса/уведомления). npm-скрипты работают.
 

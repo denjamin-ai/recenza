@@ -99,6 +99,7 @@ export const blogs = sqliteTable("blogs", {
   viewCount: integer("view_count").notNull().default(0),
   rating: real("rating").notNull().default(0),
   bookmarkCount: integer("bookmark_count").notNull().default(0),
+  hidden: integer("hidden", { mode: "boolean" }).notNull().default(false), // Фаза 10: скрытие блога админом (модерация), независимо от author.isBlocked
 });
 
 export const chapters = sqliteTable(
