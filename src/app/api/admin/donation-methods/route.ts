@@ -42,7 +42,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "QR: загрузите изображение (путь /uploads/)." }, { status: 400 });
   }
 
-  const sort = typeof body.sort === "number" && Number.isInteger(body.sort) ? body.sort : 0;
+  const sort = typeof body.sort === "number" && Number.isInteger(body.sort) ? Math.max(0, Math.min(9999, body.sort)) : 0;
 
   await db.insert(donationMethods).values({
     name,

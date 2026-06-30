@@ -255,7 +255,23 @@ export interface AdminReportDetail extends AdminReportRow {
 }
 
 export async function getAdminReportDetail(id: string): Promise<AdminReportDetail | null> {
-  const base = (await getAdminReports()).find((r) => r.id === id);
+  const base = (
+    await db
+      .select({
+        id: reports.id,
+        targetType: reports.targetType,
+        targetId: reports.targetId,
+        reason: reports.reason,
+        status: reports.status,
+        createdAt: reports.createdAt,
+        reporterHandle: users.handle,
+        reporterName: users.displayName,
+      })
+      .from(reports)
+      .leftJoin(users, eq(users.id, reports.reporterId))
+      .where(eq(reports.id, id))
+      .limit(1)
+  )[0];
   if (!base) return null;
 
   let comment: AdminReportDetail["comment"] = null;
@@ -309,22 +325,23 @@ export interface AdminReviewItem {
 const ACTIVE_REVIEW = ["under-review", "changes-requested"] as const;
 
 export async function getAdminReviewQueue(): Promise<AdminReviewItem[]> {
-  // Последняя ревизия каждой главы.
-  const revRows = await db
+  // Берём только активные ревизии (под ревью). Инвариант доменки: активной может быть лишь ПОСЛЕДНЯЯ
+  // ревизия главы (редактор не даёт править under-review/changes-requested; publish её замещает) —
+  // поэтому фильтр по статусу = её последняя ревизия. max(number) оставляем как защиту.
+  const activeRevs = await db
     .select({
       chapterId: chapterRevisions.chapterId,
       number: chapterRevisions.number,
       status: chapterRevisions.status,
     })
-    .from(chapterRevisions);
+    .from(chapterRevisions)
+    .where(inArray(chapterRevisions.status, [...ACTIVE_REVIEW]));
   const latest = new Map<string, { number: number; status: RevisionStatus }>();
-  for (const r of revRows) {
+  for (const r of activeRevs) {
     const prev = latest.get(r.chapterId);
     if (!prev || r.number > prev.number) latest.set(r.chapterId, { number: r.number, status: r.status });
   }
-  const activeIds = [...latest.entries()]
-    .filter(([, v]) => (ACTIVE_REVIEW as readonly string[]).includes(v.status))
-    .map(([cid]) => cid);
+  const activeIds = [...latest.keys()];
   if (activeIds.length === 0) return [];
 
   const heads = await db

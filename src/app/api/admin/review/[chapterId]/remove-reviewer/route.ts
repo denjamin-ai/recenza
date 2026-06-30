@@ -49,6 +49,20 @@ export async function POST(
 
   try {
     await db.transaction(async (tx) => {
+      // TOCTOU: ревьюер ещё назначен на эту ревизию? Иначе (двойной вызов) — не декрементим reviewLoad повторно.
+      const still = await tx
+        .select({ handle: chapterReviewers.handle })
+        .from(chapterReviewers)
+        .where(
+          and(
+            eq(chapterReviewers.chapterId, chapterId),
+            eq(chapterReviewers.revisionNumber, revNumber),
+            eq(chapterReviewers.handle, handle),
+          ),
+        )
+        .limit(1);
+      if (still.length === 0) throw new Error("stale");
+
       await tx.insert(removedReviewers).values({
         blogSlug: session.blog.slug,
         chapterSlug: session.chapter.slug,
@@ -105,7 +119,10 @@ export async function POST(
       });
       await createNotifications(tx, specs);
     });
-  } catch {
+  } catch (e) {
+    if (e instanceof Error && e.message === "stale") {
+      return NextResponse.json({ error: "Ревьюер уже снят." }, { status: 409 });
+    }
     return NextResponse.json({ error: "Не удалось снять ревьюера." }, { status: 500 });
   }
 

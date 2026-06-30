@@ -85,22 +85,18 @@ export async function POST(
           hot: false,
         });
         await tx.update(recruitRequests).set({ status: "approved", resolvedAt: now }).where(eq(recruitRequests.id, id));
-        await createNotifications(tx, [
-          {
-            recipientId: authorId,
-            type: ADMIN_NOTIFY.recruitApproved,
-            payload: { href: "/board", skills },
-          },
-        ]);
+        if (authorId) {
+          await createNotifications(tx, [
+            { recipientId: authorId, type: ADMIN_NOTIFY.recruitApproved, payload: { href: "/board", skills } },
+          ]);
+        }
       } else {
         await tx.update(recruitRequests).set({ status: "rejected", reason, resolvedAt: now }).where(eq(recruitRequests.id, id));
-        await createNotifications(tx, [
-          {
-            recipientId: authorId,
-            type: ADMIN_NOTIFY.recruitRejected,
-            payload: { href: "/author", reason },
-          },
-        ]);
+        if (authorId) {
+          await createNotifications(tx, [
+            { recipientId: authorId, type: ADMIN_NOTIFY.recruitRejected, payload: { href: "/author", reason } },
+          ]);
+        }
       }
     });
   } catch (e) {

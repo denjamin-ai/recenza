@@ -4,10 +4,11 @@
 // internal → переход внутри приложения; external → новая вкладка; donate → модалка «Поддержать».
 // «Стать ревьюером» переехала сюда из шапки (баннер pb_recruit → /board). Токены, без теней.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { IconHeart, IconUsers, IconStar, IconChevronLeft, IconChevronRight, IconExternal } from "@/components/icons";
 import { DonateModal } from "@/components/reader/donate-modal";
+import { isHttpUrl, isInternalPath } from "@/lib/url";
 import type { FeedBanner } from "@/lib/queries/monetization";
 import type { DonationConfig } from "@/lib/queries/monetization";
 
@@ -29,11 +30,16 @@ export function PromoCarousel({ banners, donation }: { banners: FeedBanner[]; do
   const router = useRouter();
   const [index, setIndex] = useState(0);
   const [donateOpen, setDonateOpen] = useState(false);
+  const pausedRef = useRef(false);
 
   const count = banners.length;
   useEffect(() => {
     if (count <= 1) return;
-    const t = window.setInterval(() => setIndex((i) => (i + 1) % count), ROTATE_MS);
+    // WCAG 2.2.2: не авто-прокручиваем при prefers-reduced-motion; пауза при hover/focus — через pausedRef.
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const t = window.setInterval(() => {
+      if (!pausedRef.current) setIndex((i) => (i + 1) % count);
+    }, ROTATE_MS);
     return () => window.clearInterval(t);
   }, [count]);
 
@@ -44,15 +50,23 @@ export function PromoCarousel({ banners, donation }: { banners: FeedBanner[]; do
   function activate(banner: FeedBanner) {
     if (banner.action === "donate") {
       setDonateOpen(true);
-    } else if (banner.action === "external" && banner.target) {
+    } else if (banner.action === "external" && banner.target && isHttpUrl(banner.target)) {
       window.open(banner.target, "_blank", "noopener,noreferrer");
-    } else if (banner.action === "internal" && banner.target) {
+    } else if (banner.action === "internal" && banner.target && isInternalPath(banner.target)) {
       router.push(banner.target);
     }
   }
 
   return (
-    <section aria-label="Промо" aria-roledescription="карусель" className="mb-6">
+    <section
+      aria-label="Промо"
+      aria-roledescription="карусель"
+      className="mb-6"
+      onPointerEnter={() => { pausedRef.current = true; }}
+      onPointerLeave={() => { pausedRef.current = false; }}
+      onFocusCapture={() => { pausedRef.current = true; }}
+      onBlurCapture={() => { pausedRef.current = false; }}
+    >
       <div className={`relative flex items-center gap-4 overflow-hidden rounded-[var(--radius-lg)] border p-4 sm:p-5 ${tone(b.tone)}`}>
         <BannerIcon name={b.icon} className="hidden h-10 w-10 shrink-0 text-[var(--foreground)] opacity-70 sm:block" />
         <div className="min-w-0 flex-1">
@@ -101,7 +115,7 @@ export function PromoCarousel({ banners, donation }: { banners: FeedBanner[]; do
               aria-label={`Баннер ${i + 1}`}
               aria-current={i === index ? "true" : undefined}
               onClick={() => setIndex(i)}
-              className={`h-1.5 rounded-[var(--radius-pill)] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${i === index ? "w-5 bg-[var(--accent)]" : "w-1.5 bg-[var(--border)]"}`}
+              className={`h-1.5 rounded-[var(--radius-pill)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${i === index ? "w-5 bg-[var(--accent)]" : "w-1.5 bg-[var(--border)]"}`}
             />
           ))}
         </div>

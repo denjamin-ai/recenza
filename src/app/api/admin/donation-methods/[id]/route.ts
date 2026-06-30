@@ -55,7 +55,7 @@ export async function PATCH(
   }
   if (body.sort !== undefined) {
     if (typeof body.sort !== "number" || !Number.isInteger(body.sort)) return NextResponse.json({ error: "sort: целое." }, { status: 400 });
-    set.sort = body.sort;
+    set.sort = Math.max(0, Math.min(9999, body.sort));
   }
 
   let type: DonationType = current.type;

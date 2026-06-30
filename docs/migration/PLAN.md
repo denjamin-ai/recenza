@@ -58,7 +58,7 @@
 | 7 | Редакционный review-flow (ReviewPage) | Продукт | `done` |
 | 8 | Комментирование (читатель↔автор↔читатель) | Продукт | `done` |
 | 9 | Подбор ревьюеров, согласие, оценка | Продукт | `done` |
-| 10 | Админка, модерация и монетизация | Продукт | `in progress` |
+| 10 | Админка, модерация и монетизация | Продукт | `done` |
 | 11 | Слой качества: тест-кейсы + Playwright | Качество | `todo` |
 | 12 | Hardening + прод-деплой | Релиз | `todo` |
 
@@ -1163,7 +1163,7 @@
 
 ## Фаза 10 — Админка, модерация и монетизация
 
-**Статус:** `in progress`
+**Статус:** `done`
 **Контекст входа.** Требует фазы 1–9 (`done`). Читать: `README.md` §11.5–11.8 (доска/баннеры/пожертвования/rework админки); `CLAUDE.md` (админ).
 **Разблокирует.** Полноту продукта перед слоем качества.
 **Старт сессии.** Проверь статусы; фазы 1–9 — `done`. Админка строится **один раз** и сразу в финальном виде (rework включён). Четыре подфазы — в одной сессии.
@@ -1201,10 +1201,79 @@
 - [ ] Баннеры и пожертвования управляются раздельно; админка переработана (полноэкранная, сгруппированная навигация).
 
 **Журнал фазы.**
-- Статус-история: `todo` → `in progress` (2026-06-30, сессия Фазы 10). Ветка `phase-10-admin`.
+- Статус-история: `todo` → `in progress` (2026-06-30, сессия Фазы 10) → `done` (2026-06-30). Ветка `phase-10-admin`.
+- Артефакты: миграция `0003_*` (`blogs.hidden`); `src/lib/queries/{admin,settings,monetization,board}.ts`;
+  `src/components/icons.tsx`; admin-портал RSC route-сегментами `src/app/admin/(protected)/{dashboard,users(+[handle]),
+  reports(+[id]),review,recruit,banners,donation}` + `src/app/admin/_components/**` (admin-shell, primitives,
+  client, *-actions, banner/donation-manager); `src/app/api/admin/**` (users, blogs, reports, review/{force-approve,
+  remove-reviewer,primary}, recruit-requests, board-calls, applications, banners, donation-methods, settings);
+  публичная доска `src/app/(reader)/board` + `src/app/api/board/applications`; монетизация на ленте
+  `src/components/reader/{promo-carousel,promo-carousel-slot,donate-modal,reviewer-board}.tsx`; расширены
+  `review-links.ts` (ADMIN_NOTIFY), `notification-bell.tsx`, `queries/notifications.ts` (clearAdminNotifications),
+  `queries/{feed,chapters}.ts` (фильтр `blogs.hidden`); seed: `pcr_1`→`lena_review`, `pb_recruit`→`/board`.
 - Решения/отклонения:
-- Backlog:
+  - **Админка = RSC route-сегменты, не клиент-табы** (решение владельца через AskUserQuestion). Каркас Фазы 4
+    (`admin-portal-shell.tsx`, useState-табы) переработан в `(protected)/layout.tsx` → клиентский `AdminShell`
+    (fullscreen, сгруппированный сайдбар `<Link>`+`aria-current` — паттерн Фазы 5, не tablist) + RSC-страницы на
+    экран; мутации — `api/admin/**`. Это даёт deep-link URL (под Playwright Ф11) и RSC-чтение без параллельного
+    GET-API-слоя. `(protected)/page.tsx` → redirect на `/admin/dashboard`.
+  - **Accept заявки с доски ВЫДАЁТ роль reviewer** зарегистрированному заявителю (решение владельца) + переносит
+    навыки в `competencies` (merge). Это **единственный** admin-путь смены роли (остальное чтит «роль не меняется
+    обычным API»; `users/[handle]` PATCH — строгий allowlist `isBlocked/commentingBlocked/reviewCapacity`, без `role`,
+    admin-роль не трогаем). Гость (`byHandle=null`) — только `accepted`, без аккаунта. (Отклонение от §11.10 gap#14,
+    который откладывал role-grant; сделано сейчас осознанно.)
+  - **Миграция `0003` `blogs.hidden`** — единственное изменение схемы (плоский boolean ADD COLUMN, без FK-правки
+    в отличие от `0001`). Бэкенд скрытия отдельного блога админом (10.1 «hide/show блога»); фильтр `hidden=false`
+    добавлен в `getReadableChapters`/`getReadableBlog` → закрывает feed/каталог/подписки/ридер/sitemap/feed.
+    Бан автора скрывает все блоги через существующий `users.isBlocked` (отдельного действия не нужно).
+  - **Force-approve** = клон `publish`-роута минус гейт «все approve»: published + `reviewer_history` + `reviewLoad −1`
+    + `publishedAt` блога + уведомления (автор `force_approved`, ревьюеры `published`). TOCTOU-перечтение статуса в tx.
+  - **Снятие ревьюера / смена ведущего** консистентно правят `reviewLoad`/`isPrimary`/`primaryHandle`, гасят
+    приглашения; TOCTOU-перечтение в tx (правка по ревью code-reviewer). Кросс-экранно = серверное состояние +
+    поллинг ReviewScreen (30с), без вебсокетов (модель Фазы 7).
+  - **Модерация комментариев — только soft-delete** (tombstone Фазы 8) при разборе жалобы; hard-delete не вводим
+    (избегаем замены `public_comments.parentId` cascade→set null) — в backlog.
+  - **«Требует внимания» дашборда синтезируется из реальных pending-сущностей** (reports/recruit/applications/
+    primary-changes), не из потока admin-уведомлений — точнее и без хрупкого матчинга payload. У админа нет колокола
+    (нет SiteNav); admin-уведомления (`report_filed`/`recruit_requested`/`primary_change_request`) гасятся при разборе
+    (`clearAdminNotifications`, где есть стабильный ключ).
+  - **DonateModal адаптивна** (одиночный QR — герой / только ссылки — кнопки / смешанно — кнопки+переключатель QR),
+    **без сумм**, QR — `next/image` по `/uploads/` (загрузка, без генерации). Баннеры и пожертвования — раздельные
+    экраны и независимые флаги; «Стать ревьюером» переехала в баннер `pb_recruit`→`/board`.
+  - **Валидация URL** (`src/lib/url.ts`): external→`^https?://`, internal→`/path` (не `//`), QR/cover→`/uploads/`;
+    отклоняем `javascript:`/`data:` — закрывает Phase-2 backlog P3-Ф10. Клиентские guard'ы в карусели (defence-in-depth).
+- Цикл качества (зелёный): `npm run build` ✓ (24/24 страниц), `npm run lint` ✓ (0), `tsc --noEmit` ✓.
+  Скиллы `next-best-practices` + `security-checklist` + `drizzle-schema` применены.
+  **code-reviewer**: 0 P0, 3 P1 исправлены (recruit-notify при отсутствующем авторе → guard; `getAdminReportDetail`
+  точечный запрос вместо full-scan; TOCTOU-перечтение в `remove-reviewer`); 4 P2/3 P3 — частью исправлены (review-queue
+  фильтр активных ревизий; carousel sequential), частью в backlog. **security-reviewer**: PASS — 0 critical/0 high
+  (3 medium: in-memory rate-limit→Ф12, 2× defence-in-depth URL guard в карусели — исправлены; 3 low: sort-bounds
+  исправлены, `byAdmin`-строка/`npm audit` — приняты). **design-watcher**: GO — 0 P0, 3 P1 исправлены (Esc+focus в
+  ApplyModal/HowItWorksModal; `transition-all`→`transition-colors` на точках карусели; +pause-on-hover/focus и
+  reduced-motion в карусели — WCAG 2.2.2). **playwright-tester** на :3001: GO — флоу 1–7 (гейтинг/бан→скрытие/
+  скрытие блога/force-approve/смена ведущего/recruit→доска/заявка→роль) PASS без багов и console-ошибок; флоу 8
+  (board-apply гостя) подтверждён в БД (новая pending-заявка); флоу 9 (DonateModal: ссылки+QR, без сумм)
+  перепроверен вручную через MCP. Единственная console-ошибка — 404 seed-QR `/uploads/donations/sbp-qr.png`
+  (нет реальных `/uploads/`-файлов до Ф12; не баг кода) → backlog.
+- Backlog (P2/P3):
+  - **(P3, Ф11/12)** Комментарии: hard-delete жалобщиком/админом + замена `public_comments.parentId` cascade→`set null`
+    (сейчас только soft-delete).
+  - **(P2, Ф12)** Полный focus-trap в модалках (Esc+автофокус есть; циклический Tab — нет; унаследовано с Ф6/8).
+  - **(P3)** `getAdminUsers`/поиск — фильтрация в памяти; при росте вынести в SQL-`LIKE`/пагинацию.
+  - **(P3)** Заявки `reviewer_applications` не связаны FK с `board_calls` (свободный `area`); `board_calls.waiting` —
+    admin-curated счётчик, не пересчитывается автоматически.
+  - **(P3, Ф12)** Онбординг принятых заявок: email + (для гостей) приглашение завести аккаунт (§11.10 gap#14).
+  - **(P3)** `removed_reviewers.byAdmin` — строка `"admin"` (у admin-сессии нет `userId`/handle); при мультиадмине ввести идентификатор.
+  - **(P2, унаследовано Ф12)** in-memory rate-limit (логин/реакции/board-apply) не шарится между serverless-инстансами.
+  - **(P2, унаследовано Ф12)** `npm audit` ~6 moderate (dev/build-зависимости).
 - Риски для следующих фаз:
+  - **(Ф11)** Матрица ролей пополнилась admin-портал/доской/монетизацией — добавить TS-автотесты: бан→скрытие,
+    force-approve, recruit→доска, заявка→роль, баннер→DonateModal, публичный board-apply (вкл. гостя). Admin-логин в
+    global-setup — через `ADMIN_PASSWORD_PLAIN` (.env.test); у админа нет колокола (проверять дашборд-очередь, не bell).
+  - **(Ф12)** Реальная загрузка QR/обложек (эндпоинт `/uploads/`); seed QR `/uploads/donations/sbp-qr.png` ещё 404
+    (DonateModal деградирует в alt/плейсхолдер). Вынести rate-limit в общий стор перед прод-деплоем.
+  - **(Ф12)** `blogs.hidden` фильтруется в read-слое ленты/ридера; при добавлении новых публичных поверхностей —
+    не забыть фильтр (как и `users.isBlocked`).
 
 **Что дальше.** Фаза 11 — слой качества.
 

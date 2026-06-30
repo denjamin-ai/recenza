@@ -5,7 +5,8 @@ import { getVisibleBanners, getDonationConfig } from "@/lib/queries/monetization
 import { PromoCarousel } from "@/components/reader/promo-carousel";
 
 export async function PromoCarouselSlot() {
-  const [banners, donation] = await Promise.all([getVisibleBanners(), getDonationConfig()]);
-  if (banners.length === 0) return null;
+  const banners = await getVisibleBanners();
+  if (banners.length === 0) return null; // нет баннеров → не дёргаем конфиг пожертвований
+  const donation = await getDonationConfig();
   return <PromoCarousel banners={banners} donation={donation} />;
 }

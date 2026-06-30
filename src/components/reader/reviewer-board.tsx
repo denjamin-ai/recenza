@@ -4,9 +4,26 @@
 // «Откликнуться»/«Стать ревьюером» → ApplyModal (навыки + сообщение). Откликнуться может и гость
 // (тогда нужно имя). «Как это работает» — 3 шага. Заявка → POST /api/board/applications.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconX, IconScan } from "@/components/icons";
 import type { BoardCallView } from "@/lib/queries/board";
+
+// Esc закрывает модалку + автофокус на диалог при открытии (a11y для role="dialog"). Два эффекта:
+// фокус — один раз на маунт (не воруем фокус из инпутов при ре-рендере); Esc — переподписка на onClose.
+function useModalA11y(onClose: () => void) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.focus();
+  }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return ref;
+}
 
 export function ReviewerBoard({ calls, isAuthed }: { calls: BoardCallView[]; isAuthed: boolean }) {
   const [filter, setFilter] = useState<string | null>(null);
@@ -162,12 +179,13 @@ function ApplyModal({
     }
   }
 
+  const dialogRef = useModalA11y(onClose);
   const inputCls =
     "w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-[length:var(--type-small)] text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div role="dialog" aria-modal="true" aria-label="Заявка на ревью" className="w-full max-w-md rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-elevated)] p-5">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Заявка на ревью" className="w-full max-w-md rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-elevated)] p-5 focus:outline-none">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="font-display text-[length:var(--type-h4)] font-bold text-[var(--foreground)]">Стать ревьюером</h2>
           <button type="button" onClick={onClose} aria-label="Закрыть" className="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-md)] text-[var(--muted-foreground)] hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]">
@@ -220,6 +238,7 @@ function ApplyModal({
 }
 
 function HowItWorksModal({ onClose }: { onClose: () => void }) {
+  const dialogRef = useModalA11y(onClose);
   const steps = [
     "Подайте заявку с навыками — или откликнитесь на открытое направление.",
     "Администратор рассмотрит заявку; при одобрении вы получите роль ревьюера.",
@@ -227,7 +246,7 @@ function HowItWorksModal({ onClose }: { onClose: () => void }) {
   ];
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div role="dialog" aria-modal="true" aria-label="Как это работает" className="w-full max-w-md rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-elevated)] p-5">
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Как это работает" className="w-full max-w-md rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-elevated)] p-5 focus:outline-none">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="font-display text-[length:var(--type-h4)] font-bold text-[var(--foreground)]">Как это работает</h2>
           <button type="button" onClick={onClose} aria-label="Закрыть" className="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-md)] text-[var(--muted-foreground)] hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]">
