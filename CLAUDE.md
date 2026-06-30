@@ -7,7 +7,7 @@
 > детальная модель — в `README.md` прототипа. План миграции — `PLAN.md`. Стенды/БД — `ENVIRONMENTS.md`.
 > Тесты — `TESTING.md`.
 
-## Текущее состояние репозитория (фазы 0–8 `done`, дальше 9–12 `todo`)
+## Текущее состояние репозитория (фазы 0–9 `done`, дальше 10–12 `todo`)
 
 ⚠️ **Прочти первым.** Каркас существует и работает: Next 16 + `src/`, `node_modules/`, `tsconfig.json`,
 `next.config.ts`, `drizzle.config.ts`, миграции `drizzle/0000_*.sql` + `0001_*.sql` (`users.pinned_blog_id`, **28 таблиц**), `blog.db`/`blog.test.db`,
@@ -22,21 +22,24 @@
   (кабинет + редактор Variant B + портфолио) · **7** review-flow (ReviewPage:
   треды/вердикты/apply-and-close/чат/публикация/кросс-экранный sync) · **8** комментирование
   (тред ≤2/якоря-фрагменты/спойлер старых ревизий/окно правки 15м/голоса/уведомления;
-  `src/lib/queries/comments.ts`, `src/app/api/comments/**`, `src/components/reader/comment*`).
+  `src/lib/queries/comments.ts`, `src/app/api/comments/**`, `src/components/reader/comment*`) ·
+  **9** подбор ревьюеров (матчинг+«Топ»/согласие через приглашения/приватная оценка/recruit-запрос автора;
+  `src/lib/reviewer-match.ts`, `src/lib/queries/invitations.ts`, `src/app/api/reviewer/invitations/**`,
+  `src/app/api/author/{ratings,recruit-requests}/**`).
 
 Ещё **не реализовано** — разделы «Архитектура» ниже описывают это как **целевое** состояние (спека для
 будущих фаз, не готовый код):
-- **9** подбор ревьюеров/согласие/оценка ·
-  **10** админка/модерация/монетизация · **11** слой качества (`playwright.config.ts` + каталог
+- **10** админка/модерация/монетизация (вкл. админ-обработку recruit/доску `board_calls`/заявки
+  `reviewer_applications`/баннеры/пожертвования) · **11** слой качества (`playwright.config.ts` + каталог
   `testing/` ещё **не созданы**) · **12** hardening + прод-деплой.
 
 **Точка входа в фазу:** прочитай `PLAN.md` (статусы всех фаз; если есть `blocked` — сначала чини её) →
 ритуал «Промт запуска фазы» в `docs/migration/PROMPT.md` → веди ветку/PR по git-flow ниже.
-Следующая фаза — **9 (подбор ревьюеров)**. Авторский кабинет, редактор (Variant B), `SubmitSheet`,
-портфолио, review-flow (ReviewPage `src/components/review/**`, `src/app/api/review/**`) и комментирование
-(`src/components/reader/comment*`, `src/app/api/comments/**`) — уже **готовый код** (фазы 6–8 `done`),
-не спецификация. Для остального (фазы 9–12) перед тем как опереться на путь/таблицу/роут из «Архитектуры»,
-**убедись, что фаза, вводящая его, уже `done`** — часть описанного пока только спецификация.
+Следующая фаза — **10 (админка/модерация/монетизация)**. Авторский кабинет, редактор (Variant B), `SubmitSheet`,
+портфолио, review-flow (ReviewPage `src/components/review/**`, `src/app/api/review/**`), комментирование
+(`src/components/reader/comment*`, `src/app/api/comments/**`) и подбор ревьюеров (Фаза 9) — уже **готовый код**
+(фазы 6–9 `done`), не спецификация. Для остального (фазы 10–12) перед тем как опереться на путь/таблицу/роут
+из «Архитектуры», **убедись, что фаза, вводящая его, уже `done`** — часть описанного пока только спецификация.
 
 ## Команды
 - `npm run dev` — dev (:3000, `.env.local` → `blog.db`)
@@ -226,10 +229,15 @@
   (`subtype→variant`, `tone→variant`, `caption→alt`); валидатор + чек-лист готовности
   (`src/lib/blocks/validate.ts`) изоморфны клиент⇄сервер. Константы блоков — в клиент-безопасном
   `src/lib/blocks/constants.ts` (без drizzle, чтобы редактор не тащил схему БД в бандл).
-- **Submit главы (Фаза 6 — заглушка R1) пишет ревьюеров напрямую в `chapter_reviewers`**
-  (`verdict=null`, `isPrimary`, `online/typing=false`); `review_invitations` пока **не пишется** —
-  модель согласия (приглашение→accept) придёт в Фазе 9. Главу `under-review`/`published` редактор
-  править не даёт (`409`).
+- **Submit главы (Фаза 9 — согласие) создаёт `review_invitations` (pending), НЕ `chapter_reviewers`.**
+  Ревью стартует только после accept — accept (`src/app/api/reviewer/invitations/[id]`) наполняет
+  `chapter_reviewers` (`reviewLoad +1`). Все downstream-гейты (verdict/threads/chat/publish/инбокс/queue)
+  опираются на `chapter_reviewers`, поэтому согласие соблюдается без их правок. publish делает `reviewLoad −1`.
+  `submit-revision` (Ф7) переносит уже принявших напрямую — намеренный carry-forward (re-consent не нужен,
+  backlog P2 Ф10). Главу `under-review`/`published` редактор править не даёт (`409`). match%/«Топ» (навыки
+  50%+рейтинг 30%+объём 20%) — чистый `src/lib/reviewer-match.ts`; flag «навыки не совпадают» доступен лишь
+  при match<50% (перепроверка на сервере) → ревизия `changes-requested`. Оценки приватны: наружу только
+  агрегат `users.reviewerRating`.
 - **Изображения — только путь `/uploads/`** (эндпоинта загрузки ещё нет; реальная загрузка — Фаза 12).
 - **`src/lib/slug.ts` — транслитерирующий slug** (НЕ кириллический `slugify` из
   `src/components/blocks/anchors.ts`); не перепутать.
