@@ -14,6 +14,8 @@ import { AutoTextarea } from "./auto-textarea";
 import { BLOCK_LABEL, BlockEditor } from "./block-editor";
 import { SettingsPopover } from "./settings-popover";
 import { SubmitSheet } from "./submit-sheet";
+import { SlashMenu } from "./slash-menu";
+import { applyShortcut } from "./markdown";
 
 function newBlock(type: BlockType): Block {
   const id = ulid();
@@ -96,6 +98,7 @@ export function ChapterEditor({ data, reviewers }: { data: EditorChapter; review
   const [error, setError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showSubmit, setShowSubmit] = useState(false);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   const markDirty = () => {
     setDirty(true);
@@ -103,7 +106,22 @@ export function ChapterEditor({ data, reviewers }: { data: EditorChapter; review
   };
 
   const updateBlock = (id: string, b: Block) => {
-    setBlocks((prev) => prev.map((x) => (x.id === id ? b : x)));
+    const next = applyShortcut(b); // markdown-шорткаты (## , > , - …) меняют тип p-блока
+    setBlocks((prev) => prev.map((x) => (x.id === id ? next : x)));
+    markDirty();
+  };
+  const replaceBlock = (id: string, type: BlockType) => {
+    setBlocks((prev) => prev.map((x) => (x.id === id ? { ...newBlock(type), id } : x)));
+    markDirty();
+  };
+  const moveTo = (from: number, to: number) => {
+    if (from === to) return;
+    setBlocks((prev) => {
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
     markDirty();
   };
   const removeBlock = (id: string) => {
@@ -292,10 +310,32 @@ export function ChapterEditor({ data, reviewers }: { data: EditorChapter; review
           {blocks.map((block, i) => (
             <div
               key={block.id}
-              className="group rounded-[var(--radius-lg)] border border-[var(--border-secondary)] p-3 focus-within:border-[var(--border)]"
+              onDragOver={(e) => {
+                if (dragIndex !== null) e.preventDefault();
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (dragIndex !== null) moveTo(dragIndex, i);
+                setDragIndex(null);
+              }}
+              className={`group relative rounded-[var(--radius-lg)] border p-3 focus-within:border-[var(--border)] ${
+                dragIndex === i ? "border-[var(--accent)] opacity-60" : "border-[var(--border-secondary)]"
+              }`}
             >
               <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+                <span className="flex items-center gap-2 text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+                  {editable && (
+                    <span
+                      draggable
+                      onDragStart={() => setDragIndex(i)}
+                      onDragEnd={() => setDragIndex(null)}
+                      aria-label="Перетащить блок"
+                      title="Перетащить"
+                      className="cursor-grab select-none text-[var(--muted-foreground)] active:cursor-grabbing"
+                    >
+                      ⠿
+                    </span>
+                  )}
                   {BLOCK_LABEL[block.type]}
                 </span>
                 {editable && (
@@ -329,8 +369,14 @@ export function ChapterEditor({ data, reviewers }: { data: EditorChapter; review
                   </div>
                 )}
               </div>
-              <fieldset disabled={!editable} className="border-0 p-0">
+              <fieldset disabled={!editable} className="relative border-0 p-0">
                 <BlockEditor block={block} onChange={(b) => updateBlock(block.id, b)} />
+                {editable && block.type === "p" && typeof block.text === "string" && block.text.startsWith("/") && (
+                  <SlashMenu
+                    query={block.text.slice(1)}
+                    onPick={(t) => replaceBlock(block.id, t)}
+                  />
+                )}
               </fieldset>
               {editable && (
                 <div className="mt-2">

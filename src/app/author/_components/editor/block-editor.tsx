@@ -6,6 +6,7 @@
 import type { Block } from "@/types";
 import { CALLOUT_VARIANTS, CODE_LANGS, LIST_VARIANTS, type BlockType } from "@/lib/blocks/constants";
 import { AutoTextarea } from "./auto-textarea";
+import { MarkableTextarea } from "./markable-textarea";
 
 export const BLOCK_LABEL: Record<BlockType, string> = {
   p: "Параграф",
@@ -56,19 +57,19 @@ export function BlockEditor({ block, onChange }: { block: Block; onChange: (b: B
       );
     case "p":
       return (
-        <AutoTextarea
+        <MarkableTextarea
           value={asString(block.text)}
-          onChange={(e) => set({ text: e.target.value })}
-          placeholder="Текст параграфа. **жирный**, *курсив*, `код`, [ссылка](url)"
+          onChange={(v) => set({ text: v })}
+          placeholder='Текст. "/" — типы блоков; **жирный**, *курсив*, `код`, ## — шорткаты'
           aria-label="Параграф"
           className="leading-[var(--leading-body)]"
         />
       );
     case "quote":
       return (
-        <AutoTextarea
+        <MarkableTextarea
           value={asString(block.text)}
-          onChange={(e) => set({ text: e.target.value })}
+          onChange={(v) => set({ text: v })}
           placeholder="Текст цитаты"
           aria-label="Цитата"
           className="border-l-2 border-[var(--accent)] pl-3 italic text-[var(--muted-foreground)]"
@@ -89,9 +90,9 @@ export function BlockEditor({ block, onChange }: { block: Block; onChange: (b: B
               </option>
             ))}
           </select>
-          <AutoTextarea
+          <MarkableTextarea
             value={asString(block.text)}
-            onChange={(e) => set({ text: e.target.value })}
+            onChange={(v) => set({ text: v })}
             placeholder="Текст выноски"
             aria-label="Текст callout"
           />
