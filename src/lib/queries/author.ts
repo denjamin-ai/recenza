@@ -107,6 +107,14 @@ export interface AuthorPortfolio {
   updatedAt: number | null;
 }
 
+export interface ReviewerOption {
+  handle: string;
+  displayName: string;
+  competencies: string[];
+  rating: number | null;
+  availability: "free" | "busy" | "full";
+}
+
 // ───────────────────────────── helpers ─────────────────────────────
 
 type LatestRev = { revNumber: number; status: RevisionStatus };
@@ -393,6 +401,36 @@ export const getChapterForEditor = cache(
     };
   },
 );
+
+/**
+ * Список ревьюеров для базовой формы SubmitSheet (Фаза 6; матчинг/скоринг — Фаза 9).
+ * Только role=reviewer, не заблокированные. Доступность выводится из review_load/review_capacity.
+ */
+export const getAvailableReviewers = cache(async (): Promise<ReviewerOption[]> => {
+  const rows = await db
+    .select({
+      handle: users.handle,
+      displayName: users.displayName,
+      competencies: users.competencies,
+      rating: users.reviewerRating,
+      load: users.reviewLoad,
+      capacity: users.reviewCapacity,
+    })
+    .from(users)
+    .where(and(eq(users.role, "reviewer"), eq(users.isBlocked, false)));
+
+  return rows.map((r) => {
+    const availability: ReviewerOption["availability"] =
+      r.load >= r.capacity ? "full" : r.load === 0 ? "free" : "busy";
+    return {
+      handle: r.handle,
+      displayName: r.displayName,
+      competencies: parseJson<string[]>(r.competencies, []),
+      rating: r.rating,
+      availability,
+    };
+  });
+});
 
 /** Портфолио автора (любой видимости — это владелец). null — ещё не создано. */
 export const getPortfolioForAuthor = cache(async (userId: string): Promise<AuthorPortfolio | null> => {

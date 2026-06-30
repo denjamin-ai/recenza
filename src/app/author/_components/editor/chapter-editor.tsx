@@ -8,10 +8,12 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ulid } from "ulid";
 import type { Block } from "@/types";
-import type { EditorChapter } from "@/lib/queries/author";
+import type { EditorChapter, ReviewerOption } from "@/lib/queries/author";
 import { BLOCK_TYPES, type BlockType } from "@/lib/blocks/constants";
 import { AutoTextarea } from "./auto-textarea";
 import { BLOCK_LABEL, BlockEditor } from "./block-editor";
+import { SettingsPopover } from "./settings-popover";
+import { SubmitSheet } from "./submit-sheet";
 
 function newBlock(type: BlockType): Block {
   const id = ulid();
@@ -84,7 +86,7 @@ function AddBlock({ onAdd }: { onAdd: (type: BlockType) => void }) {
   );
 }
 
-export function ChapterEditor({ data }: { data: EditorChapter }) {
+export function ChapterEditor({ data, reviewers }: { data: EditorChapter; reviewers: ReviewerOption[] }) {
   const editable = data.revision.status === "draft" || data.revision.status === "changes-requested";
   const [title, setTitle] = useState(data.chapter.title);
   const [blocks, setBlocks] = useState<Block[]>(data.revision.blocks);
@@ -92,6 +94,8 @@ export function ChapterEditor({ data }: { data: EditorChapter }) {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showSubmit, setShowSubmit] = useState(false);
 
   const markDirty = () => {
     setDirty(true);
@@ -125,8 +129,7 @@ export function ChapterEditor({ data }: { data: EditorChapter }) {
     markDirty();
   };
 
-  const save = useCallback(async () => {
-    if (saving) return;
+  const save = useCallback(async (): Promise<boolean> => {
     setSaving(true);
     setError(null);
     try {
@@ -139,15 +142,17 @@ export function ChapterEditor({ data }: { data: EditorChapter }) {
       if (res.ok) {
         setDirty(false);
         setSavedAt(json.savedAt ?? Math.floor(Date.now() / 1000));
-      } else {
-        setError(json.error ?? "Не удалось сохранить.");
+        return true;
       }
+      setError(json.error ?? "Не удалось сохранить.");
+      return false;
     } catch {
       setError("Сеть недоступна.");
+      return false;
     } finally {
       setSaving(false);
     }
-  }, [saving, data.chapter.id, title, blocks]);
+  }, [data.chapter.id, title, blocks]);
 
   // Ctrl/Cmd+S.
   useEffect(() => {
@@ -180,17 +185,67 @@ export function ChapterEditor({ data }: { data: EditorChapter }) {
             Просмотр
           </Link>
           {editable && (
-            <button
-              type="button"
-              onClick={() => void save()}
-              disabled={!dirty || saving}
-              className="min-h-9 rounded-[var(--radius-sm)] bg-[var(--accent)] px-4 py-1.5 text-[length:var(--type-small)] font-medium text-[var(--accent-foreground)] transition-opacity hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
-            >
-              {saving ? "Сохраняем…" : "Сохранить"}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setShowSettings(true)}
+                aria-label="Настройки блога"
+                className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border)] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              >
+                <span aria-hidden="true">⚙</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => void save()}
+                disabled={!dirty || saving}
+                className="min-h-9 rounded-[var(--radius-sm)] border border-[var(--border)] px-4 py-1.5 text-[length:var(--type-small)] transition-colors hover:border-[var(--accent)] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              >
+                {saving ? "Сохраняем…" : "Сохранить"}
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (dirty) await save();
+                  setShowSubmit(true);
+                }}
+                className="min-h-9 rounded-[var(--radius-sm)] bg-[var(--accent)] px-4 py-1.5 text-[length:var(--type-small)] font-medium text-[var(--accent-foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+              >
+                Отправить на ревью →
+              </button>
+            </>
           )}
         </div>
       </div>
+
+      {showSettings && (
+        <SettingsPopover
+          blogId={data.blog.id}
+          blogSlug={data.blog.slug}
+          chapterSlug={data.chapter.slug}
+          initial={{
+            slug: data.blog.slug,
+            tags: data.blog.tags,
+            complexity: data.blog.complexity,
+            coverUrl: data.blog.coverUrl,
+            summary: data.blog.summary,
+          }}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {showSubmit && (
+        <SubmitSheet
+          chapterId={data.chapter.id}
+          chapterTitle={title}
+          blocks={blocks}
+          tags={data.blog.tags}
+          initialSkills={data.chapter.skills}
+          initialComplexity={data.blog.complexity}
+          reviewers={reviewers}
+          onSave={save}
+          onClose={() => setShowSubmit(false)}
+        />
+      )}
 
       <div className="mx-auto w-full max-w-[var(--max-article)] px-6 py-8">
         {/* Хлебные крошки */}
