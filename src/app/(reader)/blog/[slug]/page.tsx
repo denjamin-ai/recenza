@@ -62,6 +62,7 @@ export default async function BlogPage({ params, searchParams }: { params: Param
       canFollow={viewer?.id !== blog.author.id}
       singleHref={`/blog/${slug}/${blog.chapters[0].slug}`}
       wholeHref={`/blog/${slug}?mode=whole`}
+      viewer={viewer ? { id: viewer.id, role: viewer.role, commentingBlocked: viewer.commentingBlocked } : null}
     />
   );
 }

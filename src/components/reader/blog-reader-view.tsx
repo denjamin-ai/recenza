@@ -12,6 +12,8 @@ import { SkillChips } from "@/components/reader/skill-chips";
 import { EngagementBar } from "@/components/reader/engagement-bar";
 import { ChapterReviewerCredit } from "@/components/reader/chapter-reviewer-credit";
 import { CommentsSlot } from "@/components/reader/comments-slot";
+import { FragmentCommentButton } from "@/components/reader/fragment-comment-button";
+import { commentGate, type CommentViewer } from "@/lib/queries/comments";
 import type { ReadableBlog, ReaderSection } from "@/lib/queries/types";
 
 function ChapterBody({
@@ -20,19 +22,21 @@ function ChapterBody({
   mode,
   isAuthed,
   canFollow,
+  viewer,
 }: {
   blog: ReadableBlog;
   section: ReaderSection;
   mode: "single" | "whole";
   isAuthed: boolean;
   canFollow: boolean;
+  viewer: CommentViewer | null;
 }) {
   const { chapter, engagement, credit, canVote } = section;
   const prefix = mode === "whole" ? chapter.slug : undefined;
   const titleId = `chapter-${chapter.slug}`;
 
   return (
-    <article className="mb-16">
+    <article className="mb-16" data-chapter-slug={chapter.slug}>
       {mode === "single" ? (
         <h1 id={titleId} className="scroll-mt-24 text-[length:var(--type-h1)]">
           {chapter.title}
@@ -71,7 +75,14 @@ function ChapterBody({
 
       <ChapterReviewerCredit credit={credit} />
 
-      {mode === "single" && <CommentsSlot revision={chapter.revisionNumber} />}
+      <CommentsSlot
+        blogSlug={blog.slug}
+        chapterSlug={chapter.slug}
+        revision={chapter.revisionNumber}
+        blogAuthorId={blog.author.id}
+        sectionId={mode === "whole" ? `comments-${chapter.slug}` : "comments"}
+        viewer={viewer}
+      />
     </article>
   );
 }
@@ -85,6 +96,7 @@ export function BlogReaderView({
   canFollow,
   singleHref,
   wholeHref,
+  viewer,
 }: {
   blog: ReadableBlog;
   mode: "single" | "whole";
@@ -94,8 +106,11 @@ export function BlogReaderView({
   canFollow: boolean;
   singleHref: string;
   wholeHref: string;
+  viewer: CommentViewer | null;
 }) {
   const multiChapter = blog.chapters.length > 1;
+  // Право комментировать одинаково для всех глав блога (один автор) — для плавающей кнопки фрагмента.
+  const canCommentBlog = commentGate(viewer, blog.author.id).canComment;
 
   // Ссылки глав для SeriesNav: single → страницы глав; whole → якоря секций.
   const chapterLinks: ChapterLink[] = blog.chapters.map((c) => ({
@@ -138,7 +153,7 @@ export function BlogReaderView({
             {/* Мобильная навигация по главам/ToC */}
             {(multiChapter || headings.length > 0) && (
               <details className="mb-6 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] px-4 py-2 lg:hidden">
-                <summary className="cursor-pointer text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+                <summary className="cursor-pointer rounded-[var(--radius-sm)] text-[length:var(--type-small)] text-[var(--muted-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]">
                   Навигация по блогу
                 </summary>
                 <div className="mt-3">
@@ -162,6 +177,7 @@ export function BlogReaderView({
                 mode={mode}
                 isAuthed={isAuthed}
                 canFollow={canFollow}
+                viewer={viewer}
               />
             ))}
           </div>
@@ -174,6 +190,7 @@ export function BlogReaderView({
           </aside>
         </div>
       </div>
+      <FragmentCommentButton enabled={canCommentBlog} />
     </>
   );
 }

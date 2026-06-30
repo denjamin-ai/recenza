@@ -26,6 +26,8 @@ function labelOf(item: Item): string {
       return "Ваш ход в ревью";
     case "comment_reply":
       return "Ответ на ваш комментарий";
+    case "comment_new":
+      return chapterTitle ? `Новый комментарий: ${chapterTitle}` : "Новый комментарий к вашей главе";
     // ── review-flow (Фаза 7) ──
     case "review_invited":
       return chapterTitle ? `Вас назначили ревьюером: ${chapterTitle}` : "Вас назначили ревьюером";

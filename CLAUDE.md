@@ -7,12 +7,12 @@
 > детальная модель — в `README.md` прототипа. План миграции — `PLAN.md`. Стенды/БД — `ENVIRONMENTS.md`.
 > Тесты — `TESTING.md`.
 
-## Текущее состояние репозитория (фазы 0–7 `done`, дальше 8–12 `todo`)
+## Текущее состояние репозитория (фазы 0–8 `done`, дальше 9–12 `todo`)
 
 ⚠️ **Прочти первым.** Каркас существует и работает: Next 16 + `src/`, `node_modules/`, `tsconfig.json`,
-`next.config.ts`, `drizzle.config.ts`, миграция `drizzle/0000_*.sql` (**28 таблиц**), `blog.db`/`blog.test.db`,
+`next.config.ts`, `drizzle.config.ts`, миграции `drizzle/0000_*.sql` + `0001_*.sql` (`users.pinned_blog_id`, **28 таблиц**), `blog.db`/`blog.test.db`,
 два стенда, auth/роли, читательский слой, авторский слой (кабинет/редактор/портфолио), review-flow
-(ReviewPage). npm-скрипты работают.
+(ReviewPage), публичные комментарии (тред/якоря/голоса/уведомления). npm-скрипты работают.
 
 **Источник правды по прогрессу — `docs/migration/PLAN.md`** («Карта фаз» + живой Журнал каждой фазы;
 там же — решения и backlog по каждой фазе). На сегодня закрыто:
@@ -20,21 +20,23 @@
   **3** два стенда+seed · **4** auth/роли/гейтинг+UI-оболочки · **5** читательский слой
   (лента/ридер/engagement/уведомления/SEO) · **6** авторский слой
   (кабинет + редактор Variant B + портфолио) · **7** review-flow (ReviewPage:
-  треды/вердикты/apply-and-close/чат/публикация/кросс-экранный sync).
+  треды/вердикты/apply-and-close/чат/публикация/кросс-экранный sync) · **8** комментирование
+  (тред ≤2/якоря-фрагменты/спойлер старых ревизий/окно правки 15м/голоса/уведомления;
+  `src/lib/queries/comments.ts`, `src/app/api/comments/**`, `src/components/reader/comment*`).
 
 Ещё **не реализовано** — разделы «Архитектура» ниже описывают это как **целевое** состояние (спека для
 будущих фаз, не готовый код):
-- **8** комментирование · **9** подбор ревьюеров/согласие/оценка ·
+- **9** подбор ревьюеров/согласие/оценка ·
   **10** админка/модерация/монетизация · **11** слой качества (`playwright.config.ts` + каталог
   `testing/` ещё **не созданы**) · **12** hardening + прод-деплой.
 
 **Точка входа в фазу:** прочитай `PLAN.md` (статусы всех фаз; если есть `blocked` — сначала чини её) →
 ритуал «Промт запуска фазы» в `docs/migration/PROMPT.md` → веди ветку/PR по git-flow ниже.
-Следующая фаза — **8 (комментирование)**. Авторский кабинет, редактор (Variant B), `SubmitSheet`,
-портфолио и review-flow (ReviewPage `src/components/review/**`, `src/app/api/review/**`) — уже **готовый
-код** (фазы 6–7 `done`), не спецификация. Для остального (фазы 8–12) перед тем как опереться на
-путь/таблицу/роут из «Архитектуры», **убедись, что фаза, вводящая его, уже `done`** — часть описанного
-пока только спецификация.
+Следующая фаза — **9 (подбор ревьюеров)**. Авторский кабинет, редактор (Variant B), `SubmitSheet`,
+портфолио, review-flow (ReviewPage `src/components/review/**`, `src/app/api/review/**`) и комментирование
+(`src/components/reader/comment*`, `src/app/api/comments/**`) — уже **готовый код** (фазы 6–8 `done`),
+не спецификация. Для остального (фазы 9–12) перед тем как опереться на путь/таблицу/роут из «Архитектуры»,
+**убедись, что фаза, вводящая его, уже `done`** — часть описанного пока только спецификация.
 
 ## Команды
 - `npm run dev` — dev (:3000, `.env.local` → `blog.db`)
@@ -49,7 +51,8 @@
 
 ⚠️ `next dev` НЕ читает `.env.test` автоматически — все команды тест-стенда только через `dotenv -e .env.test --`.
 Выбор БД: `TURSO_CONNECTION_URL` → иначе `file:${DB_FILE_NAME}` (`blog.db` dev / `blog.test.db` test) —
-одно правило в `db/index.ts` и `drizzle.config.ts`.
+одно правило в `db/index.ts` и `drizzle.config.ts`. Шаблон env-переменных — закоммиченный `.env.example`
+(сами `.env.local`/`.env.test`/`.env.prod.local` — gitignored).
 
 ⚠️ **dev (`.env.local`) сейчас указывает на Turso, не на `blog.db`** (задан `TURSO_CONNECTION_URL`) —
 поэтому `npm run seed` и `db:migrate` на dev пишут в **прод-данные**. Не запускай `seed`/деструктивные
@@ -209,6 +212,9 @@
   в проде (Vercel env, без `.env`-файлов) — без экранирования. (Фаза 4.)
 - `SESSION_SECRET` без fallback — падение при старте, если не задан.
 - Seed-скрипты нужен `process.exit()` (libsql держит соединение).
+- **drizzle-kit опускает `onDelete` для `ADD COLUMN` в SQLite** — FK-действие правится в миграции
+  вручную (`0001_*.sql`: `pinned_blog_id … ON DELETE SET NULL` дописан руками). Snapshot уже фиксирует
+  `set null`, так что следующий `generate` не даёт дрейфа.
 - `requireUser()` кидает `NextResponse` (не Error) — в хендлере его нужно `return`.
 - `cover_url` валидируется на префикс `/uploads/` — внешние URL отклоняются.
 - Engagement-toggle через `db.transaction()`; нарушение `uniqueIndex` = баг в toggle-логике.
@@ -239,3 +245,12 @@
   Suspense-границу `loading.tsx`, ReviewScreen перемонтируется и теряет тост/локальный UI-стейт, а статус
   не обновляется без hard reload (`src/components/review/review-screen.tsx`). Кросс-экранный sync = поллинг
   (30с) + refresh; вебсокетов нет (presence статичен из `chapter_reviewers.online`).
+- **Комментарии (Фаза 8): глубина считается от 0** (`cmt_reply_reader` в seed — валидная глубина 2 = максимум).
+  Ответ разрешён только если глубина родителя ≤1 (ответ на узел глубины 2 → `409`); проверка серверная
+  (`src/app/api/comments/route.ts`), UI-флаг `canReply`/`depth<2` — вторичен. Листинг — **RSC**
+  (`getChapterComments` в `src/lib/queries/comments.ts`), мутации — роуты `src/app/api/comments/**`; гейтинг —
+  единый `commentGate` (reader везде / author только свой блог / reviewer никогда / `commentingBlocked` → 403),
+  перепроверяется в каждом роуте. Ревизия штампуется сервером (`resolveCommentTarget`), не из клиента.
+  Якоря-фрагменты скроллят к `[data-block-id]` (есть на каждом блоке, mode-независим) — НЕ к `id="block-…"`
+  (он только у заголовков). Голос за коммент ресинкается через `key`-remount (не `useEffect`). Soft-delete:
+  tombstone остаётся только при живых потомках; physical-delete нет (иначе `parentId` CASCADE снёс бы ответы).
