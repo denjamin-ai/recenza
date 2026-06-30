@@ -55,7 +55,7 @@
 | 4 | Auth, роли, гейтинг + UI-обвязка ролей | Платформа | `done` |
 | 5 | Читательский слой (публичный) | Продукт | `done` |
 | 6 | Авторский слой: кабинет, редактор, портфолио | Продукт | `done` |
-| 7 | Редакционный review-flow (ReviewPage) | Продукт | `in progress` |
+| 7 | Редакционный review-flow (ReviewPage) | Продукт | `done` |
 | 8 | Комментирование (читатель↔автор↔читатель) | Продукт | `todo` |
 | 9 | Подбор ревьюеров, согласие, оценка | Продукт | `todo` |
 | 10 | Админка, модерация и монетизация | Продукт | `todo` |
@@ -912,7 +912,7 @@
 
 ## Фаза 7 — Редакционный review-flow (ReviewPage)
 
-**Статус:** `in progress`
+**Статус:** `done`
 **Контекст входа.** Требует фазы 1–6 (`done`). Читать: `README.md` §3 (ReviewPage), §11.3 (согласие — учесть на будущее); `CLAUDE.md` (review-flow).
 **Разблокирует.** Фазу 8 (комментарии к ревизиям) и фазу 9 (согласие/оценка поверх ревью).
 **Старт сессии.** Проверь статусы; фазы 1–6 — `done`. Это сердце продукта — самый крупный экран.
@@ -937,24 +937,73 @@
 **Скиллы и агенты.** Создай и примени скилл `review-flow-domain` (инварианты). Скилл `next-best-practices`. Агенты: `design-watcher`, `code-reviewer`.
 
 ### Цикл качества (блокирующий гейт)
-- [ ] `npm run build` зелёный, `npm run lint` чистый
-- [ ] Применены скиллы `next-best-practices` + `review-flow-domain`
-- [ ] Сабагент `code-reviewer`: нет P0/P1
-- [ ] Сабагент `security-reviewer`: ревьюер не комментирует как читатель; автор не ставит вердикты; гейтинг POV серверный
-- [ ] Сабагент `design-watcher`: токены/aria/dark; мобильные табы Статья/Обсуждения; `aria-live` тосты
-- [ ] Сабагент `playwright-tester`: полный цикл v1→тред→apply→approve→publish, sync статусов кросс-экранно = GO
-- [ ] Обновлены «Статус» и «Журнал фазы»
+- [x] `npm run build` зелёный, `npm run lint` чистый
+- [x] Применены скиллы `next-best-practices` + `review-flow-domain`
+- [x] Сабагент `code-reviewer`: нет P0/P1 (4 P1 исправлены)
+- [x] Сабагент `security-reviewer`: ревьюер не комментирует как читатель; автор не ставит вердикты; гейтинг POV серверный (PASS, 0 critical/high)
+- [x] Сабагент `design-watcher`: токены/aria/dark; мобильные табы Статья/Обсуждения; `aria-live` тосты (3 P1 исправлены)
+- [x] Сабагент `playwright-tester`: полный цикл v1→тред→apply→approve→publish, sync статусов кросс-экранно = GO
+- [x] Обновлены «Статус» и «Журнал фазы»
 
 **DoD.**
-- [ ] Полный цикл проходит; статус синхронно меняется во всех экранах (инбокс/кабинет/ридер).
-- [ ] Ведущий назначается/меняется; вердикты считаются; публикация — только при всех approve (или force-approve, фаза 10).
-- [ ] Опубликованная глава показывает ревьюеров (текущие + прошлые версии).
+- [x] Полный цикл проходит; статус синхронно меняется во всех экранах (инбокс/кабинет/ридер).
+- [x] Ведущий назначается/меняется; вердикты считаются; публикация — только при всех approve (или force-approve, фаза 10).
+- [x] Опубликованная глава показывает ревьюеров (текущие + прошлые версии).
 
 **Журнал фазы.**
-- Статус-история:
+- Статус-история: `todo` → `in progress` (2026-06-30) → `done` (2026-06-30). Ветка `phase-7-review-flow`,
+  3 коммита (реализация → правки цикла качества → fix live-sync). Цикл качества зелёный.
+- Артефакты: `src/lib/diff.ts` (zero-dep `diffWords`), `src/lib/review-links.ts` (клиент-безопасные
+  ссылки/константы), `src/lib/queries/review.ts` (`getReviewSession`/`getReviewerQueue`/`resolveReviewAccess`/
+  `isAssignedReviewer`/`userIdsByHandle`/`getChapterIdBySlugs`), `createNotifications` в `queries/notifications.ts`;
+  9 роутов `src/app/api/review/**` (verdict, threads, threads/[id]/{replies,resolve,apply}, chat,
+  submit-revision, publish, primary-change); страницы `author/.../[chapter]/review`,
+  `reviewer/review/[chapterId]` (+ `loading.tsx`); клиент `src/components/review/**` (review-screen,
+  review-header, convo-canvas, threads-rail, action-bar, review-modals, review-chat, review-primitives,
+  review-skeleton); расширён `BlockRenderer` (review-дифф, проп `prev`) + CSS (`.diff-edit`/`.diff-stripe-*`/
+  `.blog-fragment-flash`/`.anchor-hi` + dark-border-токены); submit-роут Ф6 уведомляет ревьюеров;
+  реальный инбокс ревьюера; ссылка «Ревью» в `blog-detail-view`; href-метки ревью в `NotificationBell`.
 - Решения/отклонения:
-- Backlog:
+  - **D1 POV — серверный, без переключателя.** Демо-дропдаун POV прототипа НЕ перенесён: автор-роут →
+    POV автора (только владелец), reviewer-роут → POV назначенного ревьюера. Действия гейтятся сервером
+    (`resolveReviewAccess`): автор не ставит вердикт; ревьюер не публикует/не применяет правки.
+  - **D2 Без вебсокетов.** Состояние — серверное; кросс-экранный sync = поллинг (30с) + `router.refresh()`
+    после действия. Presence-точки статичны из `chapter_reviewers.online` (сид). Фейковый «печатает» убран.
+  - **D3 Дифф — серверный, zero-dep** (`diffWords` в `BlockRenderer` review-режиме). Изменённый text-блок
+    рендерится словесным диффом по СЫРОМУ тексту (инлайн-markdown в изменённом блоке — литералом; это
+    осознанное упрощение, markdown-aware дифф — backlog). prev = последняя published-ревизия; нет baseline → без полос.
+  - **D4 Apply-and-close — in-place** в текущей under-review ревизии + тред→resolved. Новая ревизия —
+    только «Отправить v{N+1}» (`submit-revision`): snapshot текущих блоков в новую ревизию, `prev_blocks` =
+    блоки последней published, вердикты обнулены. publish пишет `reviewer_history` (кредит) + `prev_blocks`-baseline
+    через submit-revision (не на самой публикации).
+  - **D5** Включён чат сессии (`review_chat`). Отложены: инлайн-правка блока двойным кликом, per-block verdict-штампы.
+  - **R1 сохранён:** ревьюеры назначаются напрямую в `chapter_reviewers` (submit Ф6 + submit-revision Ф7);
+    модель согласия (`review_invitations`) — Фаза 9 (см. риски).
+  - **fix live-sync:** `router.refresh()` ловил Suspense-границу `loading.tsx` → ReviewScreen
+    перемонтировался (терялся тост, статус не обновлялся live). Обёрнут в `startTransition` — фоновое
+    обновление без перемонтажа. Проверено вручную на чистом стенде.
+- Цикл качества (зелёный): `build`/`lint`/`tsc` чисто; скиллы `next-best-practices` + `review-flow-domain`
+  применены. **code-reviewer**: 0 P0, было 4 P1 — исправлены (verdict race → пересчёт в tx; apply/resolve 409
+  на закрытом треде; publish blog.publishedAt в tx; P1-3 «завышенный счётчик инбокса» оказался ложным —
+  ключ уже скоупится ревизией). **security-reviewer**: PASS, 0 critical/0 high (все binding-гейты
+  подтверждены; single-arg `and()` убран). **design-watcher**: 0 P0, было 3 P1 — исправлены (dark-border-токены;
+  мобильные табы → role=tablist; aria-label чата). **playwright-tester**: GO — P0 6/6, P1 7/7; 3×P2/P3
+  (тост/live-sync, thread→reply, floating-toolbar) — устранены fix-ом live-sync либо подтверждены как
+  артефакты автоматизации (ручная проверка: тост ms:50, reply ок, toolbar ок).
+- Backlog (P2/P3):
+  - **(P2)** Markdown-aware инлайн-дифф (сейчас словесный дифф по сырому тексту в изменённых блоках).
+  - **(P2, Ф9)** `submit-revision` обходит модель согласия (переносит ревьюеров напрямую) — при Ф9 заменить на `review_invitations`.
+  - **(P2)** per-block verdict-штампы и инлайн-правка блока двойным кликом (отложены пользователем).
+  - **(P3)** ThreadCard — кликабельный `div` (мышь); клавиатурный доступ дан через кнопку «→ блок».
+  - **(P2, унаследовано Ф12)** in-memory rate-limit не шарится между serverless-инстансами.
+  - **(LOW)** `getReviewSession` в `React.cache` — при расширении роутов (Ф10 force-approve) передавать session вниз, не звать повторно.
+  - **(LOW)** defense-in-depth: явный `isBlocked`-гейт в `resolveReviewAccess` (сейчас гасится `getCurrentUser`).
 - Риски для следующих фаз:
+  - **(Ф8)** review-`threads` ≠ публичные `public_comments` (разные таблицы/роуты) — не смешивать; ревьюер не комментирует как читатель.
+  - **(Ф9)** заменить прямое назначение (`assignReviewers`/submit-revision) на приглашение→accept; роуты
+    verdict/threads опираются на членство в `chapter_reviewers` — accept будет его наполнять. Пикер SubmitSheet получит матчинг.
+  - **(Ф10)** админ: force-approve (обойти гейт all-approve), разбор `primary_change_requests` (Ф7 их пишет +
+    уведомляет админа типом `primary_change_request`), `removed_reviewers`. Реальная смена ведущего — Ф10.
 
 **Что дальше.** Фаза 8 — комментирование.
 
