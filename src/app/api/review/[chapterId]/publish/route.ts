@@ -4,9 +4,9 @@
 // блог помечается опубликованным (publishedAt при первой публикации). Уведомляем ревьюеров.
 
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { blogs, chapterReviewers, chapterRevisions, reviewerHistory } from "@/lib/db/schema";
+import { blogs, chapterReviewers, chapterRevisions, reviewerHistory, users } from "@/lib/db/schema";
 import { assertSameOrigin } from "@/lib/csrf";
 import { hitActionRate } from "@/lib/rate-limit";
 import { createNotifications } from "@/lib/queries/notifications";
@@ -75,6 +75,16 @@ export async function POST(
         .where(and(eq(reviewerHistory.chapterId, chapterId), eq(reviewerHistory.revisionNumber, revNumber)));
       for (const r of verdictRows) {
         await tx.insert(reviewerHistory).values({ chapterId, revisionNumber: revNumber, handle: r.handle });
+      }
+
+      // Ревью завершено → освобождаем ревьюеров: reviewLoad -= 1 (не ниже 0). Закрывает цикл занятости
+      // (accept делает +1; Фаза 9). Снятие ревьюера/force-approve админом — Фаза 10.
+      const handles = verdictRows.map((r) => r.handle);
+      if (handles.length > 0) {
+        await tx
+          .update(users)
+          .set({ reviewLoad: sql`max(${users.reviewLoad} - 1, 0)` })
+          .where(inArray(users.handle, handles));
       }
 
       // publishedAt блога ставим только при первой публикации — читаем внутри транзакции (race-safe).

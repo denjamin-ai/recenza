@@ -15,6 +15,13 @@
       "when": 1782804124598,
       "tag": "0001_next_timeslip",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1782829979285,
+      "tag": "0002_tense_madame_web",
+      "breakpoints": true
     }
   ]
 }

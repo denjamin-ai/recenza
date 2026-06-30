@@ -7,7 +7,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import type { Block } from "@/types";
-import type { EditorChapter, ReviewerOption } from "@/lib/queries/author";
+import type { EditorChapter } from "@/lib/queries/author";
+import type { RankedReviewer } from "@/lib/reviewer-match";
 import { AutoTextarea } from "./auto-textarea";
 import { BlockListEditor } from "./block-list-editor";
 import { SettingsPopover } from "./settings-popover";
@@ -25,7 +26,7 @@ function SaveState({ dirty, savedAt }: { dirty: boolean; savedAt: number | null 
   );
 }
 
-export function ChapterEditor({ data, reviewers }: { data: EditorChapter; reviewers: ReviewerOption[] }) {
+export function ChapterEditor({ data, reviewers }: { data: EditorChapter; reviewers: RankedReviewer[] }) {
   const editable = data.revision.status === "draft" || data.revision.status === "changes-requested";
   const [title, setTitle] = useState(data.chapter.title);
   const [blocks, setBlocks] = useState<Block[]>(data.revision.blocks);

@@ -1,11 +1,22 @@
 import { ReviewerInboxShell } from "@/app/reviewer/_components/reviewer-inbox-shell";
 import { getCurrentUser } from "@/lib/auth";
 import { getReviewerQueue } from "@/lib/queries/review";
+import { getReviewerInbox } from "@/lib/queries/invitations";
 
 export const dynamic = "force-dynamic";
 
 export default async function ReviewerPage() {
   const user = await getCurrentUser(); // гарантированно ревьюер (гард в layout)
-  const queue = user ? await getReviewerQueue(user.handle) : [];
-  return <ReviewerInboxShell displayName={user?.displayName ?? ""} queue={queue} />;
+  const [queue, invitations] = user
+    ? await Promise.all([getReviewerQueue(user.handle), getReviewerInbox(user.handle)])
+    : [[], []];
+  return (
+    <ReviewerInboxShell
+      displayName={user?.displayName ?? ""}
+      queue={queue}
+      invitations={invitations}
+      rating={user?.reviewerRating ?? null}
+      ratingsN={user?.reviewerRatingsN ?? 0}
+    />
+  );
 }

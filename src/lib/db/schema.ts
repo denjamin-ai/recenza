@@ -371,22 +371,27 @@ export const removedReviewers = sqliteTable("removed_reviewers", {
 // ───────────────────────────── подбор · согласие · оценка · монетизация (§11.9) ─────────────────────────────
 
 // Приглашение ревьюеру; ревью стартует ТОЛЬКО после accept.
-export const reviewInvitations = sqliteTable("review_invitations", {
-  id: id(),
-  chapterId: text("chapter_id")
-    .notNull()
-    .references(() => chapters.id, { onDelete: "cascade" }),
-  revision: integer("revision").notNull(),
-  toHandle: text("to_handle")
-    .notNull()
-    .references(() => users.handle),
-  asLead: integer("as_lead", { mode: "boolean" }).notNull().default(false),
-  note: text("note"),
-  status: text("status", { enum: INVITATION_STATUSES }).notNull().default("pending"),
-  flagReason: text("flag_reason"), // при status='flagged' (навыки не совпадают)
-  invitedAt: integer("invited_at").notNull(),
-  respondedAt: integer("responded_at"),
-});
+export const reviewInvitations = sqliteTable(
+  "review_invitations",
+  {
+    id: id(),
+    chapterId: text("chapter_id")
+      .notNull()
+      .references(() => chapters.id, { onDelete: "cascade" }),
+    revision: integer("revision").notNull(),
+    toHandle: text("to_handle")
+      .notNull()
+      .references(() => users.handle),
+    asLead: integer("as_lead", { mode: "boolean" }).notNull().default(false),
+    note: text("note"),
+    status: text("status", { enum: INVITATION_STATUSES }).notNull().default("pending"),
+    flagReason: text("flag_reason"), // при status='flagged' (навыки не совпадают)
+    invitedAt: integer("invited_at").notNull(),
+    respondedAt: integer("responded_at"),
+  },
+  // Одно приглашение на (глава, ревизия, ревьюер): делает submit (delete-then-insert) и accept идемпотентными.
+  (t) => [uniqueIndex("review_invitations_chapter_rev_handle_uq").on(t.chapterId, t.revision, t.toHandle)],
+);
 
 // Приватно (ревьюер + админ); в «Топ» идёт только агрегат.
 export const reviewerRatings = sqliteTable(

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ChapterEditor } from "@/app/author/_components/editor/chapter-editor";
 import { getCurrentUser } from "@/lib/auth";
-import { getAvailableReviewers, getChapterForEditor } from "@/lib/queries/author";
+import { getChapterForEditor, getReviewerMatches } from "@/lib/queries/author";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Редактор главы", robots: { index: false, follow: false } };
@@ -17,6 +17,6 @@ export default async function ChapterEditPage({
   if (!user) notFound();
   const data = await getChapterForEditor(user.id, slug, chapter);
   if (!data) notFound(); // не найдено ИЛИ чужое (ownership)
-  const reviewers = await getAvailableReviewers();
+  const reviewers = await getReviewerMatches(data.chapter.id);
   return <ChapterEditor data={data} reviewers={reviewers} />;
 }

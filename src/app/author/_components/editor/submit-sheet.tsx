@@ -1,21 +1,26 @@
 "use client";
 
-// Правая шторка «Отправить на ревью» (Фаза 6): навыки (обяз.) + сложность + базовый пикер ревьюеров
-// с выбором ведущего + заметка + чек-лист готовности (гейт). Матчинг/скоринг — Фаза 9.
-// Перед POST submit сохраняем черновик (title+blocks), чтобы сервер валидировал актуальный контент.
+// Правая шторка «Отправить на ревью»: навыки (обяз.) + сложность + ПИКЕР С ПОДБОРОМ (Фаза 9) +
+// выбор ведущего + заметка + чек-лист готовности (гейт). Подбор: вкладки «По навыкам / Все», поиск,
+// match%/«Топ» пересчитываются ВЖИВУЮ при правке навыков (чистый rankReviewers), full не выбирается,
+// пустое состояние «нет совпадений» → запрос ревьюеров у админа (recruit_requests).
+// Сервер остаётся источником правды: /submit перепроверяет гейт; match% для flag-гейта — на сервере.
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Block, Complexity } from "@/types";
-import type { ReviewerOption } from "@/lib/queries/author";
+import { rankReviewers } from "@/lib/reviewer-match";
+import type { Availability, RankedReviewer } from "@/lib/reviewer-match";
 import { COMPLEXITY_TIERS, MAX_SKILLS, readinessChecklist } from "@/lib/blocks/validate";
 import { ChipInput } from "./chip-input";
 
-const AVAIL_META: Record<ReviewerOption["availability"], { label: string; dot: string }> = {
+const AVAIL_META: Record<Availability, { label: string; dot: string }> = {
   free: { label: "свободен", dot: "bg-[var(--success)]" },
   busy: { label: "занят", dot: "bg-[var(--warning)]" },
   full: { label: "загружен", dot: "bg-[var(--danger)]" },
 };
+
+type Tab = "matched" | "all";
 
 export function SubmitSheet({
   chapterId,
@@ -34,7 +39,7 @@ export function SubmitSheet({
   tags: string[];
   initialSkills: string[];
   initialComplexity: Complexity;
-  reviewers: ReviewerOption[];
+  reviewers: RankedReviewer[];
   onSave: () => Promise<boolean>;
   onClose: () => void;
 }) {
@@ -46,8 +51,26 @@ export function SubmitSheet({
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("matched");
+  const [query, setQuery] = useState("");
+  const [recruit, setRecruit] = useState<"idle" | "sending" | "sent" | "error">("idle");
 
   const tier = COMPLEXITY_TIERS[complexity];
+
+  // Подбор пересчитывается вживую от текущих навыков (чистая функция, без сервера).
+  const ranked = useMemo(
+    () => rankReviewers(reviewers, skills, { onlyMatched: tab === "matched" }),
+    [reviewers, skills, tab],
+  );
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return ranked;
+    return ranked.filter(
+      (r) => r.displayName.toLowerCase().includes(q) || r.competencies.some((c) => c.toLowerCase().includes(q)),
+    );
+  }, [ranked, query]);
+
+  const noMatches = tab === "matched" && ranked.length === 0;
 
   const checks = useMemo(
     () => readinessChecklist({ title: chapterTitle, blocks, tags, skills, complexity, reviewers: picked, primary }),
@@ -65,6 +88,21 @@ export function SubmitSheet({
       if (prev.length >= tier.max) return prev; // не больше максимума по сложности
       return [...prev, handle];
     });
+  }
+
+  async function requestRecruit() {
+    if (skills.length === 0) return;
+    setRecruit("sending");
+    try {
+      const res = await fetch("/api/author/recruit-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chapterId, skills }),
+      });
+      setRecruit(res.ok ? "sent" : "error");
+    } catch {
+      setRecruit("error");
+    }
   }
 
   async function submit() {
@@ -168,67 +206,143 @@ export function SubmitSheet({
             </p>
           </section>
 
-          {/* Ревьюеры */}
+          {/* Ревьюеры — подбор */}
           <section>
-            <h3 className="mb-2 text-[length:var(--type-small)] font-medium text-[var(--muted-foreground)]">
-              Ревьюеры ({picked.length}/{tier.max})
-            </h3>
-            {reviewers.length === 0 && (
-              <p className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">Нет доступных ревьюеров.</p>
-            )}
-            <ul className="flex flex-col gap-1.5">
-              {reviewers.map((r) => {
-                const isPicked = picked.includes(r.handle);
-                const disabled = r.availability === "full" && !isPicked;
-                return (
-                  <li
-                    key={r.handle}
-                    className={`rounded-[var(--radius-sm)] border p-2.5 ${isPicked ? "border-[var(--accent)]" : "border-[var(--border)]"}`}
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h3 className="text-[length:var(--type-small)] font-medium text-[var(--muted-foreground)]">
+                Ревьюеры ({picked.length}/{tier.max})
+              </h3>
+              <div role="tablist" aria-label="Фильтр ревьюеров" className="flex gap-1">
+                {([["matched", "По навыкам"], ["all", "Все"]] as const).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === key}
+                    onClick={() => setTab(key)}
+                    className={`rounded-[var(--radius-pill)] px-2.5 py-1 text-[length:var(--type-small)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                      tab === key ? "bg-[var(--accent)] text-[var(--accent-foreground)]" : "border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                    }`}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <label className="flex min-w-0 items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={isPicked}
-                          disabled={disabled}
-                          onChange={() => togglePick(r.handle)}
-                          className="accent-[var(--accent)]"
-                        />
-                        <span className="truncate text-[length:var(--type-small)]">{r.displayName}</span>
-                        {r.rating != null && (
-                          <span className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">★ {r.rating.toFixed(1)}</span>
-                        )}
-                      </label>
-                      <span className="flex items-center gap-1 text-[length:var(--type-small)] text-[var(--muted-foreground)]">
-                        <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${AVAIL_META[r.availability].dot}`} />
-                        {AVAIL_META[r.availability].label}
-                      </span>
-                    </div>
-                    {r.competencies.length > 0 && (
-                      <div className="mt-1.5 flex flex-wrap gap-1">
-                        {r.competencies.slice(0, 5).map((comp) => (
-                          <span key={comp} className="rounded-[var(--radius-pill)] bg-[var(--muted)] px-1.5 py-0.5 text-[0.7rem] text-[var(--muted-foreground)]">
-                            {comp}
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Поиск по имени или компетенции…"
+              aria-label="Поиск ревьюеров"
+              className="mb-2 w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1.5 text-[length:var(--type-small)] text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            />
+
+            {noMatches ? (
+              <div className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-secondary)] p-3 text-[length:var(--type-small)]">
+                <p className="text-[var(--muted-foreground)]">
+                  {skills.length === 0
+                    ? "Добавьте навыки статьи — по ним подбираются ревьюеры."
+                    : "Ревьюеры под эти навыки не найдены."}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTab("all")}
+                    className="rounded-[var(--radius-sm)] border border-[var(--border)] px-3 py-1.5 transition-colors hover:border-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  >
+                    Показать всех
+                  </button>
+                  {skills.length > 0 && recruit !== "sent" && (
+                    <button
+                      type="button"
+                      onClick={requestRecruit}
+                      disabled={recruit === "sending"}
+                      className="rounded-[var(--radius-sm)] bg-[var(--accent)] px-3 py-1.5 font-medium text-[var(--accent-foreground)] transition-opacity hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+                    >
+                      {recruit === "sending" ? "Отправляем…" : "Запросить ревьюеров у админа"}
+                    </button>
+                  )}
+                </div>
+                {recruit === "sent" && (
+                  <p className="mt-2 text-[var(--success)]">Запрос отправлен админу. Статус — в кабинете автора.</p>
+                )}
+                {recruit === "error" && <p className="mt-2 text-[var(--danger)]">Не удалось отправить запрос.</p>}
+              </div>
+            ) : visible.length === 0 ? (
+              <p className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">Ничего не найдено.</p>
+            ) : (
+              <ul className="flex flex-col gap-1.5">
+                {visible.map((r) => {
+                  const isPicked = picked.includes(r.handle);
+                  const disabled = r.availability === "full" && !isPicked;
+                  return (
+                    <li
+                      key={r.handle}
+                      className={`rounded-[var(--radius-sm)] border p-2.5 ${isPicked ? "border-[var(--accent)]" : "border-[var(--border)]"} ${disabled ? "opacity-50" : ""}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="flex min-w-0 items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={isPicked}
+                            disabled={disabled}
+                            onChange={() => togglePick(r.handle)}
+                            className="accent-[var(--accent)]"
+                          />
+                          <span className="truncate text-[length:var(--type-small)]">{r.displayName}</span>
+                          {r.rating != null && (
+                            <span className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">★ {r.rating.toFixed(1)}</span>
+                          )}
+                        </label>
+                        <span className="flex shrink-0 items-center gap-2">
+                          {r.matchPct > 0 && (
+                            <span className="rounded-[var(--radius-pill)] bg-[var(--accent-bg)] px-1.5 py-0.5 text-[0.7rem] font-medium text-[var(--accent)]">
+                              {r.matchPct}%
+                            </span>
+                          )}
+                          <span className="flex items-center gap-1 text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+                            <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${AVAIL_META[r.availability].dot}`} />
+                            {AVAIL_META[r.availability].label}
                           </span>
-                        ))}
+                        </span>
                       </div>
-                    )}
-                    {isPicked && (
-                      <button
-                        type="button"
-                        onClick={() => setPrimary(r.handle)}
-                        aria-pressed={primary === r.handle}
-                        className={`mt-1.5 rounded-[var(--radius-pill)] px-2 py-0.5 text-[0.7rem] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
-                          primary === r.handle ? "bg-[var(--accent)] text-[var(--accent-foreground)]" : "border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                        }`}
-                      >
-                        {primary === r.handle ? "ВЕДУЩИЙ" : "Сделать ведущим"}
-                      </button>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+                      {r.competencies.length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                          {r.competencies.slice(0, 6).map((comp) => {
+                            const hit = r.matched.includes(comp);
+                            return (
+                              <span
+                                key={comp}
+                                className={`rounded-[var(--radius-pill)] px-1.5 py-0.5 text-[0.7rem] ${
+                                  hit ? "bg-[var(--accent-bg)] text-[var(--accent)]" : "bg-[var(--muted)] text-[var(--muted-foreground)]"
+                                }`}
+                              >
+                                {hit ? "✓ " : ""}
+                                {comp}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {isPicked && (
+                        <button
+                          type="button"
+                          onClick={() => setPrimary(r.handle)}
+                          aria-pressed={primary === r.handle}
+                          className={`mt-1.5 rounded-[var(--radius-pill)] px-2 py-0.5 text-[0.7rem] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                            primary === r.handle ? "bg-[var(--accent)] text-[var(--accent-foreground)]" : "border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                          }`}
+                        >
+                          {primary === r.handle ? "ВЕДУЩИЙ" : "Сделать ведущим"}
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </section>
 
           {/* Заметка */}

@@ -26,6 +26,7 @@
   --accent: #0f766e;
   --accent-hover: #0c6960;
   --accent-foreground: #ffffff;
+  --accent-bg: #ccfbf1;
 
   /* Семантические */
   --success: #166534;
@@ -117,6 +118,7 @@ html[data-theme="dark"] {
   --accent: #4a9d92;
   --accent-hover: #5eb8ac;
   --accent-foreground: #0a0a0a;
+  --accent-bg: rgb(19 78 74 / 0.35);
 
   --success: #4ade80;
   --success-bg: rgb(20 83 45 / 0.3);

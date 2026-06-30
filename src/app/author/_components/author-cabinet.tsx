@@ -6,8 +6,26 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import type { AuthorBlogCard } from "@/lib/queries/author";
-import type { RevisionStatus } from "@/types";
+import type {
+  AuthorBlogCard,
+  RatingPrompt,
+  RecruitStatusItem,
+  SkillsMismatchNotice,
+} from "@/lib/queries/author";
+import type { RecruitStatus, RevisionStatus } from "@/types";
+import { RatingPromptCard } from "./rating-prompt";
+
+const RECRUIT_META: Record<RecruitStatus, { label: string; cls: string }> = {
+  pending: { label: "На рассмотрении", cls: "bg-[var(--warning-bg)] text-[var(--warning)]" },
+  approved: { label: "Одобрен", cls: "bg-[var(--success-bg)] text-[var(--success)]" },
+  rejected: { label: "Отклонён", cls: "bg-[var(--danger-bg)] text-[var(--danger)]" },
+};
+
+const RECRUIT_HINT: Record<RecruitStatus, string> = {
+  pending: "Запрос отправлен админу. Блог нельзя опубликовать, пока нет подходящих ревьюеров.",
+  approved: "Админ ищет ревьюеров по вашим навыкам — направление добавлено на доску «Ищем ревьюеров».",
+  rejected: "Запрос отклонён.",
+};
 
 const STATUS_DOT: Record<RevisionStatus, string> = {
   published: "bg-[var(--success)]",
@@ -223,10 +241,16 @@ export function AuthorCabinet({
   displayName,
   blogs,
   pinnedBlogId,
+  recruitRequests,
+  ratingPrompts,
+  mismatches,
 }: {
   displayName: string;
   blogs: AuthorBlogCard[];
   pinnedBlogId: string | null;
+  recruitRequests: RecruitStatusItem[];
+  ratingPrompts: RatingPrompt[];
+  mismatches: SkillsMismatchNotice[];
 }) {
   return (
     <div className="mx-auto w-full max-w-[var(--max-content)] px-6 py-10">
@@ -245,6 +269,33 @@ export function AuthorCabinet({
         </Link>
       </header>
 
+      {mismatches.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-[length:var(--type-h4)]">Навыки не совпадают</h2>
+          <ul className="mt-4 flex flex-col gap-2">
+            {mismatches.map((m) => (
+              <li
+                key={m.chapterId}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--warning-border)] bg-[var(--warning-bg)] p-3"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">{m.chapterTitle}</span>
+                  <span className="block text-[length:var(--type-small)] text-[var(--warning)]">
+                    Глава снята с ревью: {m.flagReason ?? "навыки не совпадают"}. Исправьте навыки и отправьте заново.
+                  </span>
+                </span>
+                <Link
+                  href={`/author/blog/${m.blogSlug}/${m.chapterSlug}/edit`}
+                  className="min-h-9 shrink-0 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[length:var(--type-small)] transition-colors hover:border-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                >
+                  Изменить навыки →
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="mt-8">
         <h2 className="text-[length:var(--type-h4)]">Мои блоги</h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -254,6 +305,47 @@ export function AuthorCabinet({
           ))}
         </div>
       </section>
+
+      {ratingPrompts.length > 0 && (
+        <section className="mt-10">
+          <h2 className="text-[length:var(--type-h4)]">Оцените ревьюеров</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            {ratingPrompts.map((p) => (
+              <RatingPromptCard key={p.chapterId} prompt={p} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {recruitRequests.length > 0 && (
+        <section className="mt-10">
+          <h2 className="text-[length:var(--type-h4)]">Запросы ревьюеров</h2>
+          <ul className="mt-4 flex flex-col gap-2">
+            {recruitRequests.map((r) => (
+              <li key={r.id} className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="min-w-0 truncate font-medium">{r.chapterTitle ?? "Запрос на подбор"}</span>
+                  <span className={`shrink-0 rounded-[var(--radius-pill)] px-2 py-0.5 text-[length:var(--type-small)] ${RECRUIT_META[r.status].cls}`}>
+                    {RECRUIT_META[r.status].label}
+                  </span>
+                </div>
+                {r.skills.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {r.skills.map((s) => (
+                      <span key={s} className="rounded-[var(--radius-pill)] bg-[var(--muted)] px-1.5 py-0.5 text-[0.7rem] text-[var(--muted-foreground)]">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-1.5 text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+                  {r.status === "rejected" && r.reason ? r.reason : RECRUIT_HINT[r.status]}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

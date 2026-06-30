@@ -123,7 +123,7 @@ export interface ReviewerQueueItem {
 }
 
 // Константы/ссылки уведомлений — в клиент-безопасном @/lib/review-links; ре-экспорт для сервера.
-export { REVIEW_NOTIFY, authorReviewHref, reviewerReviewHref } from "@/lib/review-links";
+export { REVIEW_NOTIFY, authorReviewHref, reviewerInboxHref, reviewerReviewHref } from "@/lib/review-links";
 
 // ───────────────────────────── getReviewSession ─────────────────────────────
 

@@ -30,7 +30,16 @@ function labelOf(item: Item): string {
       return chapterTitle ? `Новый комментарий: ${chapterTitle}` : "Новый комментарий к вашей главе";
     // ── review-flow (Фаза 7) ──
     case "review_invited":
-      return chapterTitle ? `Вас назначили ревьюером: ${chapterTitle}` : "Вас назначили ревьюером";
+      return chapterTitle ? `Вас пригласили в ревью: ${chapterTitle}` : "Вас пригласили в ревью";
+    // ── подбор/согласие (Фаза 9) ──
+    case "review_invite_accepted":
+      return chapterTitle ? `Ревьюер принял приглашение: ${chapterTitle}` : "Ревьюер принял приглашение";
+    case "review_invite_declined":
+      return chapterTitle ? `Ревьюер отклонил приглашение: ${chapterTitle}` : "Ревьюер отклонил приглашение";
+    case "review_skills_mismatch":
+      return chapterTitle ? `Навыки не совпадают — исправьте навыки: ${chapterTitle}` : "Навыки не совпадают — исправьте навыки";
+    case "recruit_requested":
+      return "Запрос на подбор ревьюеров";
     case "review_changes_requested":
       return chapterTitle ? `Запрошены правки: ${chapterTitle}` : "Ревьюер запросил правки";
     case "review_ready":
