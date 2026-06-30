@@ -96,7 +96,7 @@ export function SubmitSheet({
 
   return (
     <div
-      className="fixed inset-0 z-40 flex justify-end bg-black/40"
+      className="fixed inset-0 z-40 flex justify-end bg-[var(--overlay)]"
       role="dialog"
       aria-modal="true"
       aria-label="Отправка на ревью"
@@ -107,9 +107,10 @@ export function SubmitSheet({
           <h2 className="text-[length:var(--type-h4)]">Отправить на ревью</h2>
           <button
             type="button"
+            autoFocus
             onClick={onClose}
             aria-label="Закрыть"
-            className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
           >
             ✕
           </button>

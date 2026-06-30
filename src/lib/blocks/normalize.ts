@@ -22,7 +22,11 @@ function inList<T extends readonly string[]>(list: T, v: unknown): v is T[number
   return typeof v === "string" && (list as readonly string[]).includes(v);
 }
 
-/** Одна сырая запись → канонический Block (только релевантные поля, верные имена). null — мусор. */
+/**
+ * Одна сырая запись → канонический Block (только релевантные поля, верные имена). null — мусор.
+ * ⚠️ Неизвестный type МОЛЧА коэрсится в "p" (не отбрасывается). Для недоверенного ввода всегда
+ * вызывай ПОСЛЕ validateBlocks() (она применяет allowlist BLOCK_TYPES) — иначе allowlist обходится.
+ */
 export function normalizeBlock(raw: unknown): Block | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;

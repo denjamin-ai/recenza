@@ -166,15 +166,19 @@ export async function POST(
   }
 
   const now = Math.floor(Date.now() / 1000);
-  await db.transaction(async (tx) => {
-    await tx.update(chapters).set({ skills: stringifyJson(skills), primaryHandle: primary }).where(eq(chapters.id, chapterId));
-    await tx.update(blogs).set({ complexity, lastActivityAt: now }).where(eq(blogs.id, row.blogId));
-    await tx
-      .update(chapterRevisions)
-      .set({ status: "under-review", submittedAt: now, ...(note !== null ? { summary: note } : {}) })
-      .where(eq(chapterRevisions.id, rev.id));
-    await assignReviewers(tx, chapterId, rev.number, reviewers, primary);
-  });
+  try {
+    await db.transaction(async (tx) => {
+      await tx.update(chapters).set({ skills: stringifyJson(skills), primaryHandle: primary }).where(eq(chapters.id, chapterId));
+      await tx.update(blogs).set({ complexity, lastActivityAt: now }).where(eq(blogs.id, row.blogId));
+      await tx
+        .update(chapterRevisions)
+        .set({ status: "under-review", submittedAt: now, ...(note !== null ? { summary: note } : {}) })
+        .where(eq(chapterRevisions.id, rev.id));
+      await assignReviewers(tx, chapterId, rev.number, reviewers, primary);
+    });
+  } catch {
+    return NextResponse.json({ error: "Не удалось отправить, попробуйте ещё раз." }, { status: 500 });
+  }
 
   return NextResponse.json({ ok: true, blogSlug: row.blogSlug, chapterSlug: row.chapterSlug, revisionNumber: rev.number });
 }

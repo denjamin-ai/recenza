@@ -101,18 +101,22 @@ export async function PATCH(
   }
 
   const now = Math.floor(Date.now() / 1000);
-  await db.transaction(async (tx) => {
-    const revSet: { blocks?: string; summary?: string | null } = {};
-    if (blocksJson !== undefined) revSet.blocks = blocksJson;
-    if (summary !== undefined) revSet.summary = summary;
-    if (Object.keys(revSet).length > 0) {
-      await tx.update(chapterRevisions).set(revSet).where(eq(chapterRevisions.id, rev.id));
-    }
-    if (Object.keys(set).length > 0) {
-      await tx.update(chapters).set(set).where(eq(chapters.id, chapterId));
-    }
-    await tx.update(blogs).set({ lastActivityAt: now }).where(eq(blogs.id, row.blogId));
-  });
+  try {
+    await db.transaction(async (tx) => {
+      const revSet: { blocks?: string; summary?: string | null } = {};
+      if (blocksJson !== undefined) revSet.blocks = blocksJson;
+      if (summary !== undefined) revSet.summary = summary;
+      if (Object.keys(revSet).length > 0) {
+        await tx.update(chapterRevisions).set(revSet).where(eq(chapterRevisions.id, rev.id));
+      }
+      if (Object.keys(set).length > 0) {
+        await tx.update(chapters).set(set).where(eq(chapters.id, chapterId));
+      }
+      await tx.update(blogs).set({ lastActivityAt: now }).where(eq(blogs.id, row.blogId));
+    });
+  } catch {
+    return NextResponse.json({ error: "Не удалось сохранить, попробуйте ещё раз." }, { status: 500 });
+  }
 
   return NextResponse.json({ ok: true, revisionNumber: rev.number, savedAt: now });
 }

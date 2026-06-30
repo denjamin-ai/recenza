@@ -67,7 +67,7 @@ export function MarkableTextarea({
   }
 
   const btn =
-    "flex h-7 min-w-7 items-center justify-center rounded-[var(--radius-sm)] px-1.5 text-[length:var(--type-small)] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]";
+    "flex h-8 min-w-8 items-center justify-center rounded-[var(--radius-sm)] px-2 text-[length:var(--type-small)] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]";
 
   return (
     <div className="relative">

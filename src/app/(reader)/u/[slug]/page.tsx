@@ -66,7 +66,7 @@ export default async function ProfilePage({ params }: { params: Params }) {
               {user.links.map((l) => (
                 <li key={l.url}>
                   <a
-                    href={l.url}
+                    href={/^https?:\/\//i.test(l.url) ? l.url : "#"}
                     target="_blank"
                     rel="noopener noreferrer nofollow"
                     className="text-[var(--accent)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"

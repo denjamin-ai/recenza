@@ -110,6 +110,7 @@ export function BlogDetailView({ detail }: { detail: AuthorBlogDetail }) {
   const FILTERS: { key: Filter; label: string }[] = [
     { key: "all", label: `Все (${counts.all})` },
     { key: "draft", label: `Черновики (${counts.draft})` },
+    { key: "changes-requested", label: `Нужны правки (${counts["changes-requested"]})` },
     { key: "under-review", label: `На ревью (${counts["under-review"]})` },
     { key: "published", label: `Опубликовано (${counts.published})` },
   ];
@@ -231,7 +232,7 @@ export function BlogDetailView({ detail }: { detail: AuthorBlogDetail }) {
                       onClick={() => move(idx, -1)}
                       disabled={idx === 0 || busy}
                       aria-label={`Поднять главу «${ch.title}»`}
-                      className="flex h-5 w-7 items-center justify-center rounded-[var(--radius-sm)] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                      className="flex h-7 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                     >
                       <span aria-hidden="true">▲</span>
                     </button>
@@ -240,7 +241,7 @@ export function BlogDetailView({ detail }: { detail: AuthorBlogDetail }) {
                       onClick={() => move(idx, 1)}
                       disabled={idx === order.length - 1 || busy}
                       aria-label={`Опустить главу «${ch.title}»`}
-                      className="flex h-5 w-7 items-center justify-center rounded-[var(--radius-sm)] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                      className="flex h-7 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                     >
                       <span aria-hidden="true">▼</span>
                     </button>

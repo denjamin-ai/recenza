@@ -65,7 +65,7 @@ export function SettingsPopover({
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-start justify-center bg-black/40 p-4 pt-20"
+      className="fixed inset-0 z-40 flex items-start justify-center bg-[var(--overlay)] p-4 pt-20"
       role="dialog"
       aria-modal="true"
       aria-label="Настройки блога"
@@ -78,7 +78,7 @@ export function SettingsPopover({
             type="button"
             onClick={onClose}
             aria-label="Закрыть"
-            className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
           >
             ✕
           </button>
@@ -89,7 +89,7 @@ export function SettingsPopover({
             <span className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">Адрес (slug)</span>
             <span className="flex items-center gap-1">
               <span className="font-mono text-[length:var(--type-small)] text-[var(--muted-foreground)]">/blog/</span>
-              <input value={slug} onChange={(e) => setSlug(e.target.value)} className={fieldCls} aria-label="slug" />
+              <input autoFocus value={slug} onChange={(e) => setSlug(e.target.value)} className={fieldCls} aria-label="slug" />
             </span>
           </label>
 

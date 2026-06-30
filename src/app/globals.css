@@ -20,6 +20,7 @@
   --bg-secondary: #f7f7f7;
   --bg-elevated: #ffffff;
   --text-muted: #9ca3af;
+  --overlay: rgb(0 0 0 / 0.45); /* скрим модалок/шторок (тёмный в обеих темах) */
 
   /* Акцент — teal */
   --accent: #0f766e;
