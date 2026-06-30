@@ -80,6 +80,7 @@ export default async function ChapterPage({ params }: { params: Params }) {
         canFollow={viewer?.id !== blog.author.id}
         singleHref={`/blog/${slug}/${active.slug}`}
         wholeHref={`/blog/${slug}?mode=whole`}
+        viewer={viewer ? { id: viewer.id, role: viewer.role, commentingBlocked: viewer.commentingBlocked } : null}
       />
     </>
   );

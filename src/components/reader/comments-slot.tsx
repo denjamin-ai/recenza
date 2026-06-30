@@ -1,18 +1,54 @@
-// Якорный слот для публичных комментариев (контракт места) — реализация в Фазе 8.
-// id="comments" нужен для deep-link из уведомлений/якорей; ключ ревизии передаётся пропсами на будущее.
+// Секция публичных комментариев (Фаза 8). RSC-шелл: грузит тред с сервера (getChapterComments) и отдаёт
+// клиентской CommentsSection. id секции уникален в режиме whole (по главе) для корректных deep-link/скролла.
 
-export function CommentsSlot({ revision }: { revision: number }) {
+import { getChapterComments, type CommentViewer } from "@/lib/queries/comments";
+import { CommentsSection } from "./comments-section";
+
+export async function CommentsSlot({
+  blogSlug,
+  chapterSlug,
+  revision,
+  blogAuthorId,
+  sectionId,
+  viewer,
+}: {
+  blogSlug: string;
+  chapterSlug: string;
+  revision: number;
+  blogAuthorId: string;
+  sectionId: string;
+  viewer: CommentViewer | null;
+}) {
+  const data = await getChapterComments({
+    blogSlug,
+    chapterSlug,
+    currentRevision: revision,
+    viewer,
+    blogAuthorId,
+  });
+
   return (
     <section
-      id="comments"
+      id={sectionId}
       aria-label="Комментарии"
       data-revision={revision}
       className="mt-12 border-t border-[var(--border)] pt-8"
     >
-      <h2 className="text-[length:var(--type-h4)]">Комментарии</h2>
-      <p className="mt-2 text-[length:var(--type-small)] text-[var(--muted-foreground)]">
-        Обсуждение скоро будет доступно.
-      </p>
+      <h2 className="text-[length:var(--type-h4)]">
+        Комментарии{data.total > 0 ? ` · ${data.total}` : ""}
+      </h2>
+      <CommentsSection
+        blogSlug={blogSlug}
+        chapterSlug={chapterSlug}
+        sectionId={sectionId}
+        current={data.current}
+        older={data.older}
+        total={data.total}
+        canComment={data.canComment}
+        blockedReason={data.blockedReason}
+        isAuthed={viewer != null}
+        viewerId={viewer?.id ?? null}
+      />
     </section>
   );
 }
