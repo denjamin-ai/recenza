@@ -3,7 +3,7 @@
 // UI-состояние (активный тред/выделение/мобайл-таб/модалки) — локальное. Действия → /api/review/**.
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { ReviewSession, ReviewThread } from "@/lib/queries/review";
 import { ReviewHeader } from "./review-header";
@@ -29,6 +29,9 @@ export function ReviewScreen({
   article: ReactNode;
 }) {
   const router = useRouter();
+  // router.refresh() в transition: фоновое обновление данных без срабатывания Suspense-фоллбэка
+  // (loading.tsx) — иначе ReviewScreen перемонтируется и теряет тост/локальный UI-стейт после действия.
+  const [, startTransition] = useTransition();
   const { chapter, blog, revision, reviewers, threads } = session;
 
   // UI-состояние.
@@ -69,9 +72,10 @@ export function ReviewScreen({
   }, [toast]);
 
   // Поллинг кросс-экранных изменений (вердикты/треды из других сессий). Только когда вкладка видима.
+  // refresh в transition — фоновое обновление без Suspense-фоллбэка/перемонтажа.
   useEffect(() => {
     const tick = () => {
-      if (document.visibilityState === "visible") router.refresh();
+      if (document.visibilityState === "visible") startTransition(() => router.refresh());
     };
     const id = window.setInterval(tick, POLL_MS);
     document.addEventListener("visibilitychange", tick);
@@ -79,7 +83,7 @@ export function ReviewScreen({
       window.clearInterval(id);
       document.removeEventListener("visibilitychange", tick);
     };
-  }, [router]);
+  }, [router, startTransition]);
 
   // Esc сбрасывает выделение/активный тред.
   useEffect(() => {
@@ -112,7 +116,7 @@ export function ReviewScreen({
           return false;
         }
         if (okToast) setToast(okToast);
-        router.refresh();
+        startTransition(() => router.refresh());
         return true;
       } catch {
         setToast({ kind: "error", text: "Сеть недоступна. Попробуйте ещё раз." });
@@ -121,7 +125,7 @@ export function ReviewScreen({
         setBusy(false);
       }
     },
-    [busy, router],
+    [busy, router, startTransition],
   );
 
   // ── Навигация bauble ↔ thread ──
