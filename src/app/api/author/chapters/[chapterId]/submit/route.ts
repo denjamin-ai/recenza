@@ -14,6 +14,8 @@ import { requireAuthor } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { hitActionRate } from "@/lib/rate-limit";
 import { parseJson, stringifyJson } from "@/lib/db/json";
+import { createNotifications } from "@/lib/queries/notifications";
+import { REVIEW_NOTIFY, reviewerReviewHref } from "@/lib/queries/review";
 import { COMPLEXITY_TIERS, MAX_SKILLS, readinessChecklist } from "@/lib/blocks/validate";
 import type { Block, Complexity } from "@/types";
 
@@ -134,13 +136,14 @@ export async function POST(
 
   // Ревьюеры существуют и имеют роль reviewer (не заблокированы).
   const reviewerRows = await db
-    .select({ handle: users.handle })
+    .select({ handle: users.handle, id: users.id })
     .from(users)
     .where(and(inArray(users.handle, reviewers), eq(users.role, "reviewer"), eq(users.isBlocked, false)));
   const valid = new Set(reviewerRows.map((r) => r.handle));
   if (reviewers.some((h) => !valid.has(h))) {
     return NextResponse.json({ error: "В списке есть несуществующий ревьюер." }, { status: 400 });
   }
+  const reviewerIdByHandle = new Map(reviewerRows.map((r) => [r.handle, r.id]));
 
   // Гейт готовности (повтор серверной правды).
   const checks = readinessChecklist({
@@ -175,6 +178,25 @@ export async function POST(
         .set({ status: "under-review", submittedAt: now, ...(note !== null ? { summary: note } : {}) })
         .where(eq(chapterRevisions.id, rev.id));
       await assignReviewers(tx, chapterId, rev.number, reviewers, primary);
+      // Уведомить назначенных ревьюеров (Фаза 7). Модель согласия (приглашение→accept) — Фаза 9;
+      // пока это прямое уведомление о назначении (в одной транзакции с записью chapter_reviewers).
+      await createNotifications(
+        tx,
+        reviewers
+          .map((h) => reviewerIdByHandle.get(h))
+          .filter((id): id is string => !!id)
+          .map((recipientId) => ({
+            recipientId,
+            type: REVIEW_NOTIFY.invited,
+            payload: {
+              href: reviewerReviewHref(chapterId),
+              chapterTitle: row.chapterTitle,
+              blogSlug: row.blogSlug,
+              chapterSlug: row.chapterSlug,
+              revision: rev.number,
+            },
+          })),
+      );
     });
   } catch {
     return NextResponse.json({ error: "Не удалось отправить, попробуйте ещё раз." }, { status: 500 });

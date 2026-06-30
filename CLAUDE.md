@@ -7,28 +7,34 @@
 > детальная модель — в `README.md` прототипа. План миграции — `PLAN.md`. Стенды/БД — `ENVIRONMENTS.md`.
 > Тесты — `TESTING.md`.
 
-## Текущее состояние репозитория (фазы 0–5 `done`, дальше 6–12 `todo`)
+## Текущее состояние репозитория (фазы 0–7 `done`, дальше 8–12 `todo`)
 
 ⚠️ **Прочти первым.** Каркас существует и работает: Next 16 + `src/`, `node_modules/`, `tsconfig.json`,
 `next.config.ts`, `drizzle.config.ts`, миграция `drizzle/0000_*.sql` (**28 таблиц**), `blog.db`/`blog.test.db`,
-два стенда, auth/роли, читательский слой. npm-скрипты работают.
+два стенда, auth/роли, читательский слой, авторский слой (кабинет/редактор/портфолио), review-flow
+(ReviewPage). npm-скрипты работают.
 
 **Источник правды по прогрессу — `docs/migration/PLAN.md`** («Карта фаз» + живой Журнал каждой фазы;
 там же — решения и backlog по каждой фазе). На сегодня закрыто:
 - **0** bootstrap (каркас/env/git) · **1** токены+тема · **2** схема БД (Drizzle/turso) ·
   **3** два стенда+seed · **4** auth/роли/гейтинг+UI-оболочки · **5** читательский слой
-  (лента/ридер/engagement/уведомления/SEO).
+  (лента/ридер/engagement/уведомления/SEO) · **6** авторский слой
+  (кабинет + редактор Variant B + портфолио) · **7** review-flow (ReviewPage:
+  треды/вердикты/apply-and-close/чат/публикация/кросс-экранный sync).
 
 Ещё **не реализовано** — разделы «Архитектура» ниже описывают это как **целевое** состояние (спека для
 будущих фаз, не готовый код):
-- **6** авторский кабинет + редактор (Variant B) + портфолио · **7** review-flow (ReviewPage) ·
-  **8** комментирование · **9** подбор ревьюеров/согласие/оценка · **10** админка/модерация/монетизация ·
-  **11** слой качества (`playwright.config.ts` + каталог `testing/` ещё **не созданы**) · **12** hardening + прод-деплой.
+- **8** комментирование · **9** подбор ревьюеров/согласие/оценка ·
+  **10** админка/модерация/монетизация · **11** слой качества (`playwright.config.ts` + каталог
+  `testing/` ещё **не созданы**) · **12** hardening + прод-деплой.
 
 **Точка входа в фазу:** прочитай `PLAN.md` (статусы всех фаз; если есть `blocked` — сначала чини её) →
 ритуал «Промт запуска фазы» в `docs/migration/PROMPT.md` → веди ветку/PR по git-flow ниже.
-Перед тем как опереться на путь/таблицу/роут/`Submit`-компонент из «Архитектуры», **убедись, что фаза,
-вводящая его, уже `done`** — часть описанного пока только спецификация.
+Следующая фаза — **8 (комментирование)**. Авторский кабинет, редактор (Variant B), `SubmitSheet`,
+портфолио и review-flow (ReviewPage `src/components/review/**`, `src/app/api/review/**`) — уже **готовый
+код** (фазы 6–7 `done`), не спецификация. Для остального (фазы 8–12) перед тем как опереться на
+путь/таблицу/роут из «Архитектуры», **убедись, что фаза, вводящая его, уже `done`** — часть описанного
+пока только спецификация.
 
 ## Команды
 - `npm run dev` — dev (:3000, `.env.local` → `blog.db`)
@@ -44,6 +50,10 @@
 ⚠️ `next dev` НЕ читает `.env.test` автоматически — все команды тест-стенда только через `dotenv -e .env.test --`.
 Выбор БД: `TURSO_CONNECTION_URL` → иначе `file:${DB_FILE_NAME}` (`blog.db` dev / `blog.test.db` test) —
 одно правило в `db/index.ts` и `drizzle.config.ts`.
+
+⚠️ **dev (`.env.local`) сейчас указывает на Turso, не на `blog.db`** (задан `TURSO_CONNECTION_URL`) —
+поэтому `npm run seed` и `db:migrate` на dev пишут в **прод-данные**. Не запускай `seed`/деструктивные
+команды на `:3000`; всё тестирование веди на `:3001` / `blog.test.db`.
 
 ## Стек
 - Next.js 16 App Router, TypeScript, Tailwind CSS v4
@@ -202,3 +212,30 @@
 - `requireUser()` кидает `NextResponse` (не Error) — в хендлере его нужно `return`.
 - `cover_url` валидируется на префикс `/uploads/` — внешние URL отклоняются.
 - Engagement-toggle через `db.transaction()`; нарушение `uniqueIndex` = баг в toggle-логике.
+- **Редактор (Variant B, Фаза 6) — управляемые `textarea` с raw-markdown** (никакого
+  `contenteditable`/`execCommand`). Инлайн-разметка живёт строкой в `block.text`
+  (`**b**`/`*i*`/`` `code` ``/`[l](url)`; курсив только `*..*`, чтобы `snake_case` не курсивился),
+  рендер — `src/components/blocks/inline.tsx`. Отдельного block-типа LaTeX пока нет (задел на Фазу 12).
+- **`normalizeBlock` (`src/lib/blocks/normalize.ts`) лечит дрейф имён** прототип→рендерер
+  (`subtype→variant`, `tone→variant`, `caption→alt`); валидатор + чек-лист готовности
+  (`src/lib/blocks/validate.ts`) изоморфны клиент⇄сервер. Константы блоков — в клиент-безопасном
+  `src/lib/blocks/constants.ts` (без drizzle, чтобы редактор не тащил схему БД в бандл).
+- **Submit главы (Фаза 6 — заглушка R1) пишет ревьюеров напрямую в `chapter_reviewers`**
+  (`verdict=null`, `isPrimary`, `online/typing=false`); `review_invitations` пока **не пишется** —
+  модель согласия (приглашение→accept) придёт в Фазе 9. Главу `under-review`/`published` редактор
+  править не даёт (`409`).
+- **Изображения — только путь `/uploads/`** (эндпоинта загрузки ещё нет; реальная загрузка — Фаза 12).
+- **`src/lib/slug.ts` — транслитерирующий slug** (НЕ кириллический `slugify` из
+  `src/components/blocks/anchors.ts`); не перепутать.
+- **Review-flow (Фаза 7) — POV серверный.** Доступ к `app/api/review/**` — через `resolveReviewAccess()`
+  (`src/lib/queries/review.ts`): автор-владелец ИЛИ назначенный ревьюер. Вердикт — только ревьюер;
+  apply/publish/submit-revision/primary-change — только автор. Демо-дропдаута POV из прототипа нет.
+  Review-`threads` ≠ публичные `public_comments` (Фаза 8) — разные таблицы/роуты; ревьюер участвует в
+  ревью-тредах, но **никогда** не в публичных комментариях.
+- **Apply-and-close правит блоки текущей under-review ревизии in-place** (не плодит ревизии). Новая
+  ревизия — только «Отправить v{N+1}» (`submit-revision`: snapshot блоков, `prev_blocks`=последняя
+  published, вердикты обнулены). Публикация — гейт «все approve» (перепроверяется в БД) + `reviewer_history`.
+- **`router.refresh()` в клиентских ревью-действиях оборачивать в `startTransition`** — иначе он ловит
+  Suspense-границу `loading.tsx`, ReviewScreen перемонтируется и теряет тост/локальный UI-стейт, а статус
+  не обновляется без hard reload (`src/components/review/review-screen.tsx`). Кросс-экранный sync = поллинг
+  (30с) + refresh; вебсокетов нет (presence статичен из `chapter_reviewers.online`).

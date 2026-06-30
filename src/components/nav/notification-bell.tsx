@@ -18,6 +18,7 @@ const POLL_MS = 45000;
 
 function labelOf(item: Item): string {
   const title = typeof item.payload.title === "string" ? item.payload.title : null;
+  const chapterTitle = typeof item.payload.chapterTitle === "string" ? item.payload.chapterTitle : null;
   switch (item.type) {
     case "new_chapter":
       return title ? `Новая глава: ${title}` : "Новая глава в подписке";
@@ -25,12 +26,29 @@ function labelOf(item: Item): string {
       return "Ваш ход в ревью";
     case "comment_reply":
       return "Ответ на ваш комментарий";
+    // ── review-flow (Фаза 7) ──
+    case "review_invited":
+      return chapterTitle ? `Вас назначили ревьюером: ${chapterTitle}` : "Вас назначили ревьюером";
+    case "review_changes_requested":
+      return chapterTitle ? `Запрошены правки: ${chapterTitle}` : "Ревьюер запросил правки";
+    case "review_ready":
+      return chapterTitle ? `Глава одобрена — можно публиковать: ${chapterTitle}` : "Глава одобрена — можно публиковать";
+    case "review_published":
+      return chapterTitle ? `Глава опубликована: ${chapterTitle}` : "Глава опубликована";
+    case "review_comment":
+      return chapterTitle ? `Новое сообщение в ревью: ${chapterTitle}` : "Новое сообщение в ревью";
+    case "primary_change_request":
+      return chapterTitle ? `Запрос смены ведущего: ${chapterTitle}` : "Запрос смены ведущего ревьюера";
     default:
       return "Уведомление";
   }
 }
 
 function hrefOf(item: Item): string | null {
+  // Универсально: создатель уведомления кладёт payload.href (знает роль получателя).
+  if (typeof item.payload.href === "string" && item.payload.href.startsWith("/")) {
+    return item.payload.href;
+  }
   if (item.type === "new_chapter") {
     const blogSlug = item.payload.blogSlug;
     const chapterSlug = item.payload.chapterSlug;

@@ -6,7 +6,9 @@
 // Текст блоков выводится текстовыми узлами React (авто-экранирование) — XSS из контента нет;
 // единственный dangerouslySetInnerHTML — внутри CodeBlock (вывод Shiki, экранирован).
 
+import type { ReactNode } from "react";
 import type { Block } from "@/types";
+import { diffWords } from "@/lib/diff";
 import { blockAnchorId } from "./anchors";
 import { renderInline } from "./inline";
 import { CodeBlock } from "./code-block";
@@ -14,6 +16,30 @@ import { MermaidBlock } from "./mermaid-block";
 import { ImageBlock } from "./image-block";
 
 export type BlockRenderMode = "reader" | "review";
+
+/**
+ * Текст блока для review-режима с инлайн-диффом относительно предыдущей (опубликованной) версии.
+ * Дифф по словам (см. src/lib/diff.ts): вставки → `.diff-edit`, удаления опускаются. Инлайн-markdown
+ * в изменённом блоке показывается литералом (осознанное упрощение, D3 в PLAN; markdown-aware дифф — backlog).
+ * Без baseline / без изменений — обычный renderInline.
+ */
+function renderText(block: Block, prev: Block | undefined): ReactNode {
+  const cur = block.text ?? "";
+  if (!prev) return renderInline(cur);
+  const prevText = prev.text ?? "";
+  if (prevText === cur) return renderInline(cur);
+  return diffWords(prevText, cur)
+    .filter((p) => p.type !== "del")
+    .map((p, i) =>
+      p.type === "ins" ? (
+        <span key={i} className="diff-edit">
+          {p.text}
+        </span>
+      ) : (
+        <span key={i}>{p.text}</span>
+      ),
+    );
+}
 
 const CALLOUT_STYLES: Record<string, { box: string; label: string; title: string }> = {
   info: {
@@ -37,26 +63,26 @@ function asStringArray(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 }
 
-function renderBlock(block: Block, prefix?: string) {
+function renderBlock(block: Block, prefix?: string, prev?: Block) {
   switch (block.type) {
     case "h2":
       return (
         <h2 id={blockAnchorId(block.id, prefix)} className="mt-10 scroll-mt-24 text-[length:var(--type-h2)]">
-          {renderInline(block.text ?? "")}
+          {renderText(block, prev)}
         </h2>
       );
     case "h3":
       return (
         <h3 id={blockAnchorId(block.id, prefix)} className="mt-8 scroll-mt-24 text-[length:var(--type-h3)]">
-          {renderInline(block.text ?? "")}
+          {renderText(block, prev)}
         </h3>
       );
     case "p":
-      return <p className="my-4 leading-[var(--leading-body)]">{renderInline(block.text ?? "")}</p>;
+      return <p className="my-4 leading-[var(--leading-body)]">{renderText(block, prev)}</p>;
     case "quote":
       return (
         <blockquote className="my-6 border-l-2 border-[var(--accent)] pl-4 italic text-[var(--muted-foreground)]">
-          {renderInline(block.text ?? "")}
+          {renderText(block, prev)}
         </blockquote>
       );
     case "list": {
@@ -176,24 +202,45 @@ function renderBlock(block: Block, prefix?: string) {
 /**
  * @param blocks   уже распарсенный Block[] (caller: parseJson<Block[]>(rev.blocks, []))
  * @param prefix   префикс для id заголовков (режим «Весь блог» — slug главы; иначе не задаётся)
- * @param mode     reader (Фаза 5) | review (Фаза 7) — на текущий рендер не влияет, задел под ревью-хром
+ * @param mode     reader (Фаза 5) | review (Фаза 7). В review добавляются дифф-полосы/инлайн-дифф.
+ * @param prev     снапшот предыдущей (опубликованной) версии для инлайн-диффа (review-режим). Пусто
+ *                 → нет baseline (всё рендерится как обычно, без полос «изменён/добавлен»).
  */
 export function BlockRenderer({
   blocks,
   prefix,
   mode = "reader",
+  prev,
 }: {
   blocks: Block[];
   prefix?: string;
   mode?: BlockRenderMode;
+  prev?: Block[];
 }) {
+  const prevById =
+    mode === "review" && prev && prev.length > 0 ? new Map(prev.map((b) => [b.id, b])) : null;
+
   return (
     <>
-      {blocks.map((block) => (
-        <div key={block.id} data-block-id={block.id} data-render-mode={mode}>
-          {renderBlock(block, prefix)}
-        </div>
-      ))}
+      {blocks.map((block) => {
+        const prevBlock = prevById?.get(block.id);
+        // Полоса слева: добавленный блок (нет в baseline) / изменённый текст. Только review + есть baseline.
+        let stripe = "";
+        if (prevById) {
+          if (!prevBlock) stripe = "diff-stripe-add";
+          else if ((prevBlock.text ?? "") !== (block.text ?? "")) stripe = "diff-stripe-edit";
+        }
+        return (
+          <div
+            key={block.id}
+            data-block-id={block.id}
+            data-render-mode={mode}
+            className={stripe || undefined}
+          >
+            {renderBlock(block, prefix, prevBlock)}
+          </div>
+        );
+      })}
     </>
   );
 }
