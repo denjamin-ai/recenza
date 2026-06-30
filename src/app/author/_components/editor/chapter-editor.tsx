@@ -1,41 +1,17 @@
 "use client";
 
-// Редактор главы (Variant B, S5-ядро): чистый документ — заголовок + блоки + явное сохранение.
-// RSC грузит черновик → этот клиент правит → PATCH /api/author/chapters/[id]. Слэш-меню/markdown-шорткаты/
-// инлайн-тулбар/настройки/SubmitSheet добавляются в S6 поверх этого ядра.
+// Редактор главы (Variant B): чистый документ — заголовок + список блоков (BlockListEditor) +
+// явное сохранение + ⚙ настройки (SettingsPopover) + «Отправить на ревью» (SubmitSheet).
+// RSC грузит черновик → этот клиент правит → PATCH /api/author/chapters/[id].
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ulid } from "ulid";
 import type { Block } from "@/types";
 import type { EditorChapter, ReviewerOption } from "@/lib/queries/author";
-import { BLOCK_TYPES, type BlockType } from "@/lib/blocks/constants";
 import { AutoTextarea } from "./auto-textarea";
-import { BLOCK_LABEL, BlockEditor } from "./block-editor";
+import { BlockListEditor } from "./block-list-editor";
 import { SettingsPopover } from "./settings-popover";
 import { SubmitSheet } from "./submit-sheet";
-import { SlashMenu } from "./slash-menu";
-import { applyShortcut } from "./markdown";
-
-function newBlock(type: BlockType): Block {
-  const id = ulid();
-  switch (type) {
-    case "list":
-      return { id, type, variant: "bullet", items: [""] };
-    case "code":
-      return { id, type, text: "", lang: "ts" };
-    case "callout":
-      return { id, type, variant: "note", text: "" };
-    case "image":
-      return { id, type, src: "", alt: "" };
-    case "table":
-      return { id, type, rows: [["", ""], ["", ""]] };
-    case "embed":
-      return { id, type, url: "" };
-    default:
-      return { id, type, text: "" };
-  }
-}
 
 function SaveState({ dirty, savedAt }: { dirty: boolean; savedAt: number | null }) {
   return (
@@ -49,45 +25,6 @@ function SaveState({ dirty, savedAt }: { dirty: boolean; savedAt: number | null 
   );
 }
 
-function AddBlock({ onAdd }: { onAdd: (type: BlockType) => void }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-label="Добавить блок"
-        className="min-h-9 rounded-[var(--radius-sm)] border border-dashed border-[var(--border)] px-3 py-1.5 text-[length:var(--type-small)] text-[var(--muted-foreground)] transition-colors hover:border-[var(--accent)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-      >
-        + Блок
-      </button>
-      {open && (
-        <ul
-          className="absolute z-10 mt-1 grid w-56 grid-cols-2 gap-1 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-elevated)] p-2"
-          role="menu"
-        >
-          {BLOCK_TYPES.map((t) => (
-            <li key={t}>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  onAdd(t);
-                  setOpen(false);
-                }}
-                className="w-full rounded-[var(--radius-sm)] px-2 py-1.5 text-left text-[length:var(--type-small)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-              >
-                {BLOCK_LABEL[t]}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 export function ChapterEditor({ data, reviewers }: { data: EditorChapter; reviewers: ReviewerOption[] }) {
   const editable = data.revision.status === "draft" || data.revision.status === "changes-requested";
   const [title, setTitle] = useState(data.chapter.title);
@@ -98,53 +35,10 @@ export function ChapterEditor({ data, reviewers }: { data: EditorChapter; review
   const [error, setError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showSubmit, setShowSubmit] = useState(false);
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   const markDirty = () => {
     setDirty(true);
     setError(null);
-  };
-
-  const updateBlock = (id: string, b: Block) => {
-    const next = applyShortcut(b); // markdown-шорткаты (## , > , - …) меняют тип p-блока
-    setBlocks((prev) => prev.map((x) => (x.id === id ? next : x)));
-    markDirty();
-  };
-  const replaceBlock = (id: string, type: BlockType) => {
-    setBlocks((prev) => prev.map((x) => (x.id === id ? { ...newBlock(type), id } : x)));
-    markDirty();
-  };
-  const moveTo = (from: number, to: number) => {
-    if (from === to) return;
-    setBlocks((prev) => {
-      const next = [...prev];
-      const [item] = next.splice(from, 1);
-      next.splice(to, 0, item);
-      return next;
-    });
-    markDirty();
-  };
-  const removeBlock = (id: string) => {
-    setBlocks((prev) => prev.filter((x) => x.id !== id));
-    markDirty();
-  };
-  const insertAfter = (index: number, type: BlockType) => {
-    setBlocks((prev) => {
-      const next = [...prev];
-      next.splice(index + 1, 0, newBlock(type));
-      return next;
-    });
-    markDirty();
-  };
-  const move = (index: number, dir: -1 | 1) => {
-    const target = index + dir;
-    setBlocks((prev) => {
-      if (target < 0 || target >= prev.length) return prev;
-      const next = [...prev];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
-    markDirty();
   };
 
   const save = useCallback(async (): Promise<boolean> => {
@@ -186,7 +80,6 @@ export function ChapterEditor({ data, reviewers }: { data: EditorChapter; review
 
   return (
     <div className="min-h-screen">
-      {/* Топбар */}
       <div className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--bg)] px-6 py-3">
         <Link
           href={`/author/blog/${data.blog.slug}`}
@@ -266,7 +159,6 @@ export function ChapterEditor({ data, reviewers }: { data: EditorChapter; review
       )}
 
       <div className="mx-auto w-full max-w-[var(--max-article)] px-6 py-8">
-        {/* Хлебные крошки */}
         <p className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">
           {data.blog.title} ·{" "}
           {data.revision.status === "draft"
@@ -285,7 +177,6 @@ export function ChapterEditor({ data, reviewers }: { data: EditorChapter; review
           </div>
         )}
 
-        {/* Заголовок главы */}
         <AutoTextarea
           value={title}
           onChange={(e) => {
@@ -305,96 +196,17 @@ export function ChapterEditor({ data, reviewers }: { data: EditorChapter; review
           </p>
         )}
 
-        {/* Блоки */}
-        <div className="mt-6 flex flex-col gap-3">
-          {blocks.map((block, i) => (
-            <div
-              key={block.id}
-              onDragOver={(e) => {
-                if (dragIndex !== null) e.preventDefault();
+        {editable && (
+          <div className="mt-6">
+            <BlockListEditor
+              blocks={blocks}
+              onChange={(next) => {
+                setBlocks(next);
+                markDirty();
               }}
-              onDrop={(e) => {
-                e.preventDefault();
-                if (dragIndex !== null) moveTo(dragIndex, i);
-                setDragIndex(null);
-              }}
-              className={`group relative rounded-[var(--radius-lg)] border p-3 focus-within:border-[var(--border)] ${
-                dragIndex === i ? "border-[var(--accent)] opacity-60" : "border-[var(--border-secondary)]"
-              }`}
-            >
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="flex items-center gap-2 text-[length:var(--type-small)] text-[var(--muted-foreground)]">
-                  {editable && (
-                    <span
-                      draggable
-                      onDragStart={() => setDragIndex(i)}
-                      onDragEnd={() => setDragIndex(null)}
-                      aria-label="Перетащить блок"
-                      title="Перетащить"
-                      className="cursor-grab select-none text-[var(--muted-foreground)] active:cursor-grabbing"
-                    >
-                      ⠿
-                    </span>
-                  )}
-                  {BLOCK_LABEL[block.type]}
-                </span>
-                {editable && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => move(i, -1)}
-                      disabled={i === 0}
-                      aria-label="Поднять блок"
-                      className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                    >
-                      <span aria-hidden="true">▲</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => move(i, 1)}
-                      disabled={i === blocks.length - 1}
-                      aria-label="Опустить блок"
-                      className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                    >
-                      <span aria-hidden="true">▼</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeBlock(block.id)}
-                      aria-label="Удалить блок"
-                      className="flex h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] text-[var(--muted-foreground)] transition-colors hover:text-[var(--danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                    >
-                      <span aria-hidden="true">✕</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-              <fieldset disabled={!editable} className="relative border-0 p-0">
-                <BlockEditor block={block} onChange={(b) => updateBlock(block.id, b)} />
-                {editable && block.type === "p" && typeof block.text === "string" && block.text.startsWith("/") && (
-                  <SlashMenu
-                    query={block.text.slice(1)}
-                    onPick={(t) => replaceBlock(block.id, t)}
-                  />
-                )}
-              </fieldset>
-              {editable && (
-                <div className="mt-2">
-                  <AddBlock onAdd={(t) => insertAfter(i, t)} />
-                </div>
-              )}
-            </div>
-          ))}
-
-          {editable && blocks.length === 0 && (
-            <div className="rounded-[var(--radius-lg)] border border-dashed border-[var(--border)] p-6 text-center">
-              <p className="mb-3 text-[length:var(--type-small)] text-[var(--muted-foreground)]">
-                Пустой документ. Добавьте первый блок.
-              </p>
-              <AddBlock onAdd={(t) => insertAfter(-1, t)} />
-            </div>
-          )}
-        </div>
+            />
+          </div>
+        )}
       </div>
     </div>
   );
