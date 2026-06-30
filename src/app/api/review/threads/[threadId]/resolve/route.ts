@@ -2,7 +2,7 @@
 // автор для треда без suggestion тоже может закрыть). Правка текста по suggestion — отдельный роут apply.
 
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { threads } from "@/lib/db/schema";
 import { assertSameOrigin } from "@/lib/csrf";
@@ -21,12 +21,13 @@ export async function POST(
   const { threadId } = await params;
   const thread = (
     await db
-      .select({ id: threads.id, chapterId: threads.chapterId })
+      .select({ id: threads.id, chapterId: threads.chapterId, status: threads.status })
       .from(threads)
       .where(eq(threads.id, threadId))
       .limit(1)
   )[0];
   if (!thread) return NextResponse.json({ error: "Тред не найден." }, { status: 404 });
+  if (thread.status !== "open") return NextResponse.json({ error: "Тред уже закрыт." }, { status: 409 });
 
   const access = await resolveReviewAccess(thread.chapterId);
   if (access instanceof NextResponse) return access;
@@ -44,7 +45,7 @@ export async function POST(
   }
 
   try {
-    await db.update(threads).set({ status: "resolved" }).where(and(eq(threads.id, threadId)));
+    await db.update(threads).set({ status: "resolved" }).where(eq(threads.id, threadId));
   } catch {
     return NextResponse.json({ error: "Не удалось обновить тред." }, { status: 500 });
   }

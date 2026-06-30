@@ -158,7 +158,17 @@ function ThreadCard({
             </span>
           )}
         </div>
-        <span className="shrink-0 text-[length:var(--type-small)] text-[var(--accent)]">→ блок</span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClick();
+          }}
+          aria-label="Перейти к блоку обсуждения"
+          className="shrink-0 rounded-[var(--radius-sm)] text-[length:var(--type-small)] text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        >
+          → блок
+        </button>
       </div>
 
       {thread.anchor && (

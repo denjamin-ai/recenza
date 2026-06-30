@@ -232,7 +232,7 @@ export function BlogDetailView({ detail }: { detail: AuthorBlogDetail }) {
                       onClick={() => move(idx, -1)}
                       disabled={idx === 0 || busy}
                       aria-label={`Поднять главу «${ch.title}»`}
-                      className="flex h-7 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                      className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                     >
                       <span aria-hidden="true">▲</span>
                     </button>
@@ -241,7 +241,7 @@ export function BlogDetailView({ detail }: { detail: AuthorBlogDetail }) {
                       onClick={() => move(idx, 1)}
                       disabled={idx === order.length - 1 || busy}
                       aria-label={`Опустить главу «${ch.title}»`}
-                      className="flex h-7 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                      className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-sm)] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] disabled:opacity-30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                     >
                       <span aria-hidden="true">▼</span>
                     </button>

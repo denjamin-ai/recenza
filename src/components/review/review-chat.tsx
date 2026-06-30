@@ -32,6 +32,7 @@ export function ReviewChat({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
+        aria-label={open ? "Свернуть чат сессии" : "Развернуть чат сессии"}
         className="flex min-h-9 w-full items-center justify-between px-3 py-1.5 text-[length:var(--type-small)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] sm:px-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
       >
         <span className="font-semibold uppercase tracking-wider">
@@ -79,6 +80,7 @@ export function ReviewChat({
                 type="button"
                 onClick={submit}
                 disabled={!text.trim() || busy}
+                aria-label="Отправить сообщение"
                 className="inline-flex min-h-9 items-center rounded-[var(--radius-sm)] bg-[var(--accent)] px-3 text-[length:var(--type-small)] font-medium text-[var(--accent-foreground)] hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
               >
                 →

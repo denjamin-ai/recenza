@@ -11,7 +11,7 @@ import { assertSameOrigin } from "@/lib/csrf";
 import { hitActionRate } from "@/lib/rate-limit";
 import { createNotifications } from "@/lib/queries/notifications";
 import { REVIEW_NOTIFY, authorReviewHref, resolveReviewAccess } from "@/lib/queries/review";
-import { VERDICTS, type Verdict } from "@/types";
+import { VERDICTS, type RevisionStatus, type Verdict } from "@/types";
 
 const ACTIVE = new Set(["under-review", "changes-requested"]);
 
@@ -55,14 +55,10 @@ export async function POST(
 
   const now = Math.floor(Date.now() / 1000);
   const revNumber = session.revision.number;
-
-  // Итоговые вердикты после моего голоса (для пересчёта статуса).
-  const verdicts = session.reviewers.map((r) =>
-    r.handle === access.user.handle ? verdict : r.verdict,
-  );
-  const anyChanges = verdicts.some((v) => v === "request-changes");
-  const allApprove = verdicts.length > 0 && verdicts.every((v) => v === "approve");
-  const newStatus = anyChanges ? "changes-requested" : "under-review";
+  // Пересчёт статуса/консенсуса делаем по СВЕЖИМ вердиктам из БД ВНУТРИ транзакции (после записи
+  // своего голоса) — иначе при одновременных голосах двух ревьюеров расчёт по кэшу сессии даёт гонку.
+  let allApprove = false;
+  let newStatus: RevisionStatus = session.revision.status;
 
   try {
     await db.transaction(async (tx) => {
@@ -76,6 +72,17 @@ export async function POST(
             eq(chapterReviewers.handle, access.user.handle),
           ),
         );
+      const fresh = await tx
+        .select({ verdict: chapterReviewers.verdict })
+        .from(chapterReviewers)
+        .where(
+          and(eq(chapterReviewers.chapterId, chapterId), eq(chapterReviewers.revisionNumber, revNumber)),
+        );
+      const anyChanges = fresh.some((r) => r.verdict === "request-changes");
+      allApprove = fresh.length > 0 && fresh.every((r) => r.verdict === "approve");
+      // Статус ревизии: правки → changes-requested; иначе остаётся under-review (publish — отдельный
+      // шаг; «все одобрили» — производный флаг allApprove, не статус).
+      newStatus = anyChanges ? "changes-requested" : "under-review";
       if (newStatus !== session.revision.status) {
         await tx
           .update(chapterRevisions)

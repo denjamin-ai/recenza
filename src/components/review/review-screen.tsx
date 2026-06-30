@@ -232,11 +232,13 @@ export function ReviewScreen({
       <ReviewHeader session={session} pov={pov} onOpenTeam={() => setTeamOpen(true)} />
 
       {/* Мобильные табы. */}
-      <div className="flex border-b border-[var(--border)] text-[length:var(--type-body)] md:hidden">
+      <div role="tablist" aria-label="Статья и обсуждения" className="flex border-b border-[var(--border)] text-[length:var(--type-body)] md:hidden">
         <button
           type="button"
+          role="tab"
+          aria-selected={mobileTab === "article"}
+          aria-controls="review-panel-article"
           onClick={() => setMobileTab("article")}
-          aria-pressed={mobileTab === "article"}
           className={`min-h-[44px] flex-1 ${
             mobileTab === "article"
               ? "border-b-2 border-[var(--accent)] font-semibold text-[var(--accent)]"
@@ -247,8 +249,10 @@ export function ReviewScreen({
         </button>
         <button
           type="button"
+          role="tab"
+          aria-selected={mobileTab === "threads"}
+          aria-controls="review-panel-threads"
           onClick={() => setMobileTab("threads")}
-          aria-pressed={mobileTab === "threads"}
           className={`min-h-[44px] flex-1 ${
             mobileTab === "threads"
               ? "border-b-2 border-[var(--accent)] font-semibold text-[var(--accent)]"
@@ -261,7 +265,7 @@ export function ReviewScreen({
 
       {/* Двухколоночная сетка. */}
       <div className="grid min-h-0 flex-1 md:grid-cols-[minmax(0,1fr)_minmax(340px,400px)]">
-        <div className={`min-h-0 ${mobileTab === "article" ? "" : "hidden md:block"}`}>
+        <div id="review-panel-article" className={`min-h-0 ${mobileTab === "article" ? "" : "hidden md:block"}`}>
           <ConvoCanvas
             article={article}
             threadsByBlock={threadsByBlock}
@@ -273,7 +277,7 @@ export function ReviewScreen({
             scrollRef={scrollRef}
           />
         </div>
-        <div className={`min-h-0 ${mobileTab === "threads" ? "flex" : "hidden md:flex"} flex-col`}>
+        <div id="review-panel-threads" className={`min-h-0 ${mobileTab === "threads" ? "flex" : "hidden md:flex"} flex-col`}>
           <ThreadsRail
             threads={threads}
             pov={pov}

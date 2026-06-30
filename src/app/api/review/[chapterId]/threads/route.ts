@@ -86,6 +86,10 @@ export async function POST(
   }
 
   const now = Math.floor(Date.now() / 1000);
+  // Адресаты уведомлений (когда пишет автор) — чистое чтение до транзакции.
+  const reviewerIds =
+    access.role === "author" ? await userIdsByHandle(session.reviewers.map((r) => r.handle)) : null;
+
   try {
     await db.transaction(async (tx) => {
       await tx.insert(threads).values({
@@ -113,7 +117,7 @@ export async function POST(
           },
         ]);
       } else {
-        const ids = await userIdsByHandle(session.reviewers.map((r) => r.handle));
+        const ids = reviewerIds ?? new Map<string, string>();
         await createNotifications(
           tx,
           session.reviewers

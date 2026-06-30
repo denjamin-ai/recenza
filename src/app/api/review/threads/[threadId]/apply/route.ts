@@ -29,6 +29,7 @@ export async function POST(
         id: threads.id,
         chapterId: threads.chapterId,
         blockId: threads.blockId,
+        status: threads.status,
         suggestion: threads.suggestion,
       })
       .from(threads)
@@ -36,6 +37,9 @@ export async function POST(
       .limit(1)
   )[0];
   if (!thread) return NextResponse.json({ error: "Тред не найден." }, { status: 404 });
+  // Идемпотентность: повторное «применить» закрытого треда снова заменило бы текст (второй replace
+  // найдёт следующее вхождение) — запрещаем.
+  if (thread.status !== "open") return NextResponse.json({ error: "Тред уже закрыт." }, { status: 409 });
 
   const access = await resolveReviewAccess(thread.chapterId);
   if (access instanceof NextResponse) return access;

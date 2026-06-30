@@ -58,10 +58,8 @@ export async function POST(
     );
   }
 
-  // publishedAt блога ставим только при первой публикации.
-  const blogRow = (
-    await db.select({ publishedAt: blogs.publishedAt }).from(blogs).where(eq(blogs.id, session.blog.id)).limit(1)
-  )[0];
+  // Адресаты уведомлений готовим до транзакции (чистое чтение).
+  const reviewerIds = await userIdsByHandle(verdictRows.map((r) => r.handle));
 
   const now = Math.floor(Date.now() / 1000);
   try {
@@ -79,12 +77,16 @@ export async function POST(
         await tx.insert(reviewerHistory).values({ chapterId, revisionNumber: revNumber, handle: r.handle });
       }
 
+      // publishedAt блога ставим только при первой публикации — читаем внутри транзакции (race-safe).
+      const blogRow = (
+        await tx.select({ publishedAt: blogs.publishedAt }).from(blogs).where(eq(blogs.id, session.blog.id)).limit(1)
+      )[0];
       await tx
         .update(blogs)
         .set({ lastActivityAt: now, ...(blogRow?.publishedAt == null ? { publishedAt: now } : {}) })
         .where(eq(blogs.id, session.blog.id));
 
-      const ids = await userIdsByHandle(verdictRows.map((r) => r.handle));
+      const ids = reviewerIds;
       await createNotifications(
         tx,
         verdictRows

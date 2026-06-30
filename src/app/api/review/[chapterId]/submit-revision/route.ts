@@ -69,6 +69,8 @@ export async function POST(
 
   const newNumber = session.revision.number + 1;
   const now = Math.floor(Date.now() / 1000);
+  // Адресаты уведомлений — чистое чтение до транзакции (идиома: внутри tx только запись).
+  const ids = await userIdsByHandle(session.reviewers.map((r) => r.handle));
 
   try {
     await db.transaction(async (tx) => {
@@ -90,7 +92,6 @@ export async function POST(
           isPrimary: r.isPrimary,
         });
       }
-      const ids = await userIdsByHandle(session.reviewers.map((r) => r.handle));
       await createNotifications(
         tx,
         session.reviewers
