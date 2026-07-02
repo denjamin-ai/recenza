@@ -23,6 +23,8 @@ export default defineConfig({
     baseURL: "http://localhost:3001",
     locale: "ru-RU",
     navigationTimeout: 30_000,
+    // «Мёртвые» клики до гидрации + first-compile (MCP-FINDINGS §4)
+    actionTimeout: 15_000,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },

@@ -1,4 +1,4 @@
-import { request, type APIRequestContext, type TestInfo } from "@playwright/test";
+import { expect, request, type APIRequestContext, type Page, type TestInfo } from "@playwright/test";
 import path from "node:path";
 import { BASE_URL, PASSWORD } from "./seed";
 
@@ -13,11 +13,12 @@ export function authFile(role: AuthRole): string {
 /** Request-контекст с Origin (иначе same-origin CSRF-гард отбивает мутации 403-м). */
 export async function newApiContext(
   storageStatePath?: string,
+  extraHeaders: Record<string, string> = {},
 ): Promise<APIRequestContext> {
   return request.newContext({
     baseURL: BASE_URL,
     storageState: storageStatePath,
-    extraHTTPHeaders: { origin: BASE_URL },
+    extraHTTPHeaders: { origin: BASE_URL, ...extraHeaders },
   });
 }
 
@@ -43,6 +44,23 @@ export async function apiLoginAdmin(): Promise<APIRequestContext> {
     throw new Error(`API-логин админа не удался: ${res.status()} ${await res.text()}`);
   }
   return ctx;
+}
+
+/**
+ * UI-логин пользователя со страницы /login. Устойчив к потере кликов до гидрации
+ * (MCP-FINDINGS §4: обработчик формы навешивается позже рендера) — клик ретраится,
+ * пока не случится уход со страницы логина.
+ */
+export async function loginViaUi(page: Page, handle: string, password: string = PASSWORD): Promise<void> {
+  if (!page.url().includes("/login")) {
+    await page.goto("/login");
+  }
+  await page.getByLabel("Никнейм").fill(handle);
+  await page.getByLabel("Пароль").fill(password);
+  await expect(async () => {
+    await page.getByRole("button", { name: "Войти" }).click();
+    await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 3_000 });
+  }).toPass({ timeout: 30_000 });
 }
 
 /**

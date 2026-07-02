@@ -28,12 +28,19 @@ type ApiFactory = (role?: AuthRole) => Promise<APIRequestContext>;
 interface Fixtures {
   /** Сборщик ошибок консоли (auto): тест падает при console.error/pageerror. */
   consoleErrors: string[];
+  /** Гостевая сессия (без cookie) с console-guard. */
+  asGuest: RoleSession;
   asReader: RoleSession;
   asAuthor: RoleSession;
   asReviewer: RoleSession;
   asAdmin: RoleSession;
   /** Сессия произвольного seed-пользователя (sergey_review, lena_review, troll, …). */
   loginAs: LoginAs;
+  /**
+   * Гостевая сессия с заданным X-Forwarded-For — изоляция login-rate-limit
+   * (неудачные UI-логины; ключ лимита — первый хоп XFF).
+   */
+  guestWithXff: (xff: string) => Promise<RoleSession>;
   /**
    * API-контекст с cookie роли и заголовком Origin (same-origin CSRF).
    * Негативные API-проверки делать здесь, а не page.evaluate(fetch) —
@@ -42,8 +49,11 @@ interface Fixtures {
   api: ApiFactory;
 }
 
-/** Известные «здоровые» ошибки: 404 на /uploads/* — файлов нет до Фазы 12 (реальная загрузка). */
-const CONSOLE_ALLOWLIST = [/\/uploads\//];
+/**
+ * Известные «здоровые» ошибки (MCP-FINDINGS §5): 404 на /uploads/* — файлов нет до
+ * Фазы 12 (реальная загрузка); preload-шум turbopack в dev-режиме.
+ */
+const CONSOLE_ALLOWLIST = [/\/uploads\//, /preload/i];
 
 function isAllowedConsoleError(text: string, url: string | undefined): boolean {
   return CONSOLE_ALLOWLIST.some((re) => re.test(url ?? "") || re.test(text));
@@ -67,11 +77,13 @@ async function makeSession(
   browser: Browser,
   sink: string[],
   storageState?: string | { cookies: never[]; origins: never[] },
+  extraHTTPHeaders?: Record<string, string>,
 ): Promise<RoleSession> {
   const context = await browser.newContext({
     baseURL: BASE_URL,
     locale: "ru-RU",
     storageState: storageState as string | undefined,
+    extraHTTPHeaders,
   });
   attachConsoleGuard(context, sink);
   const page = await context.newPage();
@@ -107,10 +119,31 @@ export const test = base.extend<Fixtures>({
     { auto: true },
   ],
 
+  asGuest: async ({ browser, consoleErrors }, use) => {
+    const session = await makeSession(browser, consoleErrors);
+    await use(session);
+    await session.context.close();
+  },
+
   asReader: roleFixture("reader"),
   asAuthor: roleFixture("author"),
   asReviewer: roleFixture("reviewer"),
   asAdmin: roleFixture("admin"),
+
+  guestWithXff: async ({ browser, consoleErrors }, use) => {
+    const contexts: BrowserContext[] = [];
+    const factory = async (xff: string) => {
+      const session = await makeSession(browser, consoleErrors, undefined, {
+        "x-forwarded-for": xff,
+      });
+      contexts.push(session.context);
+      return session;
+    };
+    await use(factory);
+    for (const ctx of contexts) {
+      await ctx.close();
+    }
+  },
 
   loginAs: async ({ browser, consoleErrors }, use) => {
     const contexts: BrowserContext[] = [];
