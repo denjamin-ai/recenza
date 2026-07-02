@@ -4,8 +4,9 @@
 многоглавный девблог с редакционным review-flow и 4 ролями. Интерфейс на русском.
 
 > Доменная модель — **глава-ориентированная** (Blog → Chapter → Revision → blocks). UX-эталон и
-> детальная модель — в `README.md` прототипа. План миграции — `PLAN.md`. Стенды/БД — `ENVIRONMENTS.md`.
-> Тесты — `TESTING.md`.
+> детальная модель — `docs/prototype/README.md` (корневой `README.md` — bootstrap-гайд для человека,
+> не источник модели). План миграции — `docs/migration/PLAN.md`. Стенды/БД — `docs/migration/ENVIRONMENTS.md`.
+> Тесты — `docs/migration/TESTING.md`.
 
 ## Текущее состояние репозитория (фазы 0–10 `done`, дальше 11–12 `todo`)
 
