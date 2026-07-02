@@ -1,0 +1,49 @@
+# PR-гейт: lint + build + smoke-набор Playwright на эфемерном тест-стенде.
+# Секреты репозитория не нужны — .env.test генерируется на лету.
+name: e2e-smoke
+
+on:
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Установка зависимостей
+        run: npm ci
+
+      - name: Генерация .env.test (эфемерные секреты)
+        run: node scripts/ci/write-env-test.mjs
+
+      - name: Тест-БД (migrate + seed)
+        run: npm run test:reset
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Прод-сборка (гейт Цикла качества)
+        run: npx dotenv -e .env.test -- npm run build
+
+      - name: Браузер Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Smoke (@smoke)
+        run: npm run test:smoke
+
+      - name: Отчёт при провале
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-smoke
+          path: |
+            testing/reports/playwright-html
+            test-results
+          retention-days: 7

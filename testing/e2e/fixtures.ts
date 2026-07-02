@@ -1,0 +1,154 @@
+import {
+  test as base,
+  expect,
+  request,
+  type APIRequestContext,
+  type Browser,
+  type BrowserContext,
+  type Page,
+} from "@playwright/test";
+import { authFile, type AuthRole } from "./helpers/auth";
+import { BASE_URL, PASSWORD } from "./helpers/seed";
+
+export { expect };
+
+/**
+ * Сессия роли: изолированный browserContext поверх storageState из global-setup.
+ * Multi-user тест — просто деструктуризация двух фикстур: `({ asAuthor, asReviewer })`.
+ */
+export interface RoleSession {
+  context: BrowserContext;
+  page: Page;
+  goto(path: string): Promise<void>;
+}
+
+type LoginAs = (handle: string, password?: string) => Promise<RoleSession>;
+type ApiFactory = (role?: AuthRole) => Promise<APIRequestContext>;
+
+interface Fixtures {
+  /** Сборщик ошибок консоли (auto): тест падает при console.error/pageerror. */
+  consoleErrors: string[];
+  asReader: RoleSession;
+  asAuthor: RoleSession;
+  asReviewer: RoleSession;
+  asAdmin: RoleSession;
+  /** Сессия произвольного seed-пользователя (sergey_review, lena_review, troll, …). */
+  loginAs: LoginAs;
+  /**
+   * API-контекст с cookie роли и заголовком Origin (same-origin CSRF).
+   * Негативные API-проверки делать здесь, а не page.evaluate(fetch) —
+   * браузерные 4xx-ответы засоряют консоль и роняют console-guard.
+   */
+  api: ApiFactory;
+}
+
+/** Известные «здоровые» ошибки: 404 на /uploads/* — файлов нет до Фазы 12 (реальная загрузка). */
+const CONSOLE_ALLOWLIST = [/\/uploads\//];
+
+function isAllowedConsoleError(text: string, url: string | undefined): boolean {
+  return CONSOLE_ALLOWLIST.some((re) => re.test(url ?? "") || re.test(text));
+}
+
+function attachConsoleGuard(context: BrowserContext, sink: string[]): void {
+  context.on("page", (page) => {
+    page.on("console", (msg) => {
+      if (msg.type() !== "error") return;
+      const url = msg.location()?.url;
+      if (isAllowedConsoleError(msg.text(), url)) return;
+      sink.push(`[console.error] ${page.url()}: ${msg.text()}${url ? ` (${url})` : ""}`);
+    });
+    page.on("pageerror", (err) => {
+      sink.push(`[pageerror] ${page.url()}: ${err.message}`);
+    });
+  });
+}
+
+async function makeSession(
+  browser: Browser,
+  sink: string[],
+  storageState?: string | { cookies: never[]; origins: never[] },
+): Promise<RoleSession> {
+  const context = await browser.newContext({
+    baseURL: BASE_URL,
+    locale: "ru-RU",
+    storageState: storageState as string | undefined,
+  });
+  attachConsoleGuard(context, sink);
+  const page = await context.newPage();
+  return {
+    context,
+    page,
+    goto: async (path: string) => {
+      await page.goto(path);
+    },
+  };
+}
+
+function roleFixture(role: AuthRole) {
+  return async (
+    { browser, consoleErrors }: { browser: Browser; consoleErrors: string[] },
+    use: (session: RoleSession) => Promise<void>,
+  ) => {
+    const session = await makeSession(browser, consoleErrors, authFile(role));
+    await use(session);
+    await session.context.close();
+  };
+}
+
+export const test = base.extend<Fixtures>({
+  consoleErrors: [
+    async ({}, use) => {
+      const sink: string[] = [];
+      await use(sink);
+      if (sink.length > 0) {
+        throw new Error(`Ошибки консоли во время теста:\n${sink.join("\n")}`);
+      }
+    },
+    { auto: true },
+  ],
+
+  asReader: roleFixture("reader"),
+  asAuthor: roleFixture("author"),
+  asReviewer: roleFixture("reviewer"),
+  asAdmin: roleFixture("admin"),
+
+  loginAs: async ({ browser, consoleErrors }, use) => {
+    const contexts: BrowserContext[] = [];
+    const factory: LoginAs = async (handle, password = PASSWORD) => {
+      const req = await request.newContext({
+        baseURL: BASE_URL,
+        extraHTTPHeaders: { origin: BASE_URL },
+      });
+      const res = await req.post("/api/auth/user", { data: { handle, password } });
+      if (!res.ok()) {
+        throw new Error(`loginAs(«${handle}») не удался: ${res.status()} ${await res.text()}`);
+      }
+      const state = await req.storageState();
+      await req.dispose();
+      const session = await makeSession(browser, consoleErrors, state as never);
+      contexts.push(session.context);
+      return session;
+    };
+    await use(factory);
+    for (const ctx of contexts) {
+      await ctx.close();
+    }
+  },
+
+  api: async ({}, use) => {
+    const contexts: APIRequestContext[] = [];
+    const factory: ApiFactory = async (role) => {
+      const ctx = await request.newContext({
+        baseURL: BASE_URL,
+        storageState: role ? authFile(role) : undefined,
+        extraHTTPHeaders: { origin: BASE_URL },
+      });
+      contexts.push(ctx);
+      return ctx;
+    };
+    await use(factory);
+    for (const ctx of contexts) {
+      await ctx.dispose();
+    }
+  },
+});
