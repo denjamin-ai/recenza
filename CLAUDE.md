@@ -39,9 +39,10 @@ Caddy + Node standalone + systemd; деплой — GH Actions `deploy.yml` на
 
 - **11** слой качества: `playwright.config.ts` (в **корне**; `testDir: testing/e2e`), `testing/` создан —
   тест-документация (`TEST-PLAN.md`, `test-cases/TC-*.md`, `smoke/`, `regression/`), MCP-артефакт
-  (`testing/mcp/MCP-FINDINGS.md`), **107 TS-тестов** (`testing/e2e/**`: POM `pages/*`, `fixtures.ts`,
-  `global-setup.ts`, `helpers/*`, ролевые + `flows/*` спеки), CI (`.github/workflows/e2e-{smoke,nightly}.yml`,
-  `scripts/ci/write-env-test.mjs`). Полный `test:e2e` зелёный (106/1 skip), smoke 17/17.
+  (`testing/mcp/MCP-FINDINGS.md`), **118 TS-тестов** (`testing/e2e/**`: POM `pages/*`, `fixtures.ts`,
+  `global-setup.ts`, `helpers/*`, ролевые + `flows/*` спеки; с Ф12 — `uploads/cron/blocks-render`),
+  CI (`.github/workflows/e2e-{smoke,nightly}.yml`, `scripts/ci/write-env-test.mjs`).
+  Полный `test:e2e` зелёный (118/118, 0 skip).
 
 - **12** hardening + прод-деплой (VPS recenza.ru): mermaid-js (клиентский ленивый) + KaTeX (блок `latex` +
   инлайн `$...$`, серверный) · `/api/uploads` + `UploadField` (image/cover/QR; magic-bytes, 4МБ, 413 по
