@@ -13,6 +13,7 @@ import { blockAnchorId } from "./anchors";
 import { renderInline } from "./inline";
 import { CodeBlock } from "./code-block";
 import { MermaidBlock } from "./mermaid-block";
+import { LatexBlock } from "./latex-block";
 import { ImageBlock } from "./image-block";
 
 export type BlockRenderMode = "reader" | "review";
@@ -129,6 +130,8 @@ function renderBlock(block: Block, prefix?: string, prev?: Block) {
     }
     case "mermaid":
       return <MermaidBlock code={block.text ?? ""} />;
+    case "latex":
+      return <LatexBlock tex={block.text ?? ""} />;
     case "image":
       return (
         <ImageBlock

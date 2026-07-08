@@ -1,0 +1,8 @@
+# Oneshot-бэкап → /etc/systemd/system/recenza-backup.service (таймер recenza-backup.timer).
+[Unit]
+Description=Recenza: ночной бэкап БД и загрузок
+
+[Service]
+Type=oneshot
+User=recenza
+ExecStart=/srv/recenza/bin/backup.sh

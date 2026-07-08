@@ -8,12 +8,16 @@
 > не источник модели). План миграции — `docs/migration/PLAN.md`. Стенды/БД — `docs/migration/ENVIRONMENTS.md`.
 > Тесты — `docs/migration/TESTING.md`.
 
-## Текущее состояние репозитория (фазы 0–11 `done`, дальше 12 `todo`)
+## Текущее состояние репозитория (ВСЕ фазы 0–12 `done` — проект в проде)
 
-⚠️ **Прочти первым.** Каркас существует и работает: Next 16 + `src/`, `node_modules/`, `tsconfig.json`,
-`next.config.ts`, `drizzle.config.ts`, миграции `drizzle/0000_*.sql` + `0001_*.sql` (`users.pinned_blog_id`) + `0002_*.sql` (uniqueIndex `review_invitations`) + `0003_*.sql` (`blogs.hidden` — скрытие блога админом; всего **28 таблиц**), `blog.db`/`blog.test.db`,
-два стенда, auth/роли, читательский слой, авторский слой (кабинет/редактор/портфолио), review-flow
-(ReviewPage), публичные комментарии (тред/якоря/голоса/уведомления), **слой качества (Playwright e2e + CI)**. npm-скрипты работают.
+⚠️ **Прочти первым.** Монолит **работает в проде**: `https://recenza.ru` (VPS Ubuntu 24.04, Хельсинки;
+Caddy + Node standalone + systemd; деплой — GH Actions `deploy.yml` на push в `main`). Каркас: Next 16 +
+`src/`, `node_modules/`, `tsconfig.json`, `next.config.ts`, `drizzle.config.ts`, миграции
+`drizzle/0000_*.sql` … `0005_*.sql` (0004: `chapter_revisions.scheduled_at` + `chapter_reviewers.last_seen_at`;
+0005: drop `chapter_reviewers.online`; всего **28 таблиц**), `blog.db`/`blog.test.db`, два стенда, auth/роли,
+читательский слой, авторский слой (кабинет/редактор/портфолио), review-flow (ReviewPage), публичные
+комментарии, подбор ревьюеров, админка/монетизация, слой качества (Playwright e2e + CI),
+**hardening + прод-деплой (Фаза 12)**. npm-скрипты работают.
 
 **Источник правды по прогрессу — `docs/migration/PLAN.md`** («Карта фаз» + живой Журнал каждой фазы;
 там же — решения и backlog по каждой фазе). На сегодня закрыто:
@@ -39,18 +43,18 @@
   `global-setup.ts`, `helpers/*`, ролевые + `flows/*` спеки), CI (`.github/workflows/e2e-{smoke,nightly}.yml`,
   `scripts/ci/write-env-test.mjs`). Полный `test:e2e` зелёный (106/1 skip), smoke 17/17.
 
-Ещё **не реализовано** — разделы «Архитектура» ниже описывают это как **целевое** состояние (спека для
-будущих фаз, не готовый код):
-- **12** hardening + прод-деплой.
+- **12** hardening + прод-деплой (VPS recenza.ru): mermaid-js (клиентский ленивый) + KaTeX (блок `latex` +
+  инлайн `$...$`, серверный) · `/api/uploads` + `UploadField` (image/cover/QR; magic-bytes, 4МБ, 413 по
+  Content-Length) · отложенная публикация (`scheduled_at` + PublishModal + `/api/cron/publish` c Bearer) ·
+  общий `publishRevision()` (`src/lib/queries/publish.ts`) + P1-фиксы (fan-out `new_chapter` подписчикам,
+  void pending PCR, переназначение primary при снятии) · presence-heartbeat
+  (`/api/review/[id]/heartbeat`, `online = last_seen_at ≥ now−90с`) · создание пользователей админом
+  (`POST /api/admin/users` + форма; self-registration нет — альфа) · security-заголовки (`next.config.ts`;
+  HSTS — в Caddy) · Lighthouse CI (nightly) · деплой-обвязка (`deploy/**`, `scripts/migrate.mjs`,
+  `.github/workflows/deploy.yml`).
 
-**Точка входа в фазу:** прочитай `PLAN.md` (статусы всех фаз; если есть `blocked` — сначала чини её) →
-ритуал «Промт запуска фазы» в `docs/migration/PROMPT.md` → веди ветку/PR по git-flow ниже.
-Следующая фаза — **11 (слой качества: тест-кейсы + Playwright)**. Авторский кабинет, редактор (Variant B),
-`SubmitSheet`, портфолио, review-flow (ReviewPage `src/components/review/**`, `src/app/api/review/**`),
-комментирование (`src/components/reader/comment*`, `src/app/api/comments/**`), подбор ревьюеров (Фаза 9) и
-админка/монетизация (Фаза 10: `src/app/admin/**`, `src/app/api/admin/**`, `src/app/(reader)/board`) — уже
-**готовый код** (фазы 6–10 `done`), не спецификация. Для остального (фазы 11–12) перед тем как опереться на
-путь/файл из «Архитектуры», **убедись, что фаза, вводящая его, уже `done`** (`playwright.config.ts`/`testing/` — Фаза 11).
+**Все фазы `done` — дальнейшая работа = hotfix-ветки/новые итерации** (git-flow ниже; журналы и backlog —
+в `PLAN.md`). Весь код «Архитектуры» ниже — **готовый и работающий**, не спецификация.
 
 ## Команды
 - `npm run dev` — dev (:3000, `.env.local` → `blog.db`)
@@ -68,16 +72,17 @@
 одно правило в `db/index.ts` и `drizzle.config.ts`. Шаблон env-переменных — закоммиченный `.env.example`
 (сами `.env.local`/`.env.test`/`.env.prod.local` — gitignored).
 
-⚠️ **dev (`.env.local`) сейчас указывает на Turso, не на `blog.db`** (задан `TURSO_CONNECTION_URL`) —
-поэтому `npm run seed` и `db:migrate` на dev пишут в **прод-данные**. Не запускай `seed`/деструктивные
-команды на `:3000`; всё тестирование веди на `:3001` / `blog.test.db`.
+С Фазы 12 dev снова изолирован: `.env.local` → `file:blog.db` (Turso-креды заархивированы комментарием;
+Turso выведен из эксплуатации). Прод-БД — локальный SQLite на VPS, тесты — только `:3001`/`blog.test.db`.
 
 ## Стек
 - Next.js 16 App Router, TypeScript, Tailwind CSS v4
 - БД: `@libsql/client` + Drizzle ORM (dialect **`turso`**) — один драйвер для dev (`file:blog.db`) и прод (Turso)
 - MDX/блоки: `next-mdx-remote/rsc` + `rehype-pretty-code` (Shiki); рендер блоков идентичен в ридере и ревью
 - Auth: `iron-session` + `bcryptjs`, cookie 7д, имя `blog_session`
-- Темы: `next-themes`. Деплой: Vercel + Turso
+- Темы: `next-themes`. Деплой: **VPS recenza.ru** (Caddy + Node standalone + systemd; GH Actions
+  `deploy.yml`; конфиги в `deploy/`, runbook — `ENVIRONMENTS.md` §6). Формулы: KaTeX (блок `latex` +
+  инлайн `$...$`, серверный); диаграммы: mermaid-js (клиентский ленивый)
 
 ## Конвенции (жёсткие)
 - Path alias `@/* → src/*`. Все запросы — через Drizzle, **никакого raw SQL**.
@@ -251,7 +256,9 @@
 - **Редактор (Variant B, Фаза 6) — управляемые `textarea` с raw-markdown** (никакого
   `contenteditable`/`execCommand`). Инлайн-разметка живёт строкой в `block.text`
   (`**b**`/`*i*`/`` `code` ``/`[l](url)`; курсив только `*..*`, чтобы `snake_case` не курсивился),
-  рендер — `src/components/blocks/inline.tsx`. Отдельного block-типа LaTeX пока нет (задел на Фазу 12).
+  рендер — `src/components/blocks/inline.tsx`. С Фазы 12 есть block-тип `latex` (KaTeX, RSC) и инлайн
+  `$...$` (анти-ценовая эвристика: нужен LaTeX-подобный символ, кириллица внутри → литерал);
+  math-токены выбрасываются из `stripInlineMarks` (SEO/ToC).
 - **`normalizeBlock` (`src/lib/blocks/normalize.ts`) лечит дрейф имён** прототип→рендерер
   (`subtype→variant`, `tone→variant`, `caption→alt`); валидатор + чек-лист готовности
   (`src/lib/blocks/validate.ts`) изоморфны клиент⇄сервер. Константы блоков — в клиент-безопасном
@@ -265,7 +272,9 @@
   50%+рейтинг 30%+объём 20%) — чистый `src/lib/reviewer-match.ts`; flag «навыки не совпадают» доступен лишь
   при match<50% (перепроверка на сервере) → ревизия `changes-requested`. Оценки приватны: наружу только
   агрегат `users.reviewerRating`.
-- **Изображения — только путь `/uploads/`** (эндпоинта загрузки ещё нет; реальная загрузка — Фаза 12).
+- **Изображения — только путь `/uploads/`**; загрузка — `POST /api/uploads` (Фаза 12: kind
+  `article|cover|donation|banner` → гейт author/admin; magic-bytes + 4МБ + ранний 413 по Content-Length;
+  dev/test пишет в `public/uploads`, прод — `UPLOADS_DIR`, отдаёт Caddy). UI — `src/components/upload-field.tsx`.
 - **`src/lib/slug.ts` — транслитерирующий slug** (НЕ кириллический `slugify` из
   `src/components/blocks/anchors.ts`); не перепутать.
 - **Review-flow (Фаза 7) — POV серверный.** Доступ к `app/api/review/**` — через `resolveReviewAccess()`
@@ -279,7 +288,25 @@
 - **`router.refresh()` в клиентских ревью-действиях оборачивать в `startTransition`** — иначе он ловит
   Suspense-границу `loading.tsx`, ReviewScreen перемонтируется и теряет тост/локальный UI-стейт, а статус
   не обновляется без hard reload (`src/components/review/review-screen.tsx`). Кросс-экранный sync = поллинг
-  (30с) + refresh; вебсокетов нет (presence статичен из `chapter_reviewers.online`).
+  (30с) + refresh; вебсокетов нет. Presence (Фаза 12) — heartbeat: ревьюер шлёт
+  `POST /api/review/[id]/heartbeat` при открытии и в каждом поллинге; `online = last_seen_at ≥ now−90с`
+  (деривация в `queries/review.ts`); typing-индикатора нет (backlog).
+- **Публикация (Фаза 12) — единый `publishRevision()`** (`src/lib/queries/publish.ts`): его используют
+  author-publish, admin force-approve и cron. Внутри транзакции: гейт all-approve (для gate="all-approve"),
+  снапшот кредита, `reviewLoad −1`, fan-out `new_chapter` подписчикам автора, void pending
+  `primary_change_requests`. Отложенная публикация: `publish`-роут принимает `{scheduledAt}` (или `null`
+  для отмены), `/api/cron/publish` (Bearer `CRON_SECRET`, constant-time) публикует наступившие, перепроверяя
+  гейт; провал гейта снимает план + уведомление `scheduled_publish_failed`. Снятие ведущего админом
+  переназначает primary детерминированно (первый по handle из оставшихся).
+- **Прод-деплой (Фаза 12)**: standalone-сборка ТОЛЬКО с `BUILD_STANDALONE=1` (иначе ломается `next start`);
+  `outputFileTracingExcludes` в `next.config.ts` ОБЯЗАТЕЛЕН — без него трейсер утаскивает `.env*`/`.git`/
+  `blog.db` в артефакт (утечка секретов). Миграции на проде — `scripts/migrate.mjs` (drizzle-orm migrator;
+  drizzle-orm докладывается в артефакт — Next бандлит его в чанки). Прод-env — systemd EnvironmentFile
+  (БЕЗ `\$`-экранирования). Строго один Node-инстанс (in-memory rate-limit). На VPS рядом AmneziaWG
+  в Docker (51820/udp, 51821/tcp) — ufw-правила не трогать.
+- **Создание пользователей — только админом** (`POST /api/admin/users` + форма в «Люди»);
+  self-registration нет по построению (альфа). Роль задаётся один раз при создании; admin-роль через
+  API не создаётся.
 - **Комментарии (Фаза 8): глубина считается от 0** (`cmt_reply_reader` в seed — валидная глубина 2 = максимум).
   Ответ разрешён только если глубина родителя ≤1 (ответ на узел глубины 2 → `409`); проверка серверная
   (`src/app/api/comments/route.ts`), UI-флаг `canReply`/`depth<2` — вторичен. Листинг — **RSC**

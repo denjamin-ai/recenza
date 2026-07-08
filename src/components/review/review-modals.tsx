@@ -1,6 +1,6 @@
 // Модалки ReviewPage (Фаза 7): PrimaryChangeModal (запрос смены ведущего → админу) и TeamSheet
-// (команда ревью с вердиктами; на мобиле). Паттерн — как SubmitSheet/settings-popover: overlay-токен,
-// role=dialog/aria-modal, Escape, autofocus.
+// (команда ревью с вердиктами; на мобиле). Фаза 12: PublishModal (сейчас / отложенно).
+// Паттерн — как SubmitSheet/settings-popover: overlay-токен, role=dialog/aria-modal, Escape, autofocus.
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -133,6 +133,125 @@ export function PrimaryChangeModal({
               </button>
             </div>
           </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Локальное время → Unix seconds (datetime-local отдаёт строку без зоны — трактуем как локальную). */
+function localInputToUnix(value: string): number | null {
+  if (!value) return null;
+  const ms = new Date(value).getTime();
+  return Number.isFinite(ms) ? Math.floor(ms / 1000) : null;
+}
+
+export function PublishModal({
+  chapterTitle,
+  scheduledAt,
+  busy,
+  onClose,
+  onPublishNow,
+  onSchedule,
+  onCancelSchedule,
+}: {
+  chapterTitle: string;
+  scheduledAt: number | null;
+  busy: boolean;
+  onClose: () => void;
+  onPublishNow: () => void;
+  onSchedule: (unixSeconds: number) => void;
+  onCancelSchedule: () => void;
+}) {
+  const [when, setWhen] = useState("");
+  // «now» фиксируем на открытии модалки (lint react-hooks/purity: Date.now в рендере нельзя);
+  // это лишь UX-подсказка — сервер валидирует «в будущем» заново на своём времени.
+  const [openedAt] = useState(() => Math.floor(Date.now() / 1000));
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  useEscape(onClose);
+  useEffect(() => {
+    closeRef.current?.focus();
+  }, []);
+
+  const whenUnix = localInputToUnix(when);
+  const whenValid = whenUnix !== null && whenUnix > openedAt;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Публикация главы"
+        className="w-full max-w-[440px] rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-elevated)] p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-1 flex items-start justify-between gap-2">
+          <h2 className="text-[length:var(--type-h3)]">Публикация главы</h2>
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            aria-label="Закрыть"
+            className="min-h-9 px-1 text-[var(--muted-foreground)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            ✕
+          </button>
+        </div>
+        <p className="mb-4 text-[length:var(--type-small)] text-[var(--muted-foreground)] [text-wrap:pretty]">
+          «{chapterTitle}» одобрена всеми ревьюерами. Опубликуйте сейчас или запланируйте время —
+          отложенную публикацию выполнит планировщик (одобрения перепроверяются в момент публикации).
+        </p>
+
+        {scheduledAt !== null && (
+          <div className="mb-4 flex items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--accent)] px-3 py-2 text-[length:var(--type-small)]">
+            <span>
+              Запланирована на{" "}
+              <time dateTime={new Date(scheduledAt * 1000).toISOString()} className="font-medium">
+                {new Date(scheduledAt * 1000).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}
+              </time>
+            </span>
+            <button
+              type="button"
+              onClick={onCancelSchedule}
+              disabled={busy}
+              className="shrink-0 text-[var(--danger)] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-50"
+            >
+              Отменить
+            </button>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={onPublishNow}
+          disabled={busy}
+          className="mb-4 w-full min-h-10 rounded-[var(--radius-sm)] bg-[var(--success)] px-3 font-medium text-[var(--accent-foreground)] hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+        >
+          Опубликовать сейчас
+        </button>
+
+        <label className="mb-1.5 block text-[length:var(--type-small)] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+          Или запланировать
+        </label>
+        <div className="flex gap-2">
+          <input
+            type="datetime-local"
+            value={when}
+            onChange={(e) => setWhen(e.target.value)}
+            aria-label="Дата и время публикации"
+            className="min-h-9 min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-secondary)] px-2.5 py-1.5 text-[length:var(--type-body)] focus:border-[var(--accent)] focus:outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => whenUnix !== null && onSchedule(whenUnix)}
+            disabled={!whenValid || busy}
+            className="min-h-9 shrink-0 rounded-[var(--radius-sm)] bg-[var(--accent)] px-3 font-medium text-[var(--accent-foreground)] hover:opacity-90 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+          >
+            Запланировать
+          </button>
+        </div>
+        {when && !whenValid && (
+          <p className="mt-1.5 text-[length:var(--type-small)] text-[var(--danger)]">Время должно быть в будущем.</p>
         )}
       </div>
     </div>

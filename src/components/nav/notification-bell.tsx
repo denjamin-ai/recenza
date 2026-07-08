@@ -46,6 +46,10 @@ function labelOf(item: Item): string {
       return chapterTitle ? `Глава одобрена — можно публиковать: ${chapterTitle}` : "Глава одобрена — можно публиковать";
     case "review_published":
       return chapterTitle ? `Глава опубликована: ${chapterTitle}` : "Глава опубликована";
+    case "scheduled_publish_failed":
+      return chapterTitle
+        ? `Отложенная публикация не прошла: ${chapterTitle}`
+        : "Отложенная публикация не прошла проверку одобрений";
     case "review_comment":
       return chapterTitle ? `Новое сообщение в ревью: ${chapterTitle}` : "Новое сообщение в ревью";
     case "primary_change_request":

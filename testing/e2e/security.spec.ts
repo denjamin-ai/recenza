@@ -112,6 +112,36 @@ test.describe("Безопасность (SEC-*)", () => {
     expect(cookieString).not.toContain("blog_session");
   });
 
+  // ── SEC-HEADERS-01 — security-заголовки на всех ответах (next.config headers; Фаза 12) ──
+  // HSTS здесь НЕ ассертим: его добавляет Caddy только на HTTPS-контуре прода.
+
+  test("SEC-HEADERS-01 @smoke @critical: GET / отдаёт nosniff / DENY / Referrer-Policy / Permissions-Policy", async ({
+    api,
+  }) => {
+    const ctx = await api();
+    const res = await ctx.get("/");
+    expect(res.ok()).toBeTruthy();
+    const headers = res.headers();
+    expect(headers["x-content-type-options"]).toBe("nosniff");
+    expect(headers["x-frame-options"]).toBe("DENY");
+    expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
+    expect(headers["permissions-policy"]).toContain("camera=()");
+  });
+
+  // ── SEC-CRON-01 — cron-роут закрыт Bearer CRON_SECRET (Фаза 12) ──────────────
+
+  test("SEC-CRON-01 @critical: GET /api/cron/publish без Bearer → 401; с неверным Bearer → 401", async ({
+    api,
+  }) => {
+    const ctx = await api();
+    const bare = await ctx.get("/api/cron/publish");
+    expect(bare.status()).toBe(401);
+    const wrong = await ctx.get("/api/cron/publish", {
+      headers: { authorization: "Bearer wrong-secret" },
+    });
+    expect(wrong.status()).toBe(401);
+  });
+
   // ── SEC-TS-01 — timestamps API в Unix seconds, не миллисекундах ──────────────
 
   test("SEC-TS-01 @regression: GET /api/notifications — createdAt в Unix-секундах (< 10^11), не в миллисекундах", async ({

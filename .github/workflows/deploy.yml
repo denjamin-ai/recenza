@@ -1,0 +1,105 @@
+# Прод-деплой на VPS recenza.ru (Фаза 12). Сборка в CI (2 ГБ RAM сервера для next build мало):
+# standalone-артефакт → rsync в /srv/recenza/releases/<sha> → миграции → симлинк current →
+# systemd restart. Откат = симлинк на предыдущий релиз + restart (runbook в ENVIRONMENTS.md).
+# Секреты: DEPLOY_HOST (ip/host), DEPLOY_USER (recenza), DEPLOY_SSH_KEY (приватный ключ).
+# Рантайм-env живёт на сервере (/srv/recenza/shared/env) и в артефакт не входит.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Установка зависимостей
+        run: npm ci
+
+      - name: Прод-сборка (standalone; NEXT_PUBLIC_BASE_URL вшивается в билд)
+        env:
+          BUILD_STANDALONE: "1"
+          NEXT_PUBLIC_BASE_URL: https://recenza.ru
+          # Build-time заглушки: страницы force-dynamic, БД на сборке не нужна;
+          # реальные секреты приходят из /srv/recenza/shared/env на сервере.
+          SESSION_SECRET: build-time-only-secret-not-used-at-runtime
+          ADMIN_PASSWORD_HASH: build-time-only
+          DB_FILE_NAME: blog.db
+        run: npm run build
+
+      - name: Сборка артефакта релиза
+        run: |
+          mkdir -p artifact
+          cp -r .next/standalone/. artifact/
+          mkdir -p artifact/.next/static
+          cp -r .next/static/. artifact/.next/static/
+          cp -r public artifact/public
+          cp -r drizzle artifact/drizzle
+          mkdir -p artifact/scripts
+          cp scripts/migrate.mjs artifact/scripts/migrate.mjs
+          # drizzle-orm вбандлен Next-ом в серверные чанки и в standalone node_modules отсутствует,
+          # а migrate.mjs импортирует его как пакет — докладываем вручную (чистый JS).
+          cp -r node_modules/drizzle-orm artifact/node_modules/drizzle-orm
+
+      - name: SSH-доступ
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Доставка релиза (rsync)
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          RELEASE="${GITHUB_SHA::7}"
+          rsync -az --delete -e "ssh -i ~/.ssh/deploy_key" \
+            artifact/ "$DEPLOY_USER@$DEPLOY_HOST:/srv/recenza/releases/$RELEASE/"
+
+      - name: Миграции → переключение симлинка → рестарт → health-check
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          RELEASE="${GITHUB_SHA::7}"
+          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" bash -s <<EOF
+          set -euo pipefail
+          cd /srv/recenza/releases/$RELEASE
+          set -a; . /srv/recenza/shared/env; set +a
+          node scripts/migrate.mjs
+          ln -sfn /srv/recenza/releases/$RELEASE /srv/recenza/current
+          sudo /usr/bin/systemctl restart recenza
+          for i in \$(seq 1 20); do
+            sleep 2
+            if curl -sf -o /dev/null http://127.0.0.1:3000/; then
+              echo "health-check OK"; exit 0
+            fi
+          done
+          echo "health-check FAILED"; exit 1
+          EOF
+
+      - name: Очистка старых релизов (оставляем 5)
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "$DEPLOY_USER@$DEPLOY_HOST" \
+            'cd /srv/recenza/releases && ls -1t | tail -n +6 | xargs -r rm -rf --'

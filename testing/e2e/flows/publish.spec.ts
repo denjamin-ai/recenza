@@ -257,9 +257,16 @@ test.describe("Флоу публикации: гейт all-approve, force-approv
     ).toBeVisible();
   });
 
-  test("PUB-ARTICLE @critical: подписчик получает уведомление «Новая глава» после публикации", async () => {
-    // reader подписан на author (seed follows), но publish уведомляет только команду ревью.
-    test.fixme(true, "Баг №1 MCP-FINDINGS §6: publish не уведомляет подписчиков — исправление в Фазе 12");
+  test("PUB-ARTICLE @critical: подписчик получает уведомление «Новая глава» после публикации", async ({
+    asReader,
+  }) => {
+    // reader подписан на author (seed follows). Фаза 12 (P1-фикс): и force-approve (PUB-DRAFT),
+    // и обычный publish (PUB-CHAPTER-V2) веером уведомляют подписчиков типом new_chapter.
+    const reader = new ReaderPage(asReader.page);
+    await reader.gotoFeed();
+    const menu = await reader.openNotifications();
+    await expect(menu.getByText(`Новая глава: ${CHAPTERS.underReview.title}`)).toBeVisible();
+    await expect(menu.getByText(`Новая глава: ${CHAPTERS.changesRequested.title}`)).toBeVisible();
   });
 
   test("PUB-PORTFOLIO @critical: портфолио публикуется без ревью — правка, show/hide для гостя, self-view владельца", async ({

@@ -5,6 +5,7 @@
 
 import type { Block } from "@/types";
 import { CALLOUT_VARIANTS, CODE_LANGS, LIST_VARIANTS, type BlockType } from "@/lib/blocks/constants";
+import { UploadField } from "@/components/upload-field";
 import { AutoTextarea } from "./auto-textarea";
 import { MarkableTextarea } from "./markable-textarea";
 
@@ -17,6 +18,7 @@ export const BLOCK_LABEL: Record<BlockType, string> = {
   code: "Код",
   callout: "Callout",
   mermaid: "Схема Mermaid",
+  latex: "Формула (LaTeX)",
   image: "Изображение",
   table: "Таблица",
   embed: "Embed",
@@ -139,6 +141,22 @@ export function BlockEditor({ block, onChange }: { block: Block; onChange: (b: B
           </p>
         </div>
       );
+    case "latex":
+      return (
+        <div className="flex flex-col gap-1">
+          <AutoTextarea
+            value={asString(block.text)}
+            onChange={(e) => set({ text: e.target.value })}
+            placeholder={"c = \\pm\\sqrt{a^2 + b^2}"}
+            aria-label="Формула LaTeX"
+            spellCheck={false}
+            className="rounded-[var(--radius-sm)] bg-[var(--bg-secondary)] p-3 font-mono text-[length:var(--type-small)]"
+          />
+          <p className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+            Display-формула KaTeX; инлайн в тексте — $…$. Превью появляется в ридере.
+          </p>
+        </div>
+      );
     case "list":
       return (
         <div className="flex flex-col gap-2">
@@ -166,12 +184,13 @@ export function BlockEditor({ block, onChange }: { block: Block; onChange: (b: B
     case "image":
       return (
         <div className="flex flex-col gap-2">
-          <input
+          <UploadField
+            kind="article"
             value={asString(block.src)}
-            onChange={(e) => set({ src: e.target.value })}
+            onChange={(src) => set({ src })}
             placeholder="/uploads/articles/…"
-            aria-label="Путь изображения"
-            className={inputCls}
+            ariaLabel="Путь изображения"
+            inputClassName={inputCls}
           />
           <input
             value={asString(block.alt)}
@@ -181,7 +200,7 @@ export function BlockEditor({ block, onChange }: { block: Block; onChange: (b: B
             className={inputCls}
           />
           <p className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">
-            Разрешён только путь, начинающийся с /uploads/.
+            PNG/JPEG/WebP до 4 МБ; путь всегда начинается с /uploads/.
           </p>
         </div>
       );

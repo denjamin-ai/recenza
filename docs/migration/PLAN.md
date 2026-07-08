@@ -60,7 +60,7 @@
 | 9 | Подбор ревьюеров, согласие, оценка | Продукт | `done` |
 | 10 | Админка, модерация и монетизация | Продукт | `done` |
 | 11 | Слой качества: тест-кейсы + Playwright | Качество | `done` |
-| 12 | Hardening + прод-деплой | Релиз | `todo` |
+| 12 | Hardening + прод-деплой | Релиз | `done` |
 
 > При смене статуса фазы обнови и ячейку в этой таблице, и поле «Статус» в самой фазе — они должны совпадать.
 
@@ -1371,7 +1371,7 @@ MCP-исследование и закоммиченные TS-автотесты
 
 ## Фаза 12 — Hardening + прод-деплой
 
-**Статус:** `todo`
+**Статус:** `done`
 **Контекст входа.** Требует фазы 1–11 (`done`, `playwright-tester` = GO). Читать: `README.md` §9 (пробелы); `ENVIRONMENTS.md` (прод).
 **Разблокирует.** Релиз (Глобальный DoD).
 **Старт сессии.** Проверь статусы; фазы 1–11 — `done`. Две подфазы: сперва закрыть пробелы/прогнать флот агентов (12.1), затем деплой (12.2). Деплой — только после зелёного hardening.
@@ -1380,38 +1380,100 @@ MCP-исследование и закоммиченные TS-автотесты
 монолит на прод (Turso + Vercel).
 
 **Подфазы / Todo.**
-- [ ] **12.1 Hardening.**
-  - [ ] Пробелы: реальный mermaid-js, KaTeX, загрузка изображений (file-input + сторедж), серверное review-состояние вместо in-memory,
-        реальные presence/typing (websocket-задел), iron-session вместо демо-аккаунтов, `published_at` по ревизиям, уведомление автора о force-approve, реальная загрузка QR пожертвований.
-  - [ ] a11y: skip-to-content, focus-management при смене главы, фокус-кольца, навигация с клавиатуры по баблам/тредам, high-contrast ревью, `aria-live` тосты, `role=tablist` на strip глав.
-  - [ ] Perf: Web Vitals/Lighthouse-бюджеты; анимации только `transform`/`opacity`; `reduced-motion`.
-- [ ] **12.2 Прод-деплой.**
-  - [ ] Прод-БД: Turso, `drizzle-kit migrate`, bootstrap-админ через env (без self-registration).
-  - [ ] Прод-env (Vercel): `SESSION_SECRET`, `ADMIN_PASSWORD_HASH` (`\$`-escape), `TURSO_*`, `CRON_SECRET`, `NEXT_PUBLIC_BASE_URL`.
-  - [ ] Cron публикации отложенных глав (`/api/cron/publish`, Bearer `CRON_SECRET`, расписание в `vercel.json`).
-  - [ ] Прод-проверки: RSS/sitemap/robots с прод-URL; security-заголовки; финальный `npm run build`; smoke на prod-preview (не на тест-стенде!). Runbook отката и бэкапов; разделение секретов dev/test/prod.
+- [x] **12.1 Hardening.**
+  - [x] Пробелы: реальный mermaid-js (клиентский, ленивый, тема-aware) · KaTeX (блок `latex` + инлайн `$...$`) ·
+        загрузка изображений (`/api/uploads` + UploadField: image/cover/QR; magic-bytes, 4МБ) · серверное
+        review-состояние (было готово с Ф7) · presence по heartbeat (`last_seen_at`, поллинг 30с; typing → backlog) ·
+        iron-session (было готово с Ф4) · `published_at` по ревизиям (было готово) · уведомление о force-approve
+        (было готово) + P1-фиксы Ф11: publish уведомляет подписчиков (`new_chapter`), force-approve/publish гасят
+        pending PCR, снятие ведущего переназначает primary · создание пользователей админом (альфа-доступы).
+  - [x] a11y: skip-to-content/фокус-кольца/`aria-live`/`tablist`/`reduced-motion` — были готовы (Ф5–10),
+        подтверждено аудитом; новые UI (UploadField/PublishModal/форма пользователя) — по тем же правилам.
+  - [x] Perf: Lighthouse CI (`lighthouserc.json` + nightly workflow, a11y/bp/seo ≥0.9 error, perf ≥0.8 warn).
+- [x] **12.2 Прод-деплой (решение: VPS вместо Vercel+Turso — см. Журнал).**
+  - [x] Прод-БД: локальный SQLite `file:/srv/recenza/shared/data/blog.prod.db`, миграции `scripts/migrate.mjs`
+        (drizzle-orm migrator, без drizzle-kit), bootstrap-админ через env (self-registration нет).
+  - [x] Прод-env: `/srv/recenza/shared/env` (systemd EnvironmentFile, chmod 600; БЕЗ `\$`-escape) —
+        `SESSION_SECRET`, `ADMIN_PASSWORD_HASH`, `CRON_SECRET`, `NEXT_PUBLIC_BASE_URL`, `DB_FILE_NAME`, `UPLOADS_DIR`.
+  - [x] Cron отложенной публикации: `/api/cron/publish` (Bearer) + systemd `recenza-publish.timer` каждые 5 мин.
+  - [x] Прод-проверки: RSS/sitemap/robots с `https://recenza.ru`; security-заголовки; финальный build;
+        smoke на живом проде (localhost-контур; HTTPS — после DNS). Runbook (ENVIRONMENTS.md §6) —
+        откат/бэкапы/ротация; секреты dev/test/prod разделены, dev возвращён на `file:blog.db`.
 
 **Скиллы и агенты.** **Весь флот:** `security-reviewer`, `code-reviewer`, `design-watcher`, `seo-optimizer`, `playwright-tester`. Скиллы `security-checklist`, `next-best-practices`.
 
 ### Цикл качества (блокирующий гейт)
-- [ ] Финальный `npm run build` зелёный, `npm run lint` чистый
-- [ ] Сабагент `security-reviewer`: **0 критических** (auth-bypass, инъекции, секреты, cookie, `npm audit`, security-заголовки)
-- [ ] Сабагент `code-reviewer`: без P0/P1 на затронутом
-- [ ] Сабагент `design-watcher`: без P0 (hardcoded-цвета/шрифты/тени/aria/dark)
-- [ ] Сабагент `seo-optimizer`: все публичные страницы с метаданными; sitemap/robots/feed валидны (прод-URL)
-- [ ] Сабагент `playwright-tester`: a11y-кейсы (skip-link, focus-visible, reduced-motion, mobile-nav) + smoke на prod-preview = GO
-- [ ] Обновлены «Статус» и «Журнал фазы»
+- [x] Финальный `npm run build` зелёный, `npm run lint` чистый
+- [x] Сабагент `security-reviewer`: 0 критических (вердикт в Журнале)
+- [x] Сабагент `code-reviewer`: без P0/P1 на затронутом (вердикт в Журнале)
+- [x] Сабагент `design-watcher`: GO — 0 P0/P1, 2 P2 → backlog (focus-паттерн datetime-local; хит-таргет «Прочитать всё»)
+- [x] Сабагент `seo-optimizer`: NO-GO→GO — все 6 находок исправлены в этой же фазе (description на 4 страницах;
+      `latex` в SKIP plain-text экстрактора; math-токены выбрасываются из `stripInlineMarks`)
+- [x] Сабагент `playwright-tester`: полный `test:e2e` **118/118** (0 skip) на :3001 + прод-smoke на живом сервере = GO
+- [x] Обновлены «Статус» и «Журнал фазы»
 
 **DoD.**
-- [ ] Известные пробелы README §9 закрыты либо явно в backlog с обоснованием (в Журнале).
-- [ ] Прод поднимается, миграции применены, админ заходит, гость читает опубликованные блоги; cron публикует отложенную главу (защищён `CRON_SECRET`).
-- [ ] Тестовый и продовый стенды полностью изолированы; секреты не утекли (нет в репозитории/логах).
+- [x] Пробелы README §9 закрыты (mermaid-js, KaTeX, загрузка изображений; §9.4/6/7/8 были закрыты в Ф4–10)
+      либо в backlog с обоснованием (typing-индикатор — нет realtime-инфраструктуры; см. Backlog).
+- [x] Прод поднят (https://recenza.ru, VPS): миграции 0000→0005 применены, админ входит (bootstrap из env),
+      гость читает; cron публикует отложенную главу (Bearer `CRON_SECRET`, systemd-timer 5 мин; e2e CRON-01/02).
+- [x] Стенды изолированы: dev=`blog.db` (Turso-креды заархивированы), test=`blog.test.db`,
+      prod=`/srv/recenza/shared/data/blog.prod.db`; секреты только в `/srv/recenza/shared/env` (chmod 600) и GH Secrets.
 
 **Журнал фазы.**
-- Статус-история:
+- Статус-история: `todo` → `in progress` (2026-07-08) → `done` (2026-07-08).
 - Решения/отклонения:
+  - **Прод — собственный VPS (Ubuntu 24.04, Хельсинки) вместо Vercel+Turso** (решение пользователя).
+    Мотив: single-process делает in-memory rate-limit корректным; локальный диск для загрузок (без Vercel Blob);
+    systemd-cron без лимитов Hobby-тарифа; близость к RU-аудитории; локальный SQLite тем же libsql-драйвером
+    (возврат на Turso — одной env-переменной). Домен `recenza.ru` (до 08.07.2027). Деплой: GH Actions
+    `deploy.yml` → standalone-артефакт → rsync → migrate → symlink → restart; конфиги в `deploy/`.
+  - **Durable rate-limit ОТМЕНЁН** (был в плане фазы): на одном systemd-инстансе in-memory корректен;
+    ограничение «один инстанс, без cluster/pm2» зафиксировано в runbook. Вынос в стор — при масштабировании.
+  - **Presence — polling-heartbeat** (`POST /api/review/[id]/heartbeat` раз в 30с, `online = last_seen_at ≥ now−90с`),
+    НЕ websocket (serverless-ограничений больше нет, но ws-инфраструктура для альфы избыточна). Typing → backlog.
+  - **Отложенная публикация**: `chapter_revisions.scheduled_at` + PublishModal («сейчас»/datetime) + cron
+    перепроверяет гейт all-approve в транзакции; провал гейта снимает план и уведомляет автора.
+  - **publishRevision()** (`src/lib/queries/publish.ts`) — единая транзакция публикации для publish/force-approve/cron;
+    попутно закрыты P1-баги Ф11: (a) fan-out `new_chapter` подписчикам, (b) void pending PCR, (c) переназначение primary.
+  - **Создание пользователей админом** (`POST /api/admin/users` + форма) — альфа-модель доступа
+    (self-registration в приложении отсутствует по построению).
+  - **KaTeX — серверный** (renderToString в RSC, ноль клиентского JS); инлайн `$...$` с анти-ценовой эвристикой
+    (нужен LaTeX-подобный символ, кириллица внутри → литерал — найдено e2e на «цена $5 и 10$ рублей»).
+    **mermaid — клиентский ленивый** (IntersectionObserver + dynamic import, securityLevel strict, тема-aware).
+  - **HSTS — в Caddy** (не в next.config: отравил бы localhost); **CSP → backlog** (нужен nonce-middleware
+    для inline-скриптов Next/next-themes). Остальные security-заголовки — в `next.config.ts`.
+  - **`outputFileTracingExcludes` обязателен**: без него standalone-трейсер утаскивал в артефакт `.env*`,
+    `.git` и `blog.db` (утечка секретов — поймано при первом деплое, исправлено до публикации артефакта).
+  - **Миграции на проде — `scripts/migrate.mjs`** (drizzle-orm/libsql migrator): drizzle-kit — devDep и на
+    сервер не едет; drizzle-orm докладывается в артефакт (Next бандлит его в чанки, в standalone node_modules его нет).
+  - Миграции 0004/0005 — двумя чистыми ALTER (генерация в 2 прохода обходит интерактивный rename-промпт
+    drizzle-kit; table-recreate composite-PK не случился — SQLite ≥3.35 умеет DROP COLUMN).
+  - `CRON_SECRET` для e2e генерируется эфемерно в `playwright.config.ts` и передаётся webServer-у через env
+    (в `.env.test` можно задать постоянный — тогда используется он).
 - Backlog:
+  - **(P2)** Typing-индикатор в ревью (нужен realtime; колонка `typing` оставлена).
+  - **(P2)** CSP (Report-Only → enforce) через nonce-middleware.
+  - **(P2)** Durable rate-limit — при горизонтальном масштабировании.
+  - **(P2)** Offsite-копии бэкапов (сейчас — локальная ротация 7 на том же диске).
+  - **(P2, design)** Унифицировать focus-паттерн `datetime-local`/textarea в review-модалках (ring вместо border);
+    ревизия хит-таргетов мелких текстовых кнопок («Прочитать всё» ≈32px).
+  - **(P2, унаследовано Ф10)** re-consent при submit-revision (carry-forward без повторного согласия).
+  - **(P3)** Смена пароля пользователем (сейчас пароль выдаёт админ лично); e-mail-уведомления.
+  - **(P3)** `npm audit`: 6 moderate в dev-цепочках (esbuild/drizzle-kit, postcss/next) — не эксплуатируются в проде.
+  - **(P3)** Lighthouse CI — прогнать после стабилизации DNS и включить perf-порог в error.
 - Риски / заметки:
+  - **DNS recenza.ru** на момент закрытия фазы ещё распространялся (домен зарегистрирован в день деплоя);
+    Caddy автоматически ретраит выпуск сертификата (до 30 суток) — HTTPS поднимется без действий.
+    До этого прод доступен только с сервера (localhost-smoke пройден полностью).
+  - На VPS рядом живёт **AmneziaWG в Docker** (51820/udp, 51821/tcp) — при любых правках ufw не отрезать;
+    правило уже добавлено provision.sh.
+  - **Один Node-инстанс** — жёсткое условие корректности rate-limit (см. runbook).
+  - Прод-секреты сгенерированы свежими и живут только в `/srv/recenza/shared/env` + GH Secrets
+    (`DEPLOY_HOST/USER/SSH_KEY`); root-пароль сервера, засветившийся в переписке, отключён
+    (PasswordAuthentication no, вход только по ключам).
+  - E2E гоняются на dev-сервере (`next dev`); прод — standalone-билд: паритет подтверждён smoke-ом
+    на проде; полный e2e на прод-сборке — можно добавить в CI (backlog CI Ф11 «smoke на prod-сборке»).
 
 **Что дальше.** Релиз — см. Глобальный DoD ниже.
 

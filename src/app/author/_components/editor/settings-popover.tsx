@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Complexity } from "@/types";
 import { COMPLEXITIES } from "@/types";
+import { UploadField } from "@/components/upload-field";
 import { ChipInput } from "./chip-input";
 
 const COMPLEXITY_LABEL: Record<Complexity, string> = {
@@ -114,16 +115,17 @@ export function SettingsPopover({
             </select>
           </label>
 
-          <label className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1">
             <span className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">Обложка (путь /uploads/)</span>
-            <input
+            <UploadField
+              kind="cover"
               value={coverUrl}
-              onChange={(e) => setCoverUrl(e.target.value)}
+              onChange={setCoverUrl}
               placeholder="/uploads/covers/…"
-              className={fieldCls}
-              aria-label="URL обложки"
+              ariaLabel="URL обложки"
+              inputClassName={fieldCls}
             />
-          </label>
+          </div>
 
           <label className="flex flex-col gap-1">
             <span className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">Краткое описание</span>

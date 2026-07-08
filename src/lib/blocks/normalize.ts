@@ -40,6 +40,7 @@ export function normalizeBlock(raw: unknown): Block | null {
     case "h3":
     case "quote":
     case "mermaid":
+    case "latex":
       block.text = asString(r.text);
       break;
     case "callout":

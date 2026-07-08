@@ -1,0 +1,1 @@
+ALTER TABLE `chapter_reviewers` DROP COLUMN `online`;

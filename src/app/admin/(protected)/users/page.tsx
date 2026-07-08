@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { getAdminUsers } from "@/lib/queries/admin";
 import { ScreenHead, RolePill, Pill } from "@/app/admin/_components/primitives";
+import { UserCreate } from "@/app/admin/_components/user-create";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,8 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
   return (
     <div>
       <ScreenHead eyebrow="Люди" title="Пользователи" description="Роли, баны и ограничение комментирования. Роль меняется только через приём заявки с доски." />
+
+      <UserCreate />
 
       {term && (
         <p className="mb-3 text-[length:var(--type-small)] text-[var(--muted-foreground)]">

@@ -4,7 +4,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { LoginForm } from "@/components/auth/login-form";
 
-export const metadata: Metadata = { title: "Вход" };
+export const metadata: Metadata = {
+  title: "Вход",
+  description: "Вход в аккаунт Recenza: читайте девблоги, пишите главы и участвуйте в ревью.",
+};
 
 type Search = Promise<{ next?: string; intent?: string }>;
 

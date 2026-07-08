@@ -29,6 +29,20 @@
       "when": 1782840854666,
       "tag": "0003_shocking_sunfire",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1783536952475,
+      "tag": "0004_nifty_quasimodo",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1783536968839,
+      "tag": "0005_steady_silver_samurai",
+      "breakpoints": true
     }
   ]
 }

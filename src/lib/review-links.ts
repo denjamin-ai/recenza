@@ -12,6 +12,8 @@ export const REVIEW_NOTIFY = {
   changesRequested: "review_changes_requested",
   ready: "review_ready",
   published: "review_published",
+  newChapter: "new_chapter", // подписчикам автора: опубликована новая глава (Фаза 12, P1-фикс)
+  scheduledPublishFailed: "scheduled_publish_failed", // автору: отложенная публикация не прошла гейт (Фаза 12)
   comment: "review_comment",
   primaryChange: "review_primary_change",
 } as const;

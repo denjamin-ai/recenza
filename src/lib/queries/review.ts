@@ -98,6 +98,8 @@ export interface ReviewSession {
     blocks: Block[];
     /** Снапшот последней публикации для инлайн-диффа; пусто → глава ещё не публиковалась (дифф «всё ново»). */
     prevBlocks: Block[];
+    /** Отложенная публикация (Unix seconds); null — не запланирована. */
+    scheduledAt: number | null;
   };
   reviewers: ReviewReviewer[];
   threads: ReviewThread[];
@@ -163,6 +165,7 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
       summary: chapterRevisions.summary,
       blocks: chapterRevisions.blocks,
       prevBlocks: chapterRevisions.prevBlocks,
+      scheduledAt: chapterRevisions.scheduledAt,
     })
     .from(chapterRevisions)
     .where(eq(chapterRevisions.chapterId, chapterId));
@@ -176,7 +179,7 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
       isPrimary: chapterReviewers.isPrimary,
       verdict: chapterReviewers.verdict,
       verdictAt: chapterReviewers.verdictAt,
-      online: chapterReviewers.online,
+      lastSeenAt: chapterReviewers.lastSeenAt,
       displayName: users.displayName,
       slug: users.slug,
     })
@@ -186,6 +189,8 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
       and(eq(chapterReviewers.chapterId, chapterId), eq(chapterReviewers.revisionNumber, rev.number)),
     );
 
+  // online — деривация из heartbeat (POST /api/review/[chapterId]/heartbeat каждые ~30с).
+  const presenceThreshold = Math.floor(Date.now() / 1000) - 90;
   const reviewers: ReviewReviewer[] = reviewerRows
     .map((r) => ({
       handle: r.handle,
@@ -194,7 +199,7 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
       isPrimary: r.isPrimary,
       verdict: (r.verdict as Verdict | null) ?? null,
       verdictAt: r.verdictAt,
-      online: r.online,
+      online: r.lastSeenAt !== null && r.lastSeenAt >= presenceThreshold,
     }))
     .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
 
@@ -339,6 +344,7 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
       summary: rev.summary,
       blocks: parseJson<Block[]>(rev.blocks, []),
       prevBlocks: parseJson<Block[]>(rev.prevBlocks, []),
+      scheduledAt: rev.scheduledAt,
     },
     reviewers,
     threads: threadViews,

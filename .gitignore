@@ -8,6 +8,15 @@ blog.db
 blog.test.db
 *.db-journal
 
+# загрузки (runtime-файлы /api/uploads не коммитим; seed-плейсхолдеры — исключениями)
+public/uploads/**
+!public/uploads/*/
+!public/uploads/articles/event-loop.png
+!public/uploads/avatars/reader.png
+!public/uploads/avatars/author.png
+!public/uploads/covers/async.png
+!public/uploads/donations/sbp-qr.png
+
 # Next.js / Node
 node_modules/
 .next/

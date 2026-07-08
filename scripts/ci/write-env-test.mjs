@@ -26,6 +26,7 @@ const env = [
   `SESSION_SECRET=${randomBytes(32).toString("hex")}`,
   `ADMIN_PASSWORD_HASH=${escapedHash}`,
   `ADMIN_PASSWORD_PLAIN=${adminPassword}`,
+  `CRON_SECRET=${randomBytes(24).toString("hex")}`,
   "NEXT_PUBLIC_BASE_URL=http://localhost:3001",
   "TURSO_CONNECTION_URL=",
   "TURSO_AUTH_TOKEN=",

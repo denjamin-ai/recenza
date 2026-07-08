@@ -1,0 +1,49 @@
+# Perf-бюджеты (Фаза 12): Lighthouse CI по прод-сборке на эфемерном тест-стенде.
+# Nightly + ручной запуск; НЕ PR-гейт (перф-скоры на CI-раннерах шумные — perf только warn,
+# a11y/best-practices/seo — error). Пороги — lighthouserc.json.
+name: lighthouse
+
+on:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Установка зависимостей
+        run: npm ci
+
+      - name: Генерация .env.test (эфемерные секреты)
+        run: node scripts/ci/write-env-test.mjs
+
+      - name: Тест-БД (migrate + seed)
+        run: npm run test:reset
+
+      - name: Прод-сборка
+        run: npx dotenv -e .env.test -- npm run build
+
+      - name: Старт прод-сервера (:3001)
+        run: |
+          npx dotenv -e .env.test -- npx next start -p 3001 &
+          timeout 60 bash -c 'until curl -sf http://localhost:3001 > /dev/null; do sleep 2; done'
+
+      - name: Lighthouse CI
+        run: npx lhci autorun
+
+      - name: Отчёт при провале
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: lighthouse-report
+          path: .lighthouseci
+          retention-days: 7

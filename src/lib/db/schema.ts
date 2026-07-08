@@ -132,6 +132,7 @@ export const chapterRevisions = sqliteTable(
     prevBlocks: text("prev_blocks"), // JSON Block[] (снапшот последней публикации, для инлайн-диффа)
     submittedAt: integer("submitted_at"),
     publishedAt: integer("published_at"),
+    scheduledAt: integer("scheduled_at"), // отложенная публикация: cron публикует при scheduled_at <= now
   },
   (t) => [unique("chapter_revisions_chapter_number_uq").on(t.chapterId, t.number)],
 );
@@ -152,7 +153,7 @@ export const chapterReviewers = sqliteTable(
     isPrimary: integer("is_primary", { mode: "boolean" }).notNull().default(false),
     verdict: text("verdict", { enum: VERDICTS }),
     verdictAt: integer("verdict_at"),
-    online: integer("online", { mode: "boolean" }).notNull().default(false),
+    lastSeenAt: integer("last_seen_at"), // heartbeat: online = last_seen_at >= now − 90с
     typing: integer("typing", { mode: "boolean" }).notNull().default(false),
   },
   (t) => [primaryKey({ columns: [t.chapterId, t.revisionNumber, t.handle] })],

@@ -69,7 +69,7 @@ export function ReviewHeader({
           </span>
         </div>
 
-        {/* Presence (статично из chapter_reviewers.online; D2 — без вебсокетов). */}
+        {/* Presence: heartbeat-деривация (last_seen_at ≥ now−90с; D2 — без вебсокетов). */}
         <div className="mr-1 hidden shrink-0 items-center -space-x-1.5 md:flex" aria-label="Команда ревью">
           {reviewers.slice(0, 4).map((r) => (
             <span

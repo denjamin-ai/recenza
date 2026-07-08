@@ -94,13 +94,16 @@ export class ReviewPage {
     await this.page.getByRole("button", { name: "Нужны правки" }).click();
   }
 
-  /** В DOM ТОЛЬКО при все approve (иначе отсутствует; сервер — 409). */
+  /** В DOM ТОЛЬКО при все approve (иначе отсутствует; сервер — 409). exact — не путать с «Опубликовать сейчас» в модалке. */
   get publishButton(): Locator {
-    return this.page.getByRole("button", { name: "Опубликовать" });
+    return this.page.getByRole("button", { name: "Опубликовать", exact: true });
   }
 
+  /** Фаза 12: «Опубликовать» открывает PublishModal (сейчас/отложенно) — публикуем сейчас. */
   async publish(): Promise<void> {
     await this.publishButton.click();
+    const dialog = this.page.getByRole("dialog", { name: "Публикация главы" });
+    await dialog.getByRole("button", { name: "Опубликовать сейчас" }).click();
     await expect(this.page.getByText("Глава опубликована.")).toBeVisible();
   }
 

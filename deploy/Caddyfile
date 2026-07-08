@@ -1,0 +1,28 @@
+# Caddyfile прода Recenza (Фаза 12) → /etc/caddy/Caddyfile на VPS.
+# TLS — автоматический Let's Encrypt (нужна A-запись recenza.ru → IP сервера ДО старта).
+# HSTS живёт здесь (не в next.config — иначе отравил бы http://localhost в dev).
+# /uploads/* отдаётся напрямую с диска (мимо Node) из shared-каталога, переживающего релизы.
+
+recenza.ru {
+	encode gzip
+
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	# Второй рубеж DoS-защиты аплоадов (первый — ранний 413 в /api/uploads по Content-Length).
+	request_body {
+		max_size 8MB
+	}
+
+	handle_path /uploads/* {
+		root * /srv/recenza/shared/uploads
+		file_server
+		header Cache-Control "public, max-age=86400"
+	}
+
+	# Host сохраняется по умолчанию → same-origin CSRF (assertSameOrigin) работает.
+	reverse_proxy 127.0.0.1:3000
+}
+
+www.recenza.ru {
+	redir https://recenza.ru{uri} permanent
+}

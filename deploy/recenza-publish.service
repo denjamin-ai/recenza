@@ -1,0 +1,13 @@
+# Oneshot-вызов cron отложенной публикации (Фаза 12) → /etc/systemd/system/recenza-publish.service
+# Запускается таймером recenza-publish.timer каждые 5 минут. Bearer — из общего env.
+
+[Unit]
+Description=Recenza: публикация отложенных глав (/api/cron/publish)
+After=recenza.service
+Requisite=recenza.service
+
+[Service]
+Type=oneshot
+User=recenza
+EnvironmentFile=/srv/recenza/shared/env
+ExecStart=/usr/bin/curl -fsS -H "Authorization: Bearer ${CRON_SECRET}" http://127.0.0.1:3000/api/cron/publish

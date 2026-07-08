@@ -1,0 +1,10 @@
+# Таймер cron отложенной публикации → /etc/systemd/system/recenza-publish.timer
+[Unit]
+Description=Recenza: таймер отложенной публикации (каждые 5 минут)
+
+[Timer]
+OnCalendar=*:0/5
+RandomizedDelaySec=10
+
+[Install]
+WantedBy=timers.target
