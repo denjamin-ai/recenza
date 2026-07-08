@@ -84,9 +84,11 @@ test.describe("Подбор ревьюеров (MATCH-*)", () => {
       await asAuthor.goto("/author");
       const ratingCard = asAuthor.page.getByRole("heading", { name: "Оцените ревьюеров" });
       await expect(ratingCard).toBeVisible();
-      await asAuthor.page.getByRole("button", { name: "4 — Хорошо" }).first().click();
-      // После оценки секция исчезает (refresh)
-      await expect(ratingCard).toBeHidden();
+      // Клик по звезде ретраим (потеря до гидрации); успех — секция исчезает после refresh.
+      await expect(async () => {
+        await asAuthor.page.getByRole("button", { name: "4 — Хорошо" }).first().click();
+        await expect(ratingCard).toBeHidden({ timeout: 4_000 });
+      }).toPass({ timeout: 25_000 });
     });
 
     await test.step("приватность: на /u/sergey-review виден только агрегат, без индивидуальной оценки", async () => {
@@ -152,10 +154,11 @@ test.describe("Подбор ревьюеров (MATCH-*)", () => {
       await expect(sergey.page.getByText("Новых приглашений нет.")).toBeVisible({ timeout: 3_000 });
     }).toPass({ timeout: 20_000 });
 
-    await test.step("автор: глава «Промисы» → changes-requested, уведомление + секция «Навыки не совпадают»", async () => {
-      await asAuthor.goto(`/author/blog/${BLOG.slug}`);
+    await test.step("автор: в кабинете секция «Навыки не совпадают» (глава снята с ревью)", async () => {
+      // Секция flag-алерта — в кабинете /author, не на детали блога (MCP-FINDINGS §2).
+      await asAuthor.goto("/author");
       await asAuthor.page.reload();
-      await expect(asAuthor.page.getByText(/Навыки не совпадают/).first()).toBeVisible();
+      await expect(asAuthor.page.getByRole("heading", { name: "Навыки не совпадают" })).toBeVisible();
     });
   });
 

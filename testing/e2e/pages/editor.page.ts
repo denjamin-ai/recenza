@@ -116,9 +116,13 @@ export class EditorPage {
     return this.submitSheet.getByText("Готово к отправке");
   }
 
-  /** Отправка: успех = redirect в кабинет блога (тост не успевает). */
+  /** Отправка: успех = redirect в кабинет блога (тост не успевает). Клик ретраится против
+   *  потери события до гидрации (MCP-FINDINGS §4). */
   async submit(blogSlug: string): Promise<void> {
-    await this.submitSheet.getByRole("button", { name: "Отправить", exact: true }).click();
-    await this.page.waitForURL(`**/author/blog/${blogSlug}`);
+    const btn = this.submitSheet.getByRole("button", { name: "Отправить", exact: true });
+    await expect(async () => {
+      await btn.click();
+      await this.page.waitForURL(`**/author/blog/${blogSlug}`, { timeout: 5_000 });
+    }).toPass({ timeout: 30_000 });
   }
 }

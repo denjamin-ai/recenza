@@ -5,7 +5,7 @@
  */
 const lastMutation = new Map<string, number>();
 
-export async function throttleMutation(key: string, minGapMs = 1100): Promise<void> {
+export async function throttleMutation(key: string, minGapMs = 1500): Promise<void> {
   const prev = lastMutation.get(key) ?? 0;
   const wait = prev + minGapMs - Date.now();
   if (wait > 0) {

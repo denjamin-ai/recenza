@@ -135,8 +135,9 @@ test.describe("REV-WHOLE-BLOG: ревью всего блога — strip гла
 
     await test.step("Whole-режим: h1 = название блога, контент нескольких глав подряд (заголовки глав = h2)", async () => {
       await expect(page.getByRole("heading", { level: 1, name: BLOG.title })).toBeVisible();
-      await expect(page.getByRole("heading", { level: 2, name: CHAPTERS.published.title })).toBeVisible();
-      await expect(page.getByRole("heading", { level: 2, name: CHAPTERS.underReview.title })).toBeVisible();
+      // Заголовок главы-h2 может дублироваться одноимённым заголовком-блоком в контенте — берём первый.
+      await expect(page.getByRole("heading", { level: 2, name: CHAPTERS.published.title }).first()).toBeVisible();
+      await expect(page.getByRole("heading", { level: 2, name: CHAPTERS.underReview.title }).first()).toBeVisible();
     });
 
     await test.step("На ReviewPage тумблера «Режим чтения» нет (только в ридере)", async () => {

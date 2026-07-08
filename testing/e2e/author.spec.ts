@@ -90,7 +90,7 @@ test.describe("Автор (author)", () => {
         await expect(rowOf(CHAPTERS.published.title)).toHaveCount(0, { timeout: 2_000 });
       }).toPass({ timeout: 20_000 });
       await expect(rowOf(CHAPTERS.underReview.title)).toBeVisible();
-      await expect(rowOf(CHAPTERS.underReview.title).getByRole("link", { name: "Ревью" })).toBeVisible();
+      await expect(rowOf(CHAPTERS.underReview.title).getByRole("link", { name: "Ревью" }).first()).toBeVisible();
     });
 
     await test.step("возврат фильтра «Все» — все 4 главы снова видны", async () => {

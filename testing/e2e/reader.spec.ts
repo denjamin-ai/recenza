@@ -32,7 +32,8 @@ test.describe("Читатель", () => {
     await page.getByLabel("Никнейм").fill(USERS.reader.handle);
     await page.getByLabel("Пароль").fill("неверный-пароль");
     await page.getByRole("button", { name: "Войти" }).click();
-    await expect(page.getByRole("alert")).toHaveText(/Неверный никнейм или пароль\./);
+    // На странице есть и пустой aria-live регион, и алерт формы — берём тот, где текст ошибки.
+    await expect(page.getByText("Неверный никнейм или пароль.")).toBeVisible();
     await expect(page).toHaveURL(/\/login/);
   });
 
@@ -189,11 +190,7 @@ test.describe("Читатель", () => {
     await page.goto(`/blog/${BLOG.slug}/${CHAPTERS.published.slug}`);
 
     const original = `Свежий коммент e2e ${Date.now()}`;
-    await comments.addRoot(original);
-    const node = comments.region.locator("li", { hasText: original }).first();
-    await expect(node).toBeVisible();
-
-    const commentId = (await node.getAttribute("id"))!.replace("comment-", "");
+    const commentId = await comments.addRoot(original);
     const edited = `${original} — правка`;
     await comments.edit(commentId, edited);
     await expect(comments.region.getByText(edited)).toBeVisible();
@@ -217,9 +214,12 @@ test.describe("Читатель", () => {
 
     await test.step("API: PATCH своего устаревшего → 403 «Окно редактирования истекло.»", async () => {
       const ctx = await api("reader");
-      const res = await ctx.patch(`/api/comments/${COMMENTS.stale}`, { data: { text: "поздняя правка" } });
-      expect(res.status()).toBe(403);
-      expect(((await res.json()) as { error?: string }).error).toBe("Окно редактирования истекло.");
+      // Предыдущие мутации читателя могут временно дать 429 (rate-limit 1/сек) — ретраим до устойчивого 403.
+      await expect(async () => {
+        const res = await ctx.patch(`/api/comments/${COMMENTS.stale}`, { data: { text: "поздняя правка" } });
+        expect(res.status()).toBe(403);
+        expect(((await res.json()) as { error?: string }).error).toBe("Окно редактирования истекло.");
+      }).toPass({ timeout: 15_000 });
     });
   });
 
@@ -237,9 +237,7 @@ test.describe("Читатель", () => {
 
     const readerComments = new CommentsPage(asReader.page, USERS.reader.handle);
     await asReader.page.goto(`/blog/${BLOG.slug}/${CHAPTERS.published.slug}`);
-    await readerComments.addRoot(rootText);
-    const rootNode = readerComments.region.locator("li", { hasText: rootText }).first();
-    const rootId = (await rootNode.getAttribute("id"))!.replace("comment-", "");
+    const rootId = await readerComments.addRoot(rootText);
 
     const authorComments = new CommentsPage(asAuthor.page, USERS.author.handle);
     await asAuthor.page.goto(`/blog/${BLOG.slug}/${CHAPTERS.published.slug}`);
@@ -261,7 +259,7 @@ test.describe("Читатель", () => {
     await page.goto(`/blog/${BLOG.slug}/${CHAPTERS.published.slug}`);
 
     // cmt_reply_author — не свой (автор), голосовать можно
-    const btn = comments.node(COMMENTS.replyAuthor).getByRole("button", { name: "Полезный комментарий" });
+    const btn = comments.voteButton(COMMENTS.replyAuthor, "up");
     const initial = await btn.getAttribute("aria-pressed");
     await comments.vote(COMMENTS.replyAuthor, "up");
     await expect(btn).toHaveAttribute("aria-pressed", initial === "true" ? "false" : "true");

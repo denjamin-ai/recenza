@@ -1,4 +1,4 @@
-import { type Locator, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { throttleMutation } from "../helpers/throttle";
 
 /**
@@ -28,9 +28,39 @@ export class CommentsPage {
     return this.page.locator(`li#comment-${commentId}`);
   }
 
-  async addRoot(text: string): Promise<void> {
+  /**
+   * Узел комментария по видимому тексту (page-scoped: список ul>li не всегда внутри
+   * DOM-поддерева region "Комментарии"). Возвращает li и его id.
+   */
+  nodeByText(text: string): Locator {
+    return this.page.locator('li[id^="comment-"]').filter({ hasText: text }).first();
+  }
+
+  async idOfNewest(text: string): Promise<string> {
+    const node = this.nodeByText(text);
+    await expect(node).toBeVisible();
+    return (await node.getAttribute("id"))!.replace("comment-", "");
+  }
+
+  /**
+   * Создаёт корневой комментарий, возвращает его серверный id. Клик по «Отправить» ретраится
+   * против потери события до гидрации; ждём именно УСПЕШНЫЙ (200) ответ создания — так id
+   * получаем сразу, не полагаясь на оптимистичный DOM (у свежего узла ещё нет id="comment-…").
+   */
+  async addRoot(text: string): Promise<string> {
     await this.composer.fill(text);
-    await this.region.getByRole("button", { name: "Отправить" }).first().click();
+    let id = "";
+    await expect(async () => {
+      const [res] = await Promise.all([
+        this.page.waitForResponse(
+          (r) => r.url().includes("/api/comments") && r.request().method() === "POST" && r.status() === 200,
+          { timeout: 5_000 },
+        ),
+        this.region.getByRole("button", { name: "Отправить" }).first().click(),
+      ]);
+      id = ((await res.json()) as { id: string }).id;
+    }).toPass({ timeout: 20_000 });
+    return id;
   }
 
   /**
@@ -59,11 +89,16 @@ export class CommentsPage {
     await this.node(commentId).getByRole("button", { name: "Удалить" }).click();
   }
 
+  /** Кнопка голоса ЗА СВОЙ узел (не за вложенные ответы — они внутри того же li). */
+  voteButton(commentId: string, kind: "up" | "down" = "up"): Locator {
+    const name = kind === "up" ? "Полезный комментарий" : "Бесполезный комментарий";
+    return this.node(commentId).getByRole("button", { name }).first();
+  }
+
   /** Голос за комментарий (rate-limit 1/сек). kind: полезный/бесполезный. */
   async vote(commentId: string, kind: "up" | "down" = "up"): Promise<void> {
     await throttleMutation(this.userKey);
-    const name = kind === "up" ? "Полезный комментарий" : "Бесполезный комментарий";
-    await this.node(commentId).getByRole("button", { name }).click();
+    await this.voteButton(commentId, kind).click();
   }
 
   /** Спойлер «Комментарии к прошлым версиям». */

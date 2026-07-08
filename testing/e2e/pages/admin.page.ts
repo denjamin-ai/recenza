@@ -85,14 +85,22 @@ export class AdminPage {
 
   // --- Recruit / доска / заявки ---
 
-  /** Одобрение recruit-запроса: двухшагово, инлайн-форма. */
+  /** Одобрение recruit-запроса: двухшагово, инлайн-форма. Клики ретраятся против потери до гидрации. */
   async approveRecruit(row: Locator, direction: string, note = ""): Promise<void> {
-    await row.getByRole("button", { name: "Одобрить" }).click();
-    await this.page.getByLabel("Направление").fill(direction);
+    const dirField = this.page.getByLabel("Направление", { exact: true });
+    await expect(async () => {
+      await row.getByRole("button", { name: "Одобрить" }).click();
+      await expect(dirField).toBeVisible({ timeout: 3_000 });
+    }).toPass({ timeout: 20_000 });
+    await dirField.fill(direction);
     if (note) {
-      await this.page.getByLabel("Заметка").fill(note);
+      await this.page.getByLabel("Заметка", { exact: true }).fill(note);
     }
-    await this.page.getByRole("button", { name: "Опубликовать на доске" }).click();
+    const publish = this.page.getByRole("button", { name: "Опубликовать на доске" });
+    await expect(async () => {
+      await publish.click();
+      await expect(dirField).toBeHidden({ timeout: 3_000 }); // форма закрылась = опубликовано
+    }).toPass({ timeout: 20_000 });
   }
 
   async rejectRecruit(row: Locator, reason: string): Promise<void> {
@@ -116,7 +124,8 @@ export class AdminPage {
   }
 
   bannerField(label: "Заголовок" | "Надзаголовок" | "Текст кнопки" | "Иконка" | "Цель ссылки"): Locator {
-    return this.page.getByLabel(label);
+    // exact — иначе «Заголовок» матчит и «Надзаголовок» (strict-mode violation).
+    return this.page.getByLabel(label, { exact: true });
   }
 
   bannerSelect(label: "Тон" | "Действие"): Locator {

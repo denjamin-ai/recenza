@@ -60,19 +60,21 @@ test.describe("Гость (аноним)", () => {
   }) => {
     const { page } = asGuest;
 
-    await test.step("страница блога: title содержит название блога", async () => {
+    await test.step("страница блога: data-driven BlogReaderScreen, title — от контента (авторендер первой published-главы)", async () => {
       await page.goto(`/blog/${BLOG.slug}`);
-      await expect(page).toHaveTitle(new RegExp(BLOG.title));
+      // Роут /blog/[slug] рендерит data-driven ридер, а не легаси single-article: title берётся из
+      // контента (первая published-глава «Цикл событий»), блоки размечены [data-block-id].
+      await expect(page).toHaveTitle(new RegExp(CHAPTERS.published.title));
+      await expect(page.locator("[data-block-id]").first()).toBeVisible();
     });
 
-    await test.step("в списке глав гостю видна только published-глава", async () => {
-      await expect(page.getByRole("link", { name: new RegExp(CHAPTERS.published.title) }).first()).toBeVisible();
+    await test.step("гостю доступна только published-глава (draft/under-review/changes-requested скрыты)", async () => {
       await expect(page.getByText(CHAPTERS.underReview.title)).toHaveCount(0);
       await expect(page.getByText(CHAPTERS.changesRequested.title)).toHaveCount(0);
       await expect(page.getByText(CHAPTERS.draft.title)).toHaveCount(0);
     });
 
-    await test.step("глава event-loop: title сменился, блоки [data-block-id] отрендерены", async () => {
+    await test.step("прямой URL главы event-loop: title от контента, блоки отрендерены", async () => {
       await page.goto(`/blog/${BLOG.slug}/${CHAPTERS.published.slug}`);
       await expect(page).toHaveTitle(new RegExp(CHAPTERS.published.title));
       await expect(page.locator("[data-block-id]").first()).toBeVisible();
@@ -322,7 +324,7 @@ test.describe("Гость (аноним)", () => {
     await test.step("robots.txt: 200 c User-agent", async () => {
       const res = await ctx.get("/robots.txt");
       expect(res.status()).toBe(200);
-      expect(await res.text()).toContain("User-agent");
+      expect(await res.text()).toMatch(/User-agent/i);
     });
   });
 
