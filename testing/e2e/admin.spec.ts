@@ -402,9 +402,12 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
 
     await test.step("Гость: баннер в карусели, CTA ведёт на /board", async () => {
       await reader.gotoFeed();
-      // Новый баннер добавлен в конец (sort) — фиксируем 4-й слайд точкой (авторотация ~6с)
-      await reader.promo.getByRole("button", { name: "Баннер 4" }).click();
-      await expect(reader.promo.getByText(title)).toBeVisible();
+      // Новый баннер добавлен в конец (sort) — фиксируем 4-й слайд точкой (авторотация ~6с);
+      // клик ретраим против потери события до гидрации (как в guest.spec TC-GUEST-01).
+      await expect(async () => {
+        await reader.promo.getByRole("button", { name: "Баннер 4" }).click();
+        await expect(reader.promo.getByText(title)).toBeVisible({ timeout: 2_000 });
+      }).toPass({ timeout: 20_000 });
       await asGuest.page.getByRole("button", { name: "К доске" }).click();
       await asGuest.page.waitForURL("**/board");
       await expect(
@@ -468,9 +471,12 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
     /** Открыть DonateModal с ленты: donate-баннер — 3-й слайд seed-карусели. */
     async function openDonateModal(): Promise<void> {
       await reader.gotoFeed();
-      await reader.pinPromoSlide(3);
-      await asGuest.page.getByRole("button", { name: "Поддержать", exact: true }).click();
-      await expect(modal).toBeVisible();
+      // Фиксация слайда + открытие модалки ретраятся (авторотация + потеря клика до гидрации).
+      await expect(async () => {
+        await reader.pinPromoSlide(3);
+        await asGuest.page.getByRole("button", { name: "Поддержать", exact: true }).click();
+        await expect(modal).toBeVisible({ timeout: 2_000 });
+      }).toPass({ timeout: 20_000 });
     }
 
     await test.step("Снять «Включить пожертвования»", async () => {

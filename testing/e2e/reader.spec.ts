@@ -6,7 +6,7 @@
 
 import { test, expect } from "./fixtures";
 import { loginViaUi, newApiContext, uniqueXff } from "./helpers/auth";
-import { BLOG, CHAPTERS, COMMENTS, PASSWORD, USERS } from "./helpers/seed";
+import { BASE_URL, BLOG, CHAPTERS, COMMENTS, PASSWORD, USERS } from "./helpers/seed";
 import { ReaderPage } from "./pages/reader.page";
 import { CommentsPage } from "./pages/comments.page";
 
@@ -317,7 +317,9 @@ test.describe("Читатель", () => {
     for (const path of ["/author", "/author/portfolio", "/reviewer", "/admin"]) {
       const res = await ctx.get(path, { maxRedirects: 0 });
       expect(res.status(), `${path} должен редиректить`).toBe(307);
-      expect(res.headers()["location"]).toMatch(/^https?:\/\/[^/]+\/$|\/$/);
+      // Читателя (не-админа) все protected-сегменты уводят строго на «/» — сверяем именно pathname,
+      // а не «оканчивается на /» (иначе прошёл бы ошибочный редирект на /reviewer/ и т.п.).
+      expect(new URL(res.headers()["location"] ?? "", BASE_URL).pathname).toBe("/");
     }
   });
 
