@@ -26,6 +26,11 @@ const eslintConfig = defineConfig([
     "next-scaffold/**",
     // Harness тест-стенда (tsx-скрипты для playwright-tester) — тулинг, не код приложения:
     ".claude/**",
+    // Сгенерированные Playwright-артефакты (отчёты, трейсы, auth-state) — не линтуем:
+    "testing/reports/**",
+    "testing/e2e/.auth/**",
+    "test-results/**",
+    "playwright-report/**",
   ]),
 ]);
 
