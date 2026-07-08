@@ -33,11 +33,16 @@ export class CommentsPage {
     await this.region.getByRole("button", { name: "Отправить" }).first().click();
   }
 
-  /** Ответ на комментарий: «Ответить» внутри узла → плейсхолдер «Ваш ответ…». */
+  /**
+   * Ответ на комментарий: «Ответить» внутри узла → плейсхолдер «Ваш ответ…».
+   * Сабмит реплай-композера называется «Ответить» (comment-item.tsx, submitLabel),
+   * НЕ «Отправить» — и живёт внутри узла родителя.
+   */
   async replyTo(commentId: string, text: string): Promise<void> {
-    await this.node(commentId).getByRole("button", { name: "Ответить" }).click();
+    const node = this.node(commentId);
+    await node.getByRole("button", { name: "Ответить" }).first().click();
     await this.page.getByPlaceholder("Ваш ответ…").fill(text);
-    await this.region.getByRole("button", { name: "Отправить" }).last().click();
+    await node.getByRole("button", { name: "Ответить" }).last().click();
   }
 
   /** Правка своего комментария (textarea внутри узла — без aria-label). */
