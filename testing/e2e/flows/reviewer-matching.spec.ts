@@ -33,6 +33,11 @@ test.describe("Подбор ревьюеров (MATCH-*)", () => {
     reseed();
   });
 
+  // Меняет роль reader и публикует главы — восстанавливаем seed, чтобы grep-срез был самодостаточен.
+  test.afterAll(() => {
+    reseed();
+  });
+
   // ── MATCH-INVITE — навыки → приглашение → accept → approve → publish → оценка ─
 
   test("MATCH-INVITE @critical: подбор → приглашение sergey → accept → одобрение → публикация → приватная оценка", async ({

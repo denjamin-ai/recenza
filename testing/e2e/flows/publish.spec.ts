@@ -82,6 +82,11 @@ test.describe("Флоу публикации: гейт all-approve, force-approv
     reseed();
   });
 
+  // Восстанавливаем seed после файла — чтобы любой grep-срез был самодостаточен.
+  test.afterAll(() => {
+    reseed();
+  });
+
   test("PUB-GATE @critical: publish без всех approve — 409 на API, у автора нет кнопки «Опубликовать»", async ({
     api,
     asAuthor,

@@ -42,6 +42,11 @@ test.describe("REV-SESSION-CHAT: чат ревью-сессии — участн
     reseed();
   });
 
+  // Восстанавливаем seed после файла — чтобы любой grep-срез был самодостаточен.
+  test.afterAll(() => {
+    reseed();
+  });
+
   test("REV-SESSION-CHAT @critical: сообщения чата видны всем участникам сессии и не попадают в треды", async ({
     asReviewer,
     asAuthor,

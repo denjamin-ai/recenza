@@ -28,6 +28,11 @@ test.describe("REV-WHOLE-BLOG: ревью всего блога — strip гла
     reseed();
   });
 
+  // Восстанавливаем seed после файла — чтобы любой grep-срез был самодостаточен.
+  test.afterAll(() => {
+    reseed();
+  });
+
   test("REV-WHOLE-BLOG-strip @critical: strip глав автора — табы с номерами, клик = навигация на review главы, статусы независимы", async ({
     asAuthor,
   }) => {

@@ -15,6 +15,11 @@ test.describe("REV-CHAPTER / REV-PRIMARY", () => {
     reseed();
   });
 
+  // Публикует chp_draft — восстанавливаем seed после файла, чтобы --grep @smoke был самодостаточен.
+  test.afterAll(() => {
+    reseed();
+  });
+
   // ── REV-CHAPTER — draft → published целиком ──────────────────────────────────
 
   test("REV-CHAPTER @smoke @critical: submit → accept → тред-правка → применить и закрыть → одобрить → опубликовать → ридер", async ({
