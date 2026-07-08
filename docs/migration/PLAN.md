@@ -38,7 +38,7 @@
 **Принципы на весь проект:**
 - Монолит. Один Next.js-репозиторий, без выделенных сервисов.
 - Доменная модель — **глава-ориентированная** (Blog → Chapter → Revision → blocks), по `README.md` §1–2, §8, §11.
-- Два стенда обязательны: **тестовый** (3001, `blog.test.db`) и **продовый** (Turso/Vercel).
+- Два стенда обязательны: **тестовый** (3001, `blog.test.db`) и **продовый** (Turso/Vercel).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       
 - Все БД — миграциями Drizzle. Timestamps — Unix seconds. ID — `ulid()`. JSON — только в `try/catch`.
 - Интерфейс на русском. Эстетика: Lora/Literata/Fira Code, teal-акцент, тонкие границы, без теней.
 
@@ -59,7 +59,7 @@
 | 8 | Комментирование (читатель↔автор↔читатель) | Продукт | `done` |
 | 9 | Подбор ревьюеров, согласие, оценка | Продукт | `done` |
 | 10 | Админка, модерация и монетизация | Продукт | `done` |
-| 11 | Слой качества: тест-кейсы + Playwright | Качество | `todo` |
+| 11 | Слой качества: тест-кейсы + Playwright | Качество | `done` |
 | 12 | Hardening + прод-деплой | Релиз | `todo` |
 
 > При смене статуса фазы обнови и ячейку в этой таблице, и поле «Статус» в самой фазе — они должны совпадать.
@@ -1281,7 +1281,7 @@
 
 ## Фаза 11 — Слой качества: тест-кейсы + Playwright
 
-**Статус:** `todo`
+**Статус:** `done`
 **Контекст входа.** Требует фазы 1–10 (`done` — продукт собран). Читать: `TESTING.md` целиком; DoD всех продуктовых фаз.
 **Разблокирует.** Фазу 12 (hardening идёт по найденным дырам).
 **Старт сессии.** Проверь статусы; фазы 1–10 — `done`. Подфазы строго по порядку: документация → MCP → автотесты.
@@ -1317,10 +1317,53 @@ MCP-исследование и закоммиченные TS-автотесты
 - [ ] Auth-state на 4 роли в global-setup; тесты изолированы (единый тест-стенд, sequential); CI настроен.
 
 **Журнал фазы.**
-- Статус-история:
+- Статус-история: `todo` → `in progress` (2026-07-08, сессия Фазы 11) → `done` (2026-07-08).
+- Итог: **107 TS-тестов в 12 spec-файлах**, полный `test:e2e` зелёный на чистом seed
+  (**106 passed / 1 skipped / 0 failed**, ~3.4 мин, workers:1); `test:smoke` — **17/17** изолированно;
+  стабильность `guest+reader+security --repeat-each=3` — **120/120** без флаков. `build`+`lint` зелёные.
+  16/16 акцентных сценариев пройдены и через MCP (`testing/mcp/MCP-FINDINGS.md`), и TS-спеком.
+  Сабагенты: `code-reviewer` — 0 P0, P1 исправлен; `playwright-tester` — GO после фикса самодостаточности smoke.
 - Решения/отклонения:
-- Backlog:
+  - **`playwright.config.ts` — в КОРНЕ** (не в `testing/e2e/`, как рисует TESTING.md §6): `package.json`
+    гоняет `playwright test` без `-c`; `testDir: testing/e2e`. Схему TESTING.md трактуем как неточность.
+  - **Отдельные файлы сверх буквы 11.3:** `security.spec.ts` (CSRF/XSS/rate-limit/httpOnly/timestamps —
+    сведены из инвариантов §4), `test-cases/TC-FLOWS.md` (16 мультиролевых сценариев), `testing/mcp/**`
+    (артефакт 11.2 — доказательство MCP-прохода), `helpers/{seed,auth,db,throttle}.ts`.
+  - **devDep `dotenv`** — конфиг и global-setup читают `.env.test` (нужен `ADMIN_PASSWORD_PLAIN`).
+  - **Console-guard** (`fixtures.ts`) падает на `console.error`/`pageerror` с allowlist: `Failed to load
+    resource` (сетевой HTTP-шум 404/429, статусы проверяются отдельными API-тестами), `/uploads/*`
+    (файлов нет до Ф12), preload-шум turbopack, not-found dev-warning «script tag». Реальные JS-краши
+    ловит `pageerror`.
+  - **Обход гидрации/rate-limit:** «мёртвые» клики до гидрации Next dev (MCP-FINDINGS §4) — ретрай через
+    `expect().toPass`; action rate-limit 1/сек — `throttleMutation` ≥1.5с в POM-мутациях + `toPass`-ретрай
+    на негативных API (429→ретрай до 403); login rate-limit — уникальный `X-Forwarded-For` на кейс.
+  - **Изоляция:** мутирующие файлы (`admin.spec` + все `flows/*`) — `serial` + `reseed()` в `beforeAll`
+    **и `afterAll`** (последнее добавлено после NO-GO от `playwright-tester`: `--grep @smoke` отфильтровывал
+    спасавшие reseed'ы соседних flow-файлов, и `review-chapter` оставлял `chp_draft` опубликованным).
+    Ролевые файлы — read-only/additive/self-restoring (toggle туда-обратно).
+  - **CI без GitHub-секретов:** `scripts/ci/write-env-test.mjs` генерирует `.env.test` на лету (random
+    `SESSION_SECRET`, bcrypt-хэш админа с двойным `\\$`-экранированием); `.github/workflows/e2e-smoke.yml`
+    (PR: lint+build+@smoke) и `e2e-nightly.yml` (cron: полный регресс + `@critical --repeat-each=3`).
+  - **`test.fixme`:** PUB-ARTICLE-уведомление подписчику (баг №1 ниже) — 1 skipped.
+- Backlog (из MCP-FINDINGS §6 и code-review):
+  - **P1-баги продукта → Фаза 12:** (1) publish не уведомляет подписчиков автора (только команду ревью);
+    (2) force-approve не гасит pending `primary_change_request`; (3) снятие ведущего не переназначает
+    `primary` (dangling primary).
+  - **P2 тест-код:** негативные API-тесты, проверяющие только статус без тела ошибки (security/reader/admin —
+    выровнять по соседям); дедуп inline-хелперов `reviewCard`; сузить eslint-override только на `fixtures.ts`/спеки.
+  - **Тест-данные:** нет второго видимого автора+блога (полный COM-GATING «автор на чужом видимом»);
+    нет ревьюера с match≥50% (негативный UI-тест flag невозможен — покрыт только серверным гейтом).
+  - **CI на вырост:** кэш браузеров Playwright, авто-issue при провале nightly, smoke на prod-сборке
+    (`next build && next start`).
+  - **UI/UX-инварианты** (dark/375px/a11y/reduced-motion, TESTING.md §4) — отложены на Фазу 12.
 - Риски для следующих фаз:
+  - In-memory rate-limit и review-состояние умрут на Vercel serverless (каждый инстанс — своя Map) →
+    durable store в 12.1; тогда `security.spec` rate-limit-кейсы (семантика сброса/XFF-ключ) придётся адаптировать.
+  - Тесты гоняются на `next dev` + SQLite-файле; прод — prod-build + Turso: кэш/dynamic прод-сборки e2e не
+    покрывает → минимум один smoke на prod-preview в 12.2 (НЕ на тест-стенде).
+  - Красный `security.spec` (XSS/CSRF/гейтинг) = NO-GO деплоя. Console-guard allowlist `/uploads/*` снять
+    после реальной загрузки изображений (12.1). Carry-forward без re-consent зафиксирован тестом — при
+    реализации re-consent (backlog P2 Ф10) спек сломается намеренно.
 
 **Что дальше.** Фаза 12 — hardening + деплой.
 

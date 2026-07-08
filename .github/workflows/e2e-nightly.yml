@@ -1,0 +1,51 @@
+# Ночной полный регресс + проверка стабильности @critical (--repeat-each).
+# Каждый вызов playwright сам поднимает стенд (dev:test → reset + seed) — прогоны изолированы.
+name: e2e-nightly
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Установка зависимостей
+        run: npm ci
+
+      - name: Генерация .env.test (эфемерные секреты)
+        run: node scripts/ci/write-env-test.mjs
+
+      - name: Тест-БД (migrate + seed)
+        run: npm run test:reset
+
+      - name: Прод-сборка
+        run: npx dotenv -e .env.test -- npm run build
+
+      - name: Браузер Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Полный регресс
+        run: npm run test:e2e
+
+      - name: Стабильность @critical (repeat-each=3)
+        run: npm run test:critical -- --repeat-each=3
+
+      - name: Отчёт прогона
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-nightly
+          path: |
+            testing/reports/playwright-html
+            test-results
+          retention-days: 14
