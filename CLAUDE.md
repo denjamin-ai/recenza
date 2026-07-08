@@ -8,12 +8,12 @@
 > не источник модели). План миграции — `docs/migration/PLAN.md`. Стенды/БД — `docs/migration/ENVIRONMENTS.md`.
 > Тесты — `docs/migration/TESTING.md`.
 
-## Текущее состояние репозитория (фазы 0–10 `done`, дальше 11–12 `todo`)
+## Текущее состояние репозитория (фазы 0–11 `done`, дальше 12 `todo`)
 
 ⚠️ **Прочти первым.** Каркас существует и работает: Next 16 + `src/`, `node_modules/`, `tsconfig.json`,
 `next.config.ts`, `drizzle.config.ts`, миграции `drizzle/0000_*.sql` + `0001_*.sql` (`users.pinned_blog_id`) + `0002_*.sql` (uniqueIndex `review_invitations`) + `0003_*.sql` (`blogs.hidden` — скрытие блога админом; всего **28 таблиц**), `blog.db`/`blog.test.db`,
 два стенда, auth/роли, читательский слой, авторский слой (кабинет/редактор/портфолио), review-flow
-(ReviewPage), публичные комментарии (тред/якоря/голоса/уведомления). npm-скрипты работают.
+(ReviewPage), публичные комментарии (тред/якоря/голоса/уведомления), **слой качества (Playwright e2e + CI)**. npm-скрипты работают.
 
 **Источник правды по прогрессу — `docs/migration/PLAN.md`** («Карта фаз» + живой Журнал каждой фазы;
 там же — решения и backlog по каждой фазе). На сегодня закрыто:
@@ -33,10 +33,15 @@
   публичная доска `src/app/(reader)/board` + `src/app/api/board/applications`; карусель+DonateModal
   `src/components/reader/{promo-carousel,promo-carousel-slot,donate-modal,reviewer-board}.tsx`; `src/components/icons.tsx`).
 
+- **11** слой качества: `playwright.config.ts` (в **корне**; `testDir: testing/e2e`), `testing/` создан —
+  тест-документация (`TEST-PLAN.md`, `test-cases/TC-*.md`, `smoke/`, `regression/`), MCP-артефакт
+  (`testing/mcp/MCP-FINDINGS.md`), **107 TS-тестов** (`testing/e2e/**`: POM `pages/*`, `fixtures.ts`,
+  `global-setup.ts`, `helpers/*`, ролевые + `flows/*` спеки), CI (`.github/workflows/e2e-{smoke,nightly}.yml`,
+  `scripts/ci/write-env-test.mjs`). Полный `test:e2e` зелёный (106/1 skip), smoke 17/17.
+
 Ещё **не реализовано** — разделы «Архитектура» ниже описывают это как **целевое** состояние (спека для
 будущих фаз, не готовый код):
-- **11** слой качества (`playwright.config.ts` + каталог `testing/` ещё **не созданы**) ·
-  **12** hardening + прод-деплой.
+- **12** hardening + прод-деплой.
 
 **Точка входа в фазу:** прочитай `PLAN.md` (статусы всех фаз; если есть `blocked` — сначала чини её) →
 ритуал «Промт запуска фазы» в `docs/migration/PROMPT.md` → веди ветку/PR по git-flow ниже.
@@ -56,7 +61,7 @@
 - `npm run seed` / `npm run seed:test` — seed dev / детерминированный seed теста
 - `npm run test:reset` — полный сброс тест-БД (`db:migrate:test` + `seed:test`); создаёт БД с нуля
 - `npm run test:e2e` / `:ui` / `:report` — Playwright; `test:smoke` / `test:critical` — `--grep @smoke|@critical`
-  (⚠️ `playwright.config.ts` появится в Фазе 11 — до неё `test:e2e*` падают)
+  (⚠️ стенд `:3001` должен быть поднят или `reuseExistingServer` поднимет `dev:test` сам; **никогда не :3000**)
 
 ⚠️ `next dev` НЕ читает `.env.test` автоматически — все команды тест-стенда только через `dotenv -e .env.test --`.
 Выбор БД: `TURSO_CONNECTION_URL` → иначе `file:${DB_FILE_NAME}` (`blog.db` dev / `blog.test.db` test) —
@@ -197,6 +202,22 @@
 - Тест-стенд: **:3001**, `blog.test.db`, `.env.test`, `workers:1`, sequential. Никогда не трогать `:3000`/прод.
 - Двухуровнево: Playwright **MCP** (исследование) + **TS-автотесты** `@playwright/test` (CI). См. `TESTING.md`.
 - `npm run build` — необходимое, прохождение smoke — достаточное условие готовности.
+
+### Тест-слой (Фаза 11 — готовый код, не спека)
+- `playwright.config.ts` — в **корне** (не в `testing/e2e/`): `testDir: testing/e2e`, `baseURL :3001`,
+  `workers:1`, `fullyParallel:false`, `webServer npm run dev:test` (`reuseExistingServer: !CI`);
+  читает `.env.test` через `dotenv` (нужен `ADMIN_PASSWORD_PLAIN`).
+- `global-setup.ts` — `reseed()` + auth-state 4 ролей в `testing/e2e/.auth/*.json` (gitignored) + прогрев роутов.
+- Фикстуры (`fixtures.ts`): `asGuest/asReader/asAuthor/asReviewer/asAdmin` (свой browserContext поверх
+  storageState), `loginAs(handle)` (sergey/lena/max/troll), `guestWithXff(xff)` (изоляция login-лимита),
+  `api(role?)` (request-контекст с `Origin` — без него same-origin CSRF отбивает мутации 403).
+- **Изоляция:** мутирующие спеки (`admin.spec` + `flows/*`) — `serial` + `reseed()` в `beforeAll` **и `afterAll`**
+  (иначе `--grep @smoke` теряет соседние reseed'ы и падает); ролевые — read-only/additive/self-restoring.
+- **Флак-обходы:** «мёртвые» клики до гидрации Next dev → `expect().toPass`-ретрай; action rate-limit 1/сек →
+  `throttleMutation` в POM + `toPass` на негативных API (429→ретрай). console-guard (`fixtures.ts`) падает на
+  `console.error`/`pageerror` с allowlist (`Failed to load resource`/`/uploads/`/preload/not-found script-tag).
+- Локаторы — по роли/тексту/aria (`data-testid` в приложении нет); реальные локаторы/тайминги — `testing/mcp/MCP-FINDINGS.md`.
+- Seed-константы (ID/slug) — единственный источник в `testing/e2e/helpers/seed.ts` (при правке seed — синхронить).
 
 ## Claude Code обвязка
 - `.claude/rules/`: `security.md`, `next-app-router.md`, `drizzle-queries.md`, `mdx-components.md`,
