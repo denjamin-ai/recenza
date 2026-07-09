@@ -51,6 +51,22 @@ test.describe("Гость (аноним)", () => {
       await donateDialog.getByRole("button", { name: "Закрыть" }).click();
       await expect(donateDialog).toBeHidden();
     });
+
+    await test.step("Alpha-бейдж в шапке: поповер о статусе открывается и закрывается Escape", async () => {
+      const badgeTrigger = page.getByRole("banner").getByRole("button", { name: "О статусе альфа-версии" });
+      await expect(badgeTrigger).toBeVisible();
+      const alphaDialog = page.getByRole("dialog", { name: "Альфа-версия" });
+      // Клик до гидрации может потеряться — идемпотентный ретрай (повторный клик закрыл бы поповер).
+      await expect(async () => {
+        if ((await badgeTrigger.getAttribute("aria-expanded")) !== "true") {
+          await badgeTrigger.click();
+        }
+        await expect(alphaDialog).toBeVisible({ timeout: 2_000 });
+      }).toPass({ timeout: 15_000 });
+      await expect(alphaDialog.getByText("активно разрабатывается")).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(alphaDialog).toBeHidden();
+    });
   });
 
   // ── TC-GUEST-02 (SMK-02) — регресс-ловушка article ─────────────────────────
