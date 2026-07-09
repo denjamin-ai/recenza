@@ -1,25 +1,23 @@
-// Публикация главы (Фаза 7) — author-only. Гейт (перепроверяется в БД, race-safe): ВСЕ назначенные
-// ревьюеры последней ревизии вынесли approve (и их ≥1). Иначе 409. Force-approve админом — Фаза 10.
-// При публикации: ревизия → published + publishedAt; кредит ревьюеров в reviewer_history (для ридера);
-// блог помечается опубликованным (publishedAt при первой публикации). Уведомляем ревьюеров.
+// Публикация главы (Фаза 7; Фаза 12 — общий сервис + отложенная публикация) — author-only.
+// Гейт «все approve» (перепроверяется в БД, race-safe) — в publishRevision(); иначе 409.
+// Тело { scheduledAt: number } — запланировать (гейт должен проходить УЖЕ на момент планирования);
+// { scheduledAt: null } — отменить план; без scheduledAt — опубликовать сейчас.
+// Отложенную публикует cron (/api/cron/publish), перепроверяя гейт в момент срабатывания.
 
 import { NextResponse } from "next/server";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { blogs, chapterReviewers, chapterRevisions, reviewerHistory, users } from "@/lib/db/schema";
+import { chapterReviewers, chapterRevisions } from "@/lib/db/schema";
 import { assertSameOrigin } from "@/lib/csrf";
 import { hitActionRate } from "@/lib/rate-limit";
-import { createNotifications } from "@/lib/queries/notifications";
-import { REVIEW_NOTIFY, resolveReviewAccess } from "@/lib/queries/review";
+import { resolveReviewAccess } from "@/lib/queries/review";
+import {
+  ACTIVE_REVISION_STATUSES,
+  PublishGateError,
+  publishRevision,
+} from "@/lib/queries/publish";
 
-const ACTIVE = new Set(["under-review", "changes-requested"]);
-
-/** Гейт публикации не прошёл при перепроверке внутри транзакции (гонка) → 409. */
-class PublishGateFailed extends Error {
-  constructor(readonly reason: string) {
-    super(reason);
-  }
-}
+const MAX_SCHEDULE_AHEAD = 30 * 24 * 60 * 60; // не дальше 30 дней вперёд
 
 export async function POST(
   req: Request,
@@ -44,13 +42,35 @@ export async function POST(
   }
 
   const { session } = access;
-  if (!ACTIVE.has(session.revision.status)) {
+  if (!ACTIVE_REVISION_STATUSES.has(session.revision.status)) {
     return NextResponse.json({ error: "Главу нельзя опубликовать из текущего статуса." }, { status: 409 });
+  }
+
+  let scheduledAt: number | null | undefined;
+  try {
+    const body = (await req.json().catch(() => ({}))) as { scheduledAt?: unknown };
+    if (body.scheduledAt === null) scheduledAt = null;
+    else if (typeof body.scheduledAt === "number") scheduledAt = body.scheduledAt;
+    else if (body.scheduledAt !== undefined) {
+      return NextResponse.json({ error: "scheduledAt: ожидается число (Unix seconds) или null." }, { status: 400 });
+    }
+  } catch {
+    return NextResponse.json({ error: "Некорректное тело запроса." }, { status: 400 });
+  }
+
+  // ── Отмена плана: доступна в любой момент активного ревью, гейт не нужен. ──
+  if (scheduledAt === null) {
+    await db
+      .update(chapterRevisions)
+      .set({ scheduledAt: null })
+      .where(eq(chapterRevisions.id, session.revision.id));
+    return NextResponse.json({ ok: true, scheduled: false });
   }
 
   const revNumber = session.revision.number;
 
   // Быстрый путь (UX): предварительная проверка гейта вне транзакции — чтобы не открывать tx зря.
+  // Для планирования это ЕДИНСТВЕННАЯ проверка на запись: cron перепроверит гейт при срабатывании.
   const preRows = await db
     .select({ verdict: chapterReviewers.verdict })
     .from(chapterReviewers)
@@ -62,75 +82,39 @@ export async function POST(
     return NextResponse.json({ error: "Опубликовать можно только когда все ревьюеры одобрили." }, { status: 409 });
   }
 
-  const now = Math.floor(Date.now() / 1000);
+  // ── Планирование. ──
+  if (typeof scheduledAt === "number") {
+    const now = Math.floor(Date.now() / 1000);
+    if (!Number.isInteger(scheduledAt) || scheduledAt <= now) {
+      return NextResponse.json({ error: "Время публикации должно быть в будущем." }, { status: 400 });
+    }
+    if (scheduledAt > now + MAX_SCHEDULE_AHEAD) {
+      return NextResponse.json({ error: "Публикацию можно отложить не более чем на 30 дней." }, { status: 400 });
+    }
+    await db
+      .update(chapterRevisions)
+      .set({ scheduledAt })
+      .where(eq(chapterRevisions.id, session.revision.id));
+    return NextResponse.json({ ok: true, scheduled: true, scheduledAt });
+  }
+
+  // ── Публикация сейчас. ──
   try {
-    await db.transaction(async (tx) => {
-      // Race-safe: ревизия ещё активна (не опубликована параллельно) — иначе двойной decrement reviewLoad.
-      const rev = (
-        await tx.select({ status: chapterRevisions.status }).from(chapterRevisions).where(eq(chapterRevisions.id, session.revision.id)).limit(1)
-      )[0];
-      if (!rev || !ACTIVE.has(rev.status)) throw new PublishGateFailed("Главу нельзя опубликовать из текущего статуса.");
-
-      // Гейт «все approve» — перечитываем вердикты ВНУТРИ транзакции (не доверяем кэшу/предпроверке).
-      const verdictRows = await tx
-        .select({ handle: chapterReviewers.handle, verdict: chapterReviewers.verdict })
-        .from(chapterReviewers)
-        .where(and(eq(chapterReviewers.chapterId, chapterId), eq(chapterReviewers.revisionNumber, revNumber)));
-      if (verdictRows.length === 0) throw new PublishGateFailed("Нет назначенных ревьюеров.");
-      if (!verdictRows.every((r) => r.verdict === "approve")) {
-        throw new PublishGateFailed("Опубликовать можно только когда все ревьюеры одобрили.");
-      }
-      const handles = verdictRows.map((r) => r.handle);
-
-      await tx
-        .update(chapterRevisions)
-        .set({ status: "published", publishedAt: now })
-        .where(eq(chapterRevisions.id, session.revision.id));
-
-      // Кредит ревьюеров этой версии (идемпотентно: чистим и пишем заново).
-      await tx
-        .delete(reviewerHistory)
-        .where(and(eq(reviewerHistory.chapterId, chapterId), eq(reviewerHistory.revisionNumber, revNumber)));
-      for (const h of handles) {
-        await tx.insert(reviewerHistory).values({ chapterId, revisionNumber: revNumber, handle: h });
-      }
-
-      // Ревью завершено → освобождаем ревьюеров: reviewLoad -= 1 (не ниже 0). Закрывает цикл занятости
-      // (accept делает +1; Фаза 9). Снятие ревьюера/force-approve админом — Фаза 10.
-      await tx
-        .update(users)
-        .set({ reviewLoad: sql`max(${users.reviewLoad} - 1, 0)` })
-        .where(inArray(users.handle, handles));
-
-      // publishedAt блога ставим только при первой публикации — читаем внутри транзакции (race-safe).
-      const blogRow = (
-        await tx.select({ publishedAt: blogs.publishedAt }).from(blogs).where(eq(blogs.id, session.blog.id)).limit(1)
-      )[0];
-      await tx
-        .update(blogs)
-        .set({ lastActivityAt: now, ...(blogRow?.publishedAt == null ? { publishedAt: now } : {}) })
-        .where(eq(blogs.id, session.blog.id));
-
-      // Адресаты уведомлений — внутри транзакции по свежим handle.
-      const idRows = await tx.select({ handle: users.handle, id: users.id }).from(users).where(inArray(users.handle, handles));
-      const ids = new Map(idRows.map((r) => [r.handle, r.id]));
-      await createNotifications(
-        tx,
-        handles
-          .map((h) => ids.get(h))
-          .filter((id): id is string => !!id)
-          .map((recipientId) => ({
-            recipientId,
-            type: REVIEW_NOTIFY.published,
-            payload: {
-              href: `/blog/${session.blog.slug}/${session.chapter.slug}`,
-              chapterTitle: session.chapter.title,
-            },
-          })),
-      );
-    });
+    await publishRevision(
+      {
+        chapterId,
+        revisionId: session.revision.id,
+        revisionNumber: revNumber,
+        blogId: session.blog.id,
+        blogSlug: session.blog.slug,
+        chapterSlug: session.chapter.slug,
+        chapterTitle: session.chapter.title,
+        authorId: session.blog.authorId,
+      },
+      { gate: "all-approve" },
+    );
   } catch (e) {
-    if (e instanceof PublishGateFailed) return NextResponse.json({ error: e.reason }, { status: 409 });
+    if (e instanceof PublishGateError) return NextResponse.json({ error: e.reason }, { status: 409 });
     return NextResponse.json({ error: "Не удалось опубликовать." }, { status: 500 });
   }
 

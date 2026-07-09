@@ -4,7 +4,7 @@
 //
 // Поля под-типов должны совпадать с тем, что читает src/components/blocks/block-renderer.tsx:
 //   list.variant ∈ LIST_VARIANTS · callout.variant ∈ CALLOUT_VARIANTS · code.lang ∈ CODE_LANGS.
-// LaTeX в Фазе 6 НЕ поддержан (рендерер не умеет) — в BLOCK_TYPES его нет (PLAN §decisions).
+// latex (Фаза 12): display-формула KaTeX в block.text; рендер — latex-block.tsx (RSC, renderToString).
 
 export const BLOCK_TYPES = [
   "p",
@@ -15,6 +15,7 @@ export const BLOCK_TYPES = [
   "code",
   "callout",
   "mermaid",
+  "latex",
   "image",
   "table",
   "embed",

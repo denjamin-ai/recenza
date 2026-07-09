@@ -5,6 +5,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { adminMutate } from "@/app/admin/_components/client";
+import { UploadField } from "@/components/upload-field";
 import { DONATION_TYPES, type DonationType } from "@/types";
 import type { AdminDonationData } from "@/lib/queries/admin";
 
@@ -53,7 +54,7 @@ function MethodForm({ initial, onSubmit, onCancel, pending }: { initial: Draft; 
       {d.type === "link" ? (
         <input className={inputCls} value={d.url} onChange={(e) => set({ url: e.target.value })} placeholder="https://…" aria-label="Ссылка" />
       ) : (
-        <input className={inputCls} value={d.qrUrl} onChange={(e) => set({ qrUrl: e.target.value })} placeholder="/uploads/donations/qr.png" aria-label="Путь к QR" />
+        <UploadField kind="donation" value={d.qrUrl} onChange={(qrUrl) => set({ qrUrl })} placeholder="/uploads/donations/qr.png" ariaLabel="Путь к QR" inputClassName={inputCls} />
       )}
       <input className={inputCls} value={d.hint} onChange={(e) => set({ hint: e.target.value })} placeholder="Подсказка (необяз.)" aria-label="Подсказка" />
       <label className="flex items-center gap-2 text-[length:var(--type-small)] text-[var(--foreground)]">

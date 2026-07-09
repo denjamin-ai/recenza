@@ -1,0 +1,39 @@
+# systemd-юнит прод-сервера Recenza (Фаза 12) → /etc/systemd/system/recenza.service
+# ⚠️ Ровно ОДИН инстанс Node (без cluster/pm2): in-memory rate-limit корректен только так
+# (runbook ENVIRONMENTS.md). Рантайм-env — /srv/recenza/shared/env (chmod 600, значения в
+# одинарных кавычках; systemd НЕ делает dotenv-expand → '$' в bcrypt-хэше НЕ экранируется).
+
+[Unit]
+Description=Recenza (Next.js standalone)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=recenza
+Group=recenza
+WorkingDirectory=/srv/recenza/current
+EnvironmentFile=/srv/recenza/shared/env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+
+# Hardening. ⚠️ MemoryDenyWriteExecute НЕ включать — ломает JIT V8 (Node).
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ReadWritePaths=/srv/recenza/shared
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

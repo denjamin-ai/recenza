@@ -51,11 +51,13 @@ interface Fixtures {
 
 /**
  * Известные «здоровые» ошибки консоли:
- * - «Failed to load resource» — сетевой HTTP-шум (404 на /uploads/* до Фазы 12; 404 на несуществующих
- *   страницах, статус которых тест проверяет явно; 429 rate-limit, который приложение обрабатывает и
- *   который проверяется отдельными API-тестами). Это НЕ ошибки кода — реальные JS-краши приходят через
- *   `pageerror` и остаются фатальными.
+ * - «Failed to load resource» — сетевой HTTP-шум (404 на несуществующих страницах, статус которых
+ *   тест проверяет явно; 429 rate-limit, который приложение обрабатывает и который проверяется
+ *   отдельными API-тестами). Это НЕ ошибки кода — реальные JS-краши приходят через `pageerror`
+ *   и остаются фатальными.
  * - preload-шум turbopack в dev-режиме (MCP-FINDINGS §5).
+ * ⚠️ С Фазы 12 URL с /uploads/ НЕ входят в allowlist: seed-плейсхолдеры закоммичены,
+ *   битая картинка — регресс (загрузка реализована, /api/uploads).
  */
 const CONSOLE_ALLOWLIST = [
   /Failed to load resource/i,
@@ -65,6 +67,8 @@ const CONSOLE_ALLOWLIST = [
 ];
 
 function isAllowedConsoleError(text: string, url: string | undefined): boolean {
+  // Битые /uploads/-ресурсы — всегда ошибка (см. шапку): не пропускаем даже сетевой шум.
+  if (url?.includes("/uploads/")) return false;
   return CONSOLE_ALLOWLIST.some((re) => re.test(url ?? "") || re.test(text));
 }
 

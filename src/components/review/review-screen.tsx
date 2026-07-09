@@ -11,7 +11,7 @@ import { ConvoCanvas } from "./convo-canvas";
 import { ThreadsRail } from "./threads-rail";
 import { ActionBar } from "./action-bar";
 import { ReviewChat } from "./review-chat";
-import { PrimaryChangeModal, TeamSheet } from "./review-modals";
+import { PrimaryChangeModal, PublishModal, TeamSheet } from "./review-modals";
 import { Toast, type ToastState } from "./review-primitives";
 
 const POLL_MS = 30_000;
@@ -41,6 +41,7 @@ export function ReviewScreen({
   const [mobileTab, setMobileTab] = useState<"article" | "threads">("article");
   const [teamOpen, setTeamOpen] = useState(false);
   const [primaryOpen, setPrimaryOpen] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [busy, setBusy] = useState(false);
   const [flashKey, setFlashKey] = useState(0);
@@ -73,17 +74,28 @@ export function ReviewScreen({
 
   // Поллинг кросс-экранных изменений (вердикты/треды из других сессий). Только когда вкладка видима.
   // refresh в transition — фоновое обновление без Suspense-фоллбэка/перемонтажа.
+  // Ревьюер перед refresh шлёт presence-heartbeat (fire-and-forget) — «онлайн» в шапке у остальных.
   useEffect(() => {
-    const tick = () => {
-      if (document.visibilityState === "visible") startTransition(() => router.refresh());
+    const heartbeat = () => {
+      if (pov !== "reviewer") return;
+      void fetch(`/api/review/${chapter.id}/heartbeat`, {
+        method: "POST",
+        credentials: "same-origin",
+      }).catch(() => {});
     };
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      heartbeat();
+      startTransition(() => router.refresh());
+    };
+    heartbeat(); // presence сразу при открытии, не через 30с
     const id = window.setInterval(tick, POLL_MS);
     document.addEventListener("visibilitychange", tick);
     return () => {
       window.clearInterval(id);
       document.removeEventListener("visibilitychange", tick);
     };
-  }, [router, startTransition]);
+  }, [router, startTransition, pov, chapter.id]);
 
   // Esc сбрасывает выделение/активный тред.
   useEffect(() => {
@@ -206,13 +218,31 @@ export function ReviewScreen({
     );
   };
 
-  const publish = async () => {
-    await post(`/api/review/${chapter.id}/publish`, {}, {
+  const publishNow = async () => {
+    const ok = await post(`/api/review/${chapter.id}/publish`, {}, {
       kind: "ok",
       text: `Глава «${chapter.title}» опубликована.`,
       href: `/blog/${blog.slug}/${chapter.slug}`,
       hrefLabel: "Открыть в ридере →",
     });
+    if (ok) setPublishOpen(false);
+  };
+
+  const schedulePublish = async (unixSeconds: number) => {
+    const ok = await post(
+      `/api/review/${chapter.id}/publish`,
+      { scheduledAt: unixSeconds },
+      { kind: "ok", text: "Публикация запланирована. Одобрения перепроверятся в момент публикации." },
+    );
+    if (ok) setPublishOpen(false);
+  };
+
+  const cancelSchedule = async () => {
+    await post(
+      `/api/review/${chapter.id}/publish`,
+      { scheduledAt: null },
+      { kind: "ok", text: "Отложенная публикация отменена." },
+    );
   };
 
   const submitPrimaryChange = async (toHandle: string, reason: string) => {
@@ -315,7 +345,7 @@ export function ReviewScreen({
         onApprove={() => setVerdict("approve")}
         onRequestChanges={() => setVerdict("request-changes")}
         onSubmitRevision={submitRevision}
-        onPublish={publish}
+        onPublish={() => setPublishOpen(true)}
         onRequestPrimaryChange={() => setPrimaryOpen(true)}
       />
 
@@ -339,6 +369,18 @@ export function ReviewScreen({
           busy={busy}
           onClose={() => setPrimaryOpen(false)}
           onSubmit={submitPrimaryChange}
+        />
+      )}
+
+      {publishOpen && (
+        <PublishModal
+          chapterTitle={chapter.title}
+          scheduledAt={revision.scheduledAt}
+          busy={busy}
+          onClose={() => setPublishOpen(false)}
+          onPublishNow={publishNow}
+          onSchedule={schedulePublish}
+          onCancelSchedule={cancelSchedule}
         />
       )}
 

@@ -1,8 +1,17 @@
+import { randomBytes } from "node:crypto";
 import { defineConfig } from "@playwright/test";
 import dotenv from "dotenv";
 
 // ADMIN_PASSWORD_PLAIN и прочие переменные тест-стенда — из .env.test (не .env.local!)
 dotenv.config({ path: ".env.test" });
+
+// CRON_SECRET для cron.spec (Фаза 12): если в .env.test не задан — генерируем эфемерный и
+// отдаём его И спекам (process.env), И webServer-у (env ниже; dotenv-cli не перетирает
+// унаследованные переменные, отсутствующие в файле). ⚠️ Если стенд :3001 поднят ВРУЧНУЮ без
+// CRON_SECRET, cron.spec упадёт на 401 — задай переменную в .env.test или перезапусти стенд.
+if (!process.env.CRON_SECRET) {
+  process.env.CRON_SECRET = randomBytes(24).toString("hex");
+}
 
 export default defineConfig({
   testDir: "./testing/e2e",
@@ -34,5 +43,6 @@ export default defineConfig({
     url: "http://localhost:3001",
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
+    env: { CRON_SECRET: process.env.CRON_SECRET ?? "" },
   },
 });

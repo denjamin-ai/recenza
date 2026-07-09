@@ -313,7 +313,10 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
     // Команда обновилась: Лена снята, Раиса осталась.
     await expect(card.getByText("Лена Базы")).toHaveCount(0);
     await expect(card.getByText("Раиса Ревьюер")).toBeVisible();
-    // ⚠️ Баг №3 (MCP-FINDINGS §6): primary НЕ переназначается — нового «ведущего» не ассертим.
+    // Фаза 12 (P1-фикс бага №3): снят ведущий → primary детерминированно переходит к оставшемуся.
+    await expect(
+      card.locator("li").filter({ hasText: "Раиса Ревьюер" }).getByText("ведущий", { exact: true }),
+    ).toBeVisible();
   });
 
   test("TC-ADMIN-12+13 @regression: recruit-запрос — «Одобрить» публикует направление на /board; «Отклонить с причиной» disabled без причины", async ({ asAdmin, asGuest, api }) => {
@@ -497,7 +500,7 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
 
       await openDonateModal();
       await expect(modal.getByRole("link", { name: /DonationAlerts/ })).toBeVisible();
-      // QR СБП: файл /uploads/donations/sbp-qr.png отсутствует до Фазы 12 (404 в allowlist) — элемент в DOM
+      // QR СБП: seed-плейсхолдер /uploads/donations/sbp-qr.png закоммичен в Фазе 12 — картинка живая.
       await expect(modal.getByAltText("QR-код: СБП")).toBeAttached();
       await expect(modal.getByText("Способы поддержки пока не настроены.")).toHaveCount(0);
     });
@@ -521,6 +524,62 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
       const res = await adminApi.get("/author", { maxRedirects: 0 });
       expect(res.status()).toBe(307);
       expect(locationPath(res)).toBe("/admin");
+    });
+  });
+
+  test("TC-ADMIN-23 @critical: «Новый пользователь» — создание reader из формы, вход созданного, дубль handle → 409", async ({
+    asAdmin,
+    api,
+  }) => {
+    // Фаза 12 (альфа-модель доступа): self-registration нет, аккаунты выдаёт админ.
+    const handle = "e2e_newbie";
+    const password = "e2e-password-12";
+
+    await test.step("Форма «Новый пользователь» на /admin/users → статус «создан», строка в таблице", async () => {
+      await asAdmin.goto("/admin/users");
+      // Клик до гидрации может потеряться — ретраим до раскрытия формы.
+      await expect(async () => {
+        await asAdmin.page.getByRole("button", { name: "Новый пользователь" }).click();
+        await expect(asAdmin.page.getByRole("button", { name: "Создать пользователя" })).toBeVisible({ timeout: 2_000 });
+      }).toPass({ timeout: 20_000 });
+
+      await asAdmin.page.getByRole("textbox", { name: "Хэндл" }).fill(handle);
+      await asAdmin.page.getByRole("textbox", { name: "Отображаемое имя" }).fill("Новичок E2E");
+      await asAdmin.page.getByRole("textbox", { name: /Пароль/ }).fill(password);
+      // exact: «Роль» — подстрока «Пароль…» (getByLabel матчит подстрокой без exact).
+      await asAdmin.page.getByLabel("Роль", { exact: true }).selectOption("reader");
+      await asAdmin.page.getByRole("button", { name: "Создать пользователя" }).click();
+
+      await expect(asAdmin.page.getByRole("status").filter({ hasText: `@${handle} создан` })).toBeVisible();
+      // exact — иначе матчится и статус-сообщение «Пользователь @… создан…».
+      await expect(asAdmin.page.getByText(`@${handle}`, { exact: true })).toBeVisible();
+    });
+
+    await test.step("Созданный пользователь логинится, роль reader", async () => {
+      const ctx = await apiLoginUser(handle, password);
+      const me = await ctx.get("/api/auth/user");
+      expect(me.ok()).toBeTruthy();
+      const body = (await me.json()) as { user: { handle: string; role: string } };
+      expect(body.user.handle).toBe(handle);
+      expect(body.user.role).toBe("reader");
+      await ctx.dispose();
+    });
+
+    await test.step("Дубль handle через API → 409; reader на POST /api/admin/users → 403", async () => {
+      const adminApi = await api("admin");
+      // Создание из формы выше потратило action-limit 1/сек → 429 ретраится (паттерн негативных API).
+      await expect(async () => {
+        const dup = await adminApi.post("/api/admin/users", {
+          data: { handle, displayName: "Дубль", password: "another-pass-12", role: "reader" },
+        });
+        expect(dup.status()).toBe(409);
+      }).toPass({ timeout: 10_000 });
+
+      const readerApi = await api("reader");
+      const forbidden = await readerApi.post("/api/admin/users", {
+        data: { handle: "sneaky", displayName: "Хакер", password: "hack-pass-123", role: "author" },
+      });
+      expect(forbidden.status()).toBe(403);
     });
   });
 

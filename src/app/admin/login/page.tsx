@@ -5,6 +5,7 @@ import { AdminLoginForm } from "@/components/auth/admin-login-form";
 
 export const metadata: Metadata = {
   title: "Вход администратора",
+  description: "Служебный вход администратора Recenza.",
   robots: { index: false, follow: false },
 };
 

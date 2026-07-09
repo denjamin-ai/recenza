@@ -8,14 +8,19 @@
 
 ## 1. Три окружения (стенда обязательно два: test и prod)
 
-| Параметр | **Dev** (рабочее) | **Test** (тестовый стенд) | **Prod** (продовый стенд) |
+| Параметр | **Dev** (рабочее) | **Test** (тестовый стенд) | **Prod** (продовый стенд, Фаза 12) |
 |----------|-------------------|---------------------------|---------------------------|
-| URL | `http://localhost:3000` | `http://localhost:3001` | `https://<домен>` |
-| БД | `file:blog.db` | `file:blog.test.db` | Turso (libsql, реплика) |
-| Env-файл | `.env.local` | `.env.test` | Vercel env |
-| Запуск | `npm run dev` | `npm run dev:test` | Vercel build/deploy |
-| Seed | `npm run seed` | `npm run seed:test` (детерминированный) | только bootstrap-админ |
-| Назначение | разработка | **только тесты** (Playwright) | боевой |
+| URL | `http://localhost:3000` | `http://localhost:3001` | `https://recenza.ru` |
+| БД | `file:blog.db` | `file:blog.test.db` | `file:/srv/recenza/shared/data/blog.prod.db` (VPS) |
+| Env-файл | `.env.local` | `.env.test` | `/srv/recenza/shared/env` (systemd EnvironmentFile) |
+| Запуск | `npm run dev` | `npm run dev:test` | GitHub Actions `deploy.yml` → systemd `recenza.service` |
+| Seed | `npm run seed` | `npm run seed:test` (детерминированный) | НЕТ seed; bootstrap-админ из `ADMIN_PASSWORD_HASH` env |
+| Назначение | разработка | **только тесты** (Playwright) | боевой (VPS Ubuntu 24.04, Хельсинки; Caddy + Node standalone) |
+
+> Историческая справка: до Фазы 12 прод планировался как Vercel + Turso. Решение Фазы 12 —
+> собственный VPS: локальный SQLite тем же libsql-драйвером (Turso выведен из эксплуатации,
+> переключение обратно — одной переменной `TURSO_CONNECTION_URL`), локальные загрузки,
+> systemd-cron без ограничений тарифа. Turso-переменные остаются в схеме env как опция.
 
 > ⚠️ **Инвариант изоляции.** Тесты НИКОГДА не ходят на `:3000`/`blog.db` и тем более на прод.
 > Тестовый стенд всегда сбрасывается к фиксированному seed перед прогоном — это гарантирует
@@ -272,22 +277,61 @@ bash .claude/playwright-tester/reset-test-db.sh
 
 ---
 
-## 6. Флоу продового стенда
+## 6. Прод-стенд (VPS) и runbook — Фаза 12
 
-```bash
-# 1. Применить миграции к Turso (не seed!)
-TURSO_CONNECTION_URL=... TURSO_AUTH_TOKEN=... npx drizzle-kit migrate
+Прод — VPS Ubuntu 24.04 (Хельсинки, 1 vCPU / 2 ГБ / 30 ГБ NVMe; рядом в Docker живёт AmneziaWG —
+его порты 51820/udp + 51821/tcp в ufw не трогать). Все конфиги — в каталоге **`deploy/`** репозитория.
 
-# 2. Bootstrap-админ — через env (ADMIN_PASSWORD_HASH), self-registration отсутствует
+### 6.1 Layout сервера
 
-# 3. Деплой на Vercel; env заданы в проекте Vercel
-
-# 4. Cron публикации отложенных глав
-#    /api/cron/publish, заголовок Authorization: Bearer <CRON_SECRET>
-#    расписание в vercel.json: {"path":"/api/cron/publish","schedule":"* * * * *"}
-
-# 5. Smoke на prod-preview (НЕ на тестовом стенде)
+```
+/srv/recenza/
+├── current -> releases/<релиз>     # симлинк на активный релиз
+├── releases/<sha>/                 # standalone-артефакты (server.js, .next, node_modules, drizzle, scripts)
+├── shared/
+│   ├── env                         # рантайм-секреты (chmod 600 recenza:recenza) — НЕ в релизах
+│   ├── data/blog.prod.db           # SQLite прода (переживает релизы)
+│   └── uploads/                    # /api/uploads пишет сюда; отдаёт Caddy по /uploads/*
+├── backups/                        # ночные blog-*.db + uploads-*.tar.gz (ротация 7)
+└── bin/backup.sh
 ```
 
-**Изоляция стендов (критический инвариант релиза):** разные БД, разные env-файлы, разные URL,
-разные секреты. Ни один тест не должен иметь доступа к проду; ни один прод-секрет не лежит в `.env.test`.
+systemd: `recenza.service` (Node standalone, **строго один инстанс** — in-memory rate-limit),
+`recenza-publish.timer` (cron отложенной публикации, каждые 5 мин, Bearer `CRON_SECRET`),
+`recenza-backup.timer` (03:30). Reverse-proxy — Caddy (`/etc/caddy/Caddyfile`): авто-TLS, HSTS,
+`/uploads/*` с диска, остальное → `127.0.0.1:3000`.
+
+### 6.2 Прод-env (`/srv/recenza/shared/env`)
+
+systemd EnvironmentFile, значения в одинарных кавычках. ⚠️ Экранирование `\$` НЕ нужно
+(dotenv-expand-проходов нет — в отличие от `.env.local`/`.env.test`).
+Обязательные: `SESSION_SECRET`, `ADMIN_PASSWORD_HASH`, `CRON_SECRET`,
+`NEXT_PUBLIC_BASE_URL=https://recenza.ru`, `DB_FILE_NAME=/srv/recenza/shared/data/blog.prod.db`,
+`UPLOADS_DIR=/srv/recenza/shared/uploads`, `NODE_ENV=production`, `PORT=3000`, `HOSTNAME=127.0.0.1`.
+
+### 6.3 Деплой
+
+Автоматически: push в `main` → workflow `deploy.yml` (сборка standalone c
+`NEXT_PUBLIC_BASE_URL` в билде → rsync в `releases/<sha>` → `scripts/migrate.mjs` (миграции
+`drizzle/` без drizzle-kit) → симлинк `current` → `sudo systemctl restart recenza` → health-check).
+Секреты workflow: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` (GitHub Secrets).
+Провижининг нового сервера — однократно `deploy/provision.sh` (root; параметры
+`AMNEZIA_UDP_PORT`, `DEPLOY_PUBKEY`).
+
+### 6.4 Runbook
+
+- **Откат релиза:** `ln -sfn /srv/recenza/releases/<прежний> /srv/recenza/current &&
+  sudo systemctl restart recenza`. Миграции only-forward (аддитивные) — откат кода безопасен.
+- **Ручной прогон cron:** `. /srv/recenza/shared/env; curl -H "Authorization: Bearer $CRON_SECRET"
+  http://127.0.0.1:3000/api/cron/publish` (или `systemctl start recenza-publish.service`).
+- **Восстановление из бэкапа:** остановить сервис → скопировать `backups/blog-<ts>.db` в
+  `shared/data/blog.prod.db` → распаковать `uploads-<ts>.tar.gz` в `shared/` → старт. Offsite-копии — backlog.
+- **Ротация секретов:** правка `shared/env` → `sudo systemctl restart recenza`. Смена
+  `ADMIN_PASSWORD_HASH` = смена пароля админа (bcrypt, без экранирования).
+- **Логи:** `journalctl -u recenza -f`; Caddy: `journalctl -u caddy -f`.
+- **SSH:** только по ключам (PasswordAuthentication no); деплой-пользователь `recenza`
+  (sudo — только `systemctl restart recenza`).
+
+**Изоляция стендов (критический инвариант релиза):** разные БД, разные env, разные URL, разные
+секреты. Ни один тест не ходит на прод; ни один прод-секрет не лежит в `.env.test`/репозитории.
+Dev с Фазы 12 снова на `file:blog.db` (Turso-креды заархивированы комментарием в `.env.local`).

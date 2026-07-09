@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Закладки",
+  description: "Сохранённые блоги и главы — ваша личная подборка на Recenza.",
   robots: { index: false, follow: false },
 };
 

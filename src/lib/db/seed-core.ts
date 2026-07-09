@@ -432,8 +432,9 @@ export async function seedAll(db: Db): Promise<void> {
     // опубликованная глава, версия 2 — все approve (публикабельно)
     { chapterId: "chp_published", revisionNumber: 2, handle: "reviewer", isPrimary: true, verdict: "approve", verdictAt: ago(16 * DAY) },
     { chapterId: "chp_published", revisionNumber: 2, handle: "max_review", verdict: "approve", verdictAt: ago(16 * DAY) },
-    // под ревью — приняли reviewer (ведущий, online) + lena; sergey лишь приглашён (pending, §22) — НЕ здесь
-    { chapterId: "chp_under_review", revisionNumber: 1, handle: "reviewer", isPrimary: true, online: true },
+    // под ревью — приняли reviewer (ведущий) + lena; sergey лишь приглашён (pending, §22) — НЕ здесь.
+    // online не сеем: presence — деривация из heartbeat (last_seen_at), сид оставляет всех оффлайн.
+    { chapterId: "chp_under_review", revisionNumber: 1, handle: "reviewer", isPrimary: true },
     { chapterId: "chp_under_review", revisionNumber: 1, handle: "lena_review", verdict: "request-changes", verdictAt: ago(2 * DAY) },
     // запрошены правки — ведущий request-changes
     { chapterId: "chp_changes", revisionNumber: 1, handle: "lena_review", isPrimary: true, verdict: "request-changes", verdictAt: ago(8 * DAY) },

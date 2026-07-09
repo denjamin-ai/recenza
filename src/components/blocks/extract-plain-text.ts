@@ -1,11 +1,11 @@
 // Plain-text экстрактор из блоков для SEO-описаний/OG (правило mdx-components: стрип кода/HTML).
-// Пропускает не-текстовые/технические блоки (code/embed/mermaid/image); склеивает текст абзацев,
+// Пропускает не-текстовые/технические блоки (code/embed/mermaid/image/latex); склеивает текст абзацев,
 // заголовков, списков, цитат, ячеек таблиц, callout. Результат нормализуется/обрезается в seo.truncate.
 
 import type { Block } from "@/types";
 import { stripInlineMarks } from "./inline";
 
-const SKIP: ReadonlySet<string> = new Set(["code", "embed", "mermaid", "image"]);
+const SKIP: ReadonlySet<string> = new Set(["code", "embed", "mermaid", "image", "latex"]);
 
 export function extractPlainText(blocks: Block[]): string {
   const parts: string[] = [];

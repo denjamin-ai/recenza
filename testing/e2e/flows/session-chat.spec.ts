@@ -117,20 +117,41 @@ test.describe("REV-SESSION-CHAT: чат ревью-сессии — участн
     });
   });
 
-  test("REV-PRESENCE @regression: «Команда ревью» рендерит участников с seed-маркерами (presence статичен)", async ({
+  test("REV-PRESENCE @regression: «онлайн» появляется от heartbeat открытой сессии ревьюера", async ({
     asAuthor,
+    asReviewer,
   }) => {
-    // Presence статичен из chapter_reviewers.online — реалтайма нет (Фаза 12);
-    // ассертим ТОЛЬКО отрисовку маркеров из seed, без ожидания live-обновлений.
+    // Фаза 12: presence поведенческий — POST /api/review/[id]/heartbeat при открытии/поллинге
+    // сессии ревьюером, online = last_seen_at ≥ now−90с (seed никого онлайн не сеет).
+    // Предыдущие тесты файла открывали сессии ревьюерами (heartbeat уже прошёл) —
+    // сбрасываем last_seen_at свежим reseed для детерминированного «до».
+    reseed();
     const review = new ReviewPage(asAuthor.page);
-    await review.gotoAsAuthor(BLOG.slug, CHAPTERS.underReview.slug);
 
-    const team = review.team; // матчит div (desktop) и кнопку (mobile) — скоупим до аватаров-спанов
-    // reviewer — ведущий, online=true (seed §6): маркер «онлайн».
-    await expect(team.locator('span[title="@reviewer · ведущий · онлайн"]')).toBeVisible();
-    // lena_review — принявшая, offline: маркер «был недавно», без «ведущий».
-    await expect(team.locator('span[title="@lena_review · был недавно"]')).toBeVisible();
-    // sergey_review лишь приглашён (inv_pending) — ревью не стартовало, в команде его нет.
-    await expect(team.locator('span[title*="@sergey_review"]')).toHaveCount(0);
+    await test.step("До heartbeat: у автора вся команда «был недавно»", async () => {
+      await review.gotoAsAuthor(BLOG.slug, CHAPTERS.underReview.slug);
+      const team = review.team;
+      await expect(team.locator('span[title="@reviewer · ведущий · был недавно"]')).toBeVisible();
+      await expect(team.locator('span[title="@lena_review · был недавно"]')).toBeVisible();
+      // sergey_review лишь приглашён (inv_pending) — ревью не стартовало, в команде его нет.
+      await expect(team.locator('span[title*="@sergey_review"]')).toHaveCount(0);
+    });
+
+    await test.step("Ревьюер открывает сессию → heartbeat уходит на сервер", async () => {
+      const reviewerView = new ReviewPage(asReviewer.page);
+      await Promise.all([
+        asReviewer.page.waitForResponse(
+          (r) => r.url().includes("/heartbeat") && r.request().method() === "POST" && r.ok(),
+        ),
+        reviewerView.gotoAsReviewer(CHAPTERS.underReview.id),
+      ]);
+    });
+
+    await test.step("Автор после reload видит @reviewer онлайн; lena по-прежнему «был недавно»", async () => {
+      await review.gotoAsAuthor(BLOG.slug, CHAPTERS.underReview.slug);
+      const team = review.team;
+      await expect(team.locator('span[title="@reviewer · ведущий · онлайн"]')).toBeVisible();
+      await expect(team.locator('span[title="@lena_review · был недавно"]')).toBeVisible();
+    });
   });
 });

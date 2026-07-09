@@ -1,4 +1,4 @@
-// Markdown-шорткаты в начале параграфа → смена типа блока (как в прототипе, без $$/latex).
+// Markdown-шорткаты в начале параграфа → смена типа блока (как в прототипе; $$ → latex с Фазы 12).
 // Применяется в ChapterEditor.updateBlock к блокам типа "p".
 
 import type { Block } from "@/types";
@@ -20,6 +20,7 @@ export function detectShortcut(value: string): ShortcutResult | null {
   if (/^>\s?mermaid:/i.test(value)) return { type: "mermaid", text: "" };
   if (value.startsWith("> ")) return { type: "quote", text: value.slice(2) };
   if (value.startsWith("```")) return { type: "code", text: "" };
+  if (value.startsWith("$$")) return { type: "latex", text: value.slice(2).trim() };
   if (value.startsWith("- ")) return { type: "list", variant: "bullet", items: [value.slice(2)] };
   if (/^\d+\.\s/.test(value)) return { type: "list", variant: "numbered", items: [value.replace(/^\d+\.\s/, "")] };
   if (value.startsWith("[] ")) return { type: "list", variant: "todo", items: [value.slice(3)] };
