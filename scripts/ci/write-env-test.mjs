@@ -2,8 +2,10 @@
  * Генерирует .env.test для эфемерного CI-стенда. GitHub-секреты не нужны:
  * пароль админа и SESSION_SECRET создаются на лету и живут один прогон.
  *
- * ⚠️ Экранирование '$' в bcrypt-хэше: значение .env.test проходит ДВА expand-прохода
- * (dotenv-cli → @next/env), поэтому каждый '$' пишется как '\\$' (см. CLAUDE.md, Фаза 4).
+ * ⚠️ Экранирование '$' в bcrypt-хэше — ОДИНАРНОЕ '\$': значение .env.test проходит ровно ОДИН
+ * expand-проход (dotenv-cli). Второго прохода НЕТ: `next dev` (NODE_ENV=development) не читает
+ * .env.test, а @next/env не перетирает уже заданные process-env. Проверено эмпирически (Фаза 12):
+ * '\$' → '$' ✓; '\\$' остаётся '\$…' (битый хэш — CI-смоки Ф11/12 падали 401 на логине админа).
  */
 import { writeFileSync, existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
@@ -18,7 +20,7 @@ if (existsSync(target) && !process.env.CI) {
 
 const adminPassword = randomBytes(12).toString("hex"); // без '$' — expand-безопасно
 const hash = bcrypt.hashSync(adminPassword, 10);
-const escapedHash = hash.replaceAll("$", "\\\\$"); // '$' → '\\$' (двойной expand)
+const escapedHash = hash.replaceAll("$", "\\$"); // '$' → '\$' (один expand-проход dotenv-cli)
 
 const env = [
   "# Сгенерировано scripts/ci/write-env-test.mjs — эфемерный CI-стенд",
