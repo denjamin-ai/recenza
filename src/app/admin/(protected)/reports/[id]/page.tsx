@@ -1,5 +1,5 @@
 // Детальная жалоба (Фаза 10): причина, заявитель, контекст цели (комментарий) + действия разбора.
-import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import { notFound } from "next/navigation";
 import { getAdminReportDetail } from "@/lib/queries/admin";
 import { ScreenHead, Pill, Card } from "@/app/admin/_components/primitives";
@@ -18,9 +18,9 @@ export default async function AdminReportDetailPage({ params }: { params: Promis
 
   return (
     <div className="max-w-2xl">
-      <Link href="/admin/reports" className="mb-4 inline-block text-[length:var(--type-small)] text-[var(--accent)] hover:underline">
-        ← К жалобам
-      </Link>
+      <div className="mb-3">
+        <BackLink href="/admin/reports">К жалобам</BackLink>
+      </div>
 
       <ScreenHead eyebrow="Жалоба" title={r.reason} />
 

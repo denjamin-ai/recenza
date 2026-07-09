@@ -51,9 +51,13 @@ jobs:
           cp -r drizzle artifact/drizzle
           mkdir -p artifact/scripts
           cp scripts/migrate.mjs artifact/scripts/migrate.mjs
+          cp scripts/seed-recenza.mjs artifact/scripts/seed-recenza.mjs
           # drizzle-orm вбандлен Next-ом в серверные чанки и в standalone node_modules отсутствует,
           # а migrate.mjs импортирует его как пакет — докладываем вручную (чистый JS).
+          # ulid/bcryptjs нужны seed-recenza.mjs (тоже чистый JS).
           cp -r node_modules/drizzle-orm artifact/node_modules/drizzle-orm
+          cp -r node_modules/ulid artifact/node_modules/ulid
+          cp -r node_modules/bcryptjs artifact/node_modules/bcryptjs
 
       - name: SSH-доступ
         env:

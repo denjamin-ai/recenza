@@ -1,5 +1,5 @@
 // Детальная карточка пользователя (Фаза 10): профиль + компетенции + блоги + панель модерации.
-import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import { notFound } from "next/navigation";
 import { getAdminUserDetail } from "@/lib/queries/admin";
 import { ScreenHead, RolePill, Pill, Card, SkillChips } from "@/app/admin/_components/primitives";
@@ -14,9 +14,9 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
 
   return (
     <div className="max-w-3xl">
-      <Link href="/admin/users" className="mb-4 inline-block text-[length:var(--type-small)] text-[var(--accent)] hover:underline">
-        ← К пользователям
-      </Link>
+      <div className="mb-3">
+        <BackLink href="/admin/users">К пользователям</BackLink>
+      </div>
 
       <ScreenHead eyebrow={`@${u.handle}`} title={u.displayName} />
 

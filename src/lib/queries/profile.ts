@@ -3,7 +3,7 @@
 // Заблокированный пользователь — скрыт. passwordHash наружу не попадает (выбираем явные колонки).
 
 import { cache } from "react";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, sum } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { blogs, chapters, portfolios, reviewerHistory, users } from "@/lib/db/schema";
 import { parseJson } from "@/lib/db/json";
@@ -23,6 +23,15 @@ export interface ProfileUser {
   competencies: string[];
   reviewerRating: number | null;
   reviewerRatingsN: number | null;
+  createdAt: number;
+}
+
+/** Агрегаты шапки профиля автора (прототип ProfileScreen: Блогов/Глав/Просмотров/В закладках). */
+export interface ProfileStats {
+  blogs: number;
+  chapters: number;
+  views: number;
+  bookmarks: number;
 }
 
 export interface ReviewedChapterView {
@@ -33,7 +42,14 @@ export interface ReviewedChapterView {
 }
 
 export type ProfileView =
-  | { kind: "author"; user: ProfileUser; blogs: BlogCardView[]; portfolio: Block[] | null }
+  | {
+      kind: "author";
+      user: ProfileUser;
+      blogs: BlogCardView[];
+      portfolio: Block[] | null;
+      pinnedBlogId: string | null;
+      stats: ProfileStats;
+    }
   | { kind: "reviewer"; user: ProfileUser; reviewed: ReviewedChapterView[] };
 
 export const getProfileBySlug = cache(async (slug: string): Promise<ProfileView | null> => {
@@ -51,6 +67,8 @@ export const getProfileBySlug = cache(async (slug: string): Promise<ProfileView 
         competencies: users.competencies,
         reviewerRating: users.reviewerRating,
         reviewerRatingsN: users.reviewerRatingsN,
+        createdAt: users.createdAt,
+        pinnedBlogId: users.pinnedBlogId,
         isBlocked: users.isBlocked,
       })
       .from(users)
@@ -74,6 +92,7 @@ export const getProfileBySlug = cache(async (slug: string): Promise<ProfileView 
     competencies: parseJson<string[]>(row.competencies, []),
     reviewerRating: row.reviewerRating,
     reviewerRatingsN: row.reviewerRatingsN,
+    createdAt: row.createdAt,
   };
 
   if (row.role === "author") {
@@ -86,11 +105,31 @@ export const getProfileBySlug = cache(async (slug: string): Promise<ProfileView 
         .where(and(eq(portfolios.authorId, user.id), eq(portfolios.isVisible, true)))
         .limit(1)
     )[0];
+
+    // Просмотры — агрегат по видимым блогам автора (viewCount не входит в BlogCardView).
+    let views = 0;
+    if (authored.length > 0) {
+      const vc = (
+        await db
+          .select({ total: sum(blogs.viewCount) })
+          .from(blogs)
+          .where(inArray(blogs.id, authored.map((b) => b.id)))
+      )[0];
+      views = Number(vc?.total ?? 0);
+    }
+
     return {
       kind: "author",
       user,
       blogs: authored,
       portfolio: pf ? parseJson<Block[]>(pf.blocks, []) : null,
+      pinnedBlogId: row.pinnedBlogId ?? null,
+      stats: {
+        blogs: authored.length,
+        chapters: authored.reduce((n, b) => n + b.chapterCount, 0),
+        views,
+        bookmarks: authored.reduce((n, b) => n + b.bookmarkCount, 0),
+      },
     };
   }
 

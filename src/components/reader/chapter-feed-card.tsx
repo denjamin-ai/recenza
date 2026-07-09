@@ -7,13 +7,13 @@ import type { FeedItemView } from "@/lib/queries/types";
 export function ChapterFeedCard({ item }: { item: FeedItemView }) {
   const skills = item.skills.slice(0, 4);
   return (
-    <article className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 transition-colors hover:border-[var(--accent)]">
+    <article className="group rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--accent)] motion-reduce:transition-none motion-reduce:hover:translate-y-0">
       <Link
         href={`/blog/${item.blogSlug}/${item.chapterSlug}`}
         className="block rounded-[var(--radius-sm)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
       >
         <p className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">{item.blogTitle}</p>
-        <h3 className="mt-1 text-[length:var(--type-h4)]">{item.chapterTitle}</h3>
+        <h3 className="mt-1 text-[length:var(--type-h4)] transition-colors group-hover:text-[var(--accent)]">{item.chapterTitle}</h3>
       </Link>
       {item.summary && (
         <p className="mt-2 line-clamp-2 text-[length:var(--type-small)] text-[var(--muted-foreground)]">

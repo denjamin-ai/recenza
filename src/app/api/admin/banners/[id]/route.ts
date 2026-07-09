@@ -8,6 +8,7 @@ import { promoBanners } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { isHttpUrl, isInternalPath, isUploadsPath } from "@/lib/url";
+import { bannerFieldError, type BannerTextField } from "@/lib/banners";
 import { BANNER_ACTIONS, type BannerAction } from "@/types";
 
 function str(v: unknown, max = 200): string | null {
@@ -40,7 +41,15 @@ export async function PATCH(
 
   const set: Record<string, unknown> = {};
   for (const key of ["eyebrow", "title", "cta"] as const) {
-    if (body[key] !== undefined) set[key] = str(body[key]);
+    const raw = body[key];
+    if (raw === undefined) continue;
+    if (typeof raw === "string" && raw.trim()) {
+      const err = bannerFieldError(key as BannerTextField, raw);
+      if (err) return NextResponse.json({ error: err }, { status: 400 });
+      set[key] = raw.trim();
+    } else {
+      set[key] = null;
+    }
   }
   for (const key of ["tone", "icon"] as const) {
     if (body[key] !== undefined) set[key] = str(body[key], 32);

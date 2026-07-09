@@ -225,9 +225,11 @@ html[data-theme="dark"] {
    Промо-карусель ленты (по прототипу donation-ui.jsx): заливки слайда на токенах через
    color-mix; тон задаёт ОДНУ переменную --promo-ink (accent/warning/neutral), остальное — производные.
    ============================================================ */
-.promo-ink-accent  { --promo-ink: var(--accent); }
-.promo-ink-warning { --promo-ink: var(--warning); }
-.promo-ink-neutral { --promo-ink: var(--muted-foreground); }
+/* --promo-ink-contrast — текст поверх заливки --promo-ink; во всех темах все три ink-цвета
+   контрастны к --accent-foreground (light: тёмные ink → белый; dark: светлые ink → чёрный). */
+.promo-ink-accent  { --promo-ink: var(--accent); --promo-ink-contrast: var(--accent-foreground); }
+.promo-ink-warning { --promo-ink: var(--warning); --promo-ink-contrast: var(--accent-foreground); }
+.promo-ink-neutral { --promo-ink: var(--muted-foreground); --promo-ink-contrast: var(--accent-foreground); }
 
 .promo-slide {
   border: 1px solid color-mix(in srgb, var(--promo-ink) 26%, var(--border));

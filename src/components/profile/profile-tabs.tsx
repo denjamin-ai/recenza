@@ -9,10 +9,12 @@ export function ProfileTabs({
   hasAbout,
   about,
   blogs,
+  blogsCount,
 }: {
   hasAbout: boolean;
   about: ReactNode;
   blogs: ReactNode;
+  blogsCount?: number;
 }) {
   const [tab, setTab] = useState<"about" | "blogs">(hasAbout ? "about" : "blogs");
 
@@ -47,6 +49,11 @@ export function ProfileTabs({
           className={tabCls(tab === "blogs")}
         >
           Блоги
+          {typeof blogsCount === "number" && (
+            <span className="ml-1.5 rounded-[var(--radius-pill)] bg-[var(--muted)] px-1.5 py-0.5 text-[0.7rem] tabular-nums text-[var(--muted-foreground)]">
+              {blogsCount}
+            </span>
+          )}
         </button>
       </div>
       <div

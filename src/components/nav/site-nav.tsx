@@ -7,6 +7,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { AlphaBadge } from "@/components/alpha-badge";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AvatarMenu } from "@/components/nav/avatar-menu";
+import { GuideButton } from "@/components/nav/guide-modal";
 import { NotificationBell } from "@/components/nav/notification-bell";
 
 export async function SiteNav() {
@@ -34,6 +35,7 @@ export async function SiteNav() {
         </div>
 
         <div className="flex items-center gap-2">
+          <GuideButton role={user?.role ?? null} />
           <ThemeToggle />
           {user ? (
             <>

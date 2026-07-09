@@ -1,17 +1,26 @@
 // Настройки блога (ChapterSettingsPopover): title/slug/tags/complexity/coverUrl/summary.
 // Allowlist (никогда не spread тела в update — правило Фазы 2). slug — транслит+уникальность среди ЧУЖИХ.
 // coverUrl — только /uploads/ (как ImageBlock). Ownership: blog.authorId === userId.
+// DELETE — только полностью черновиковый блог (решение владельца, ui-feedback-3): все ревизии всех
+// глав `draft` и publishedAt IS NULL, иначе 409. Каскады blogs→chapters→… сносят остальное;
+// public_comments/removed_reviewers ссылаются по blogSlug без FK — чистим явно (страховка:
+// у чисто-draft блога их не бывает по построению).
 
 import { NextResponse } from "next/server";
 import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { blogs } from "@/lib/db/schema";
+import { blogs, chapters, chapterRevisions, publicComments, removedReviewers } from "@/lib/db/schema";
 import { requireAuthor } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { hitActionRate } from "@/lib/rate-limit";
 import { stringifyJson } from "@/lib/db/json";
 import { slugify, uniqueSlug } from "@/lib/slug";
 import { COMPLEXITIES, type Complexity } from "@/types";
+import type { RevisionStatus } from "@/types";
+
+// Гейт удаления: какие статусы ревизий допустимы у удаляемого блога. Расширение политики
+// (напр. разрешить under-review с отзывом приглашений) = правка этого набора + чистка леджера.
+const DELETABLE_REVISION_STATUSES: readonly RevisionStatus[] = ["draft"];
 
 export async function PATCH(
   req: Request,
@@ -136,4 +145,62 @@ export async function PATCH(
   }
 
   return NextResponse.json({ ok: true, slug: set.slug ?? blog.slug });
+}
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ blogId: string }> },
+): Promise<NextResponse> {
+  const csrf = assertSameOrigin(req);
+  if (csrf) return csrf;
+
+  const session = await requireAuthor();
+  if (session instanceof NextResponse) return session;
+  const userId = session.userId;
+  if (!userId) return NextResponse.json({ error: "Требуется вход." }, { status: 401 });
+
+  const rl = hitActionRate(`author-blog-delete:${userId}`);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: "Слишком часто. Подождите секунду." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfter ?? 1) } },
+    );
+  }
+
+  const { blogId } = await params;
+
+  // Ownership: чужой/несуществующий блог неотличимы (404).
+  const blog = (
+    await db
+      .select({ id: blogs.id, slug: blogs.slug, authorId: blogs.authorId, publishedAt: blogs.publishedAt })
+      .from(blogs)
+      .where(eq(blogs.id, blogId))
+      .limit(1)
+  )[0];
+  if (!blog || blog.authorId !== userId) return NextResponse.json({ error: "Блог не найден." }, { status: 404 });
+
+  if (blog.publishedAt != null) {
+    return NextResponse.json({ error: "Опубликованный блог удалить нельзя." }, { status: 409 });
+  }
+
+  const revisionStatuses = await db
+    .select({ status: chapterRevisions.status })
+    .from(chapterRevisions)
+    .innerJoin(chapters, eq(chapterRevisions.chapterId, chapters.id))
+    .where(eq(chapters.blogId, blogId));
+  const blocked = revisionStatuses.some((r) => !DELETABLE_REVISION_STATUSES.includes(r.status));
+  if (blocked) {
+    return NextResponse.json(
+      { error: "Удалить можно только блог-черновик. Сначала снимите главы с ревью." },
+      { status: 409 },
+    );
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.delete(publicComments).where(eq(publicComments.blogSlug, blog.slug));
+    await tx.delete(removedReviewers).where(eq(removedReviewers.blogSlug, blog.slug));
+    await tx.delete(blogs).where(eq(blogs.id, blogId)); // каскады: chapters → revisions/threads/invitations/…
+  });
+
+  return NextResponse.json({ ok: true });
 }

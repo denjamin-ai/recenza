@@ -2,7 +2,7 @@
 // Доступ — только владелец (getChapterForEditor проверяет ownership); noindex.
 
 import type { Metadata } from "next";
-import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import { notFound } from "next/navigation";
 import { BlockRenderer } from "@/components/blocks/block-renderer";
 import { getCurrentUser } from "@/lib/auth";
@@ -28,12 +28,7 @@ export default async function ChapterPreviewPage({
         <p className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">
           Предпросмотр · как видит читатель
         </p>
-        <Link
-          href={`/author/blog/${data.blog.slug}/${data.chapter.slug}/edit`}
-          className="min-h-9 rounded-[var(--radius-sm)] border border-[var(--accent)] px-3 py-1.5 text-[length:var(--type-small)] text-[var(--accent)] transition-colors hover:bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          ← К редактору
-        </Link>
+        <BackLink href={`/author/blog/${data.blog.slug}/${data.chapter.slug}/edit`}>К редактору</BackLink>
       </div>
       <article>
         <h1 className="text-[length:var(--type-h1)] font-[var(--weight-h1)] leading-tight">

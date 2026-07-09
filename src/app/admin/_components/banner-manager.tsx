@@ -6,6 +6,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { adminMutate } from "@/app/admin/_components/client";
 import { BANNER_ACTIONS, type BannerAction } from "@/types";
+import { BANNER_LIMITS } from "@/lib/banners";
 import type { AdminBannerRow } from "@/lib/queries/admin";
 
 const inputCls =
@@ -39,15 +40,36 @@ function fromRow(b?: AdminBannerRow): Draft {
   };
 }
 
+function LimitedField({
+  label,
+  value,
+  max,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  max: number;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <span className="relative block">
+      <input className={`${inputCls} pr-14`} value={value} maxLength={max} onChange={(e) => onChange(e.target.value)} placeholder={label} aria-label={label} />
+      <span aria-hidden="true" className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[0.7rem] tabular-nums text-[var(--muted-foreground)]">
+        {value.length}/{max}
+      </span>
+    </span>
+  );
+}
+
 function BannerForm({ initial, onSubmit, onCancel, pending }: { initial: Draft; onSubmit: (d: Draft) => void; onCancel: () => void; pending: boolean }) {
   const [d, setD] = useState<Draft>(initial);
   const set = (patch: Partial<Draft>) => setD((p) => ({ ...p, ...patch }));
   return (
     <div className="space-y-2">
       <div className="grid gap-2 sm:grid-cols-2">
-        <input className={inputCls} value={d.title} onChange={(e) => set({ title: e.target.value })} placeholder="Заголовок" aria-label="Заголовок" />
-        <input className={inputCls} value={d.eyebrow} onChange={(e) => set({ eyebrow: e.target.value })} placeholder="Надзаголовок" aria-label="Надзаголовок" />
-        <input className={inputCls} value={d.cta} onChange={(e) => set({ cta: e.target.value })} placeholder="Текст кнопки" aria-label="Текст кнопки" />
+        <LimitedField label="Заголовок" value={d.title} max={BANNER_LIMITS.title} onChange={(v) => set({ title: v })} />
+        <LimitedField label="Надзаголовок" value={d.eyebrow} max={BANNER_LIMITS.eyebrow} onChange={(v) => set({ eyebrow: v })} />
+        <LimitedField label="Текст кнопки" value={d.cta} max={BANNER_LIMITS.cta} onChange={(v) => set({ cta: v })} />
         <select className={inputCls} value={d.tone} onChange={(e) => set({ tone: e.target.value })} aria-label="Тон">
           <option value="teal">teal</option>
           <option value="amber">amber</option>
