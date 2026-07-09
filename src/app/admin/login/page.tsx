@@ -1,6 +1,7 @@
 // Неафишируемый вход администратора (только пароль → /api/auth). Не индексируется, без ссылок из UI.
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AlphaBadge, ALPHA_COPY } from "@/components/alpha-badge";
 import { AdminLoginForm } from "@/components/auth/admin-login-form";
 
 export const metadata: Metadata = {
@@ -19,20 +20,32 @@ export default function AdminLoginPage() {
         К содержимому
       </a>
       <main id="main" tabIndex={-1} className="flex flex-1 items-center justify-center px-4 py-20 focus:outline-none">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <Link
-            href="/"
-            className="font-display text-[length:var(--type-h2)] font-bold text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded-[var(--radius-sm)]"
-          >
-            Recenza
-          </Link>
-          <h1 className="mt-2 text-[length:var(--type-small)] text-[var(--muted-foreground)]">
-            Вход администратора
-          </h1>
+        <div className="w-full max-w-sm">
+          <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-elevated)] p-6">
+            <div className="mb-6">
+              <span className="flex items-center gap-2">
+                <Link
+                  href="/"
+                  className="font-display text-[length:var(--type-h4)] font-bold text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded-[var(--radius-sm)]"
+                >
+                  Recenza
+                </Link>
+                <AlphaBadge withPopover={false} />
+              </span>
+              <h1 className="mt-3 text-[length:var(--type-body)] font-medium text-[var(--foreground)]">
+                Вход администратора
+              </h1>
+              <p className="mt-1 text-[length:var(--type-small)] text-[var(--muted-foreground)] [text-wrap:pretty]">
+                Служебная страница модерации и настройки платформы.
+              </p>
+            </div>
+            <AdminLoginForm />
+          </div>
+
+          <p className="mt-4 px-1 text-[length:var(--type-small)] text-[var(--muted-foreground)] [text-wrap:pretty]">
+            {ALPHA_COPY}
+          </p>
         </div>
-        <AdminLoginForm />
-      </div>
       </main>
     </>
   );

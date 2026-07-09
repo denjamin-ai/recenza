@@ -18,6 +18,7 @@ import {
   IconHeart,
   IconSearch,
 } from "@/components/icons";
+import { AlphaBadge } from "@/components/alpha-badge";
 
 type NavItem = { href: string; label: string; Icon: (p: { className?: string }) => ReactNode };
 const GROUPS: { label: string | null; items: NavItem[] }[] = [
@@ -84,6 +85,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           <span className="rounded-[var(--radius-pill)] border border-[var(--accent)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--accent)]">
             admin
           </span>
+          <AlphaBadge withPopover={false} />
         </div>
 
         <nav className="flex-1 px-3 pb-4" aria-label="Навигация админ-портала">

@@ -19,7 +19,8 @@ import type { FeedFilter } from "@/lib/queries/types";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Recenza — девблоги с редакционным ревью",
+  // absolute: шаблон "%s | Recenza" задублировал бы бренд на главной
+  title: { absolute: "Recenza — девблоги с редакционным ревью" },
   description:
     "Многоглавные девблоги, прошедшие редакционное ревью: лента свежих глав, каталог блогов и подбор ревьюеров.",
   alternates: { canonical: siteUrl() },

@@ -162,58 +162,63 @@ html[data-theme="dark"] {
 }
 
 /* ============================================================
-   Базовые стили элементов (на токенах)
+   Базовые стили элементов (на токенах).
+   ⚠️ Обязательно внутри @layer base: НЕслоёные правила элементов побеждали бы layered-утилиты
+   Tailwind, и size-утилиты на h1–h4/code молча игнорировались (найдено на /login: h1 с
+   text-[length:var(--type-body)] рендерился 48px; страдали 47 заголовков по приложению).
    ============================================================ */
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans);
-  font-size: var(--type-body);
-  line-height: var(--leading-body);
-  letter-spacing: var(--tracking-body);
-  text-wrap: pretty;
-}
+@layer base {
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: var(--type-body);
+    line-height: var(--leading-body);
+    letter-spacing: var(--tracking-body);
+    text-wrap: pretty;
+  }
 
-h1,
-h2,
-h3,
-h4 {
-  font-family: var(--font-display);
-  text-wrap: balance;
-}
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    text-wrap: balance;
+  }
 
-h1 {
-  font-size: var(--type-h1);
-  line-height: var(--leading-h1);
-  letter-spacing: var(--tracking-h1);
-  font-weight: var(--weight-h1);
-}
+  h1 {
+    font-size: var(--type-h1);
+    line-height: var(--leading-h1);
+    letter-spacing: var(--tracking-h1);
+    font-weight: var(--weight-h1);
+  }
 
-h2 {
-  font-size: var(--type-h2);
-  line-height: var(--leading-h2);
-  letter-spacing: var(--tracking-h2);
-  font-weight: var(--weight-h2);
-}
+  h2 {
+    font-size: var(--type-h2);
+    line-height: var(--leading-h2);
+    letter-spacing: var(--tracking-h2);
+    font-weight: var(--weight-h2);
+  }
 
-h3 {
-  font-size: var(--type-h3);
-  line-height: var(--leading-h3);
-  letter-spacing: var(--tracking-h3);
-  font-weight: var(--weight-h3);
-}
+  h3 {
+    font-size: var(--type-h3);
+    line-height: var(--leading-h3);
+    letter-spacing: var(--tracking-h3);
+    font-weight: var(--weight-h3);
+  }
 
-h4 {
-  font-size: var(--type-h4);
-  font-weight: var(--weight-h3);
-}
+  h4 {
+    font-size: var(--type-h4);
+    font-weight: var(--weight-h3);
+  }
 
-code,
-pre,
-kbd,
-samp {
-  font-family: var(--font-mono);
-  font-size: var(--type-code);
+  code,
+  pre,
+  kbd,
+  samp {
+    font-family: var(--font-mono);
+    font-size: var(--type-code);
+  }
 }
 
 /* ============================================================
