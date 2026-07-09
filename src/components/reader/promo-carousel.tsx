@@ -14,10 +14,11 @@ import type { DonationConfig } from "@/lib/queries/monetization";
 
 const ROTATE_MS = 6000;
 
+/** Тон слайда → класс с --promo-ink (заливки считает globals.css: .promo-slide/-art/-wash). */
 function tone(t: string | null): string {
-  if (t === "amber") return "border-[var(--warning-border)] bg-[var(--warning-bg)]";
-  if (t === "neutral") return "border-[var(--border)] bg-[var(--bg-secondary)]";
-  return "border-[var(--accent)] bg-[var(--accent-bg)]"; // teal по умолчанию
+  if (t === "amber") return "promo-ink-warning";
+  if (t === "neutral") return "promo-ink-neutral";
+  return "promo-ink-accent"; // teal по умолчанию
 }
 
 function BannerIcon({ name, className }: { name: string | null; className?: string }) {
@@ -67,30 +68,44 @@ export function PromoCarousel({ banners, donation }: { banners: FeedBanner[]; do
       onFocusCapture={() => { pausedRef.current = true; }}
       onBlurCapture={() => { pausedRef.current = false; }}
     >
-      <div className={`relative flex items-center gap-4 overflow-hidden rounded-[var(--radius-lg)] border p-4 sm:p-5 ${tone(b.tone)}`}>
-        <BannerIcon name={b.icon} className="hidden h-10 w-10 shrink-0 text-[var(--foreground)] opacity-70 sm:block" />
-        <div className="min-w-0 flex-1">
-          {b.eyebrow && <p className="text-[0.7rem] font-medium uppercase tracking-wider text-[var(--muted-foreground)]">{b.eyebrow}</p>}
-          {b.title && <p className="font-display text-[length:var(--type-h4)] font-bold text-[var(--foreground)] [text-wrap:pretty]">{b.title}</p>}
+      {/* Слайд по прототипу: декоративная панель-иконка (sm+) + контент на градиентной заливке, h≈144px. */}
+      <div className={`promo-slide relative flex h-36 overflow-hidden rounded-[var(--radius-lg)] ${tone(b.tone)}`}>
+        <div className="promo-slide-art relative hidden w-[30%] shrink-0 sm:block">
+          <span aria-hidden="true" className="absolute inset-0 flex items-center justify-center text-[var(--promo-ink)] opacity-40">
+            <BannerIcon name={b.icon} className="h-10 w-10" />
+          </span>
         </div>
-        {b.cta && (
-          <button
-            type="button"
-            onClick={() => activate(b)}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent)] px-3.5 py-2 text-[length:var(--type-small)] font-medium text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-elevated)]"
-          >
-            {b.cta}
-            {b.action === "external" && <IconExternal className="h-3.5 w-3.5" />}
-          </button>
-        )}
+        <div className="promo-slide-wash flex min-w-0 flex-1 items-center">
+          <div className="w-full px-5 py-5 sm:px-6">
+            {b.eyebrow && (
+              <p className="mb-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-[var(--promo-ink)]">{b.eyebrow}</p>
+            )}
+            {b.title && (
+              <p className="mb-3.5 max-w-md font-display text-[length:var(--type-h4)] font-bold leading-tight text-[var(--foreground)] [text-wrap:pretty] sm:text-[21px]">
+                {b.title}
+              </p>
+            )}
+            {b.cta && (
+              <button
+                type="button"
+                onClick={() => activate(b)}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-pill)] bg-[var(--accent)] py-2 pl-4 pr-4 text-[length:var(--type-small)] font-semibold text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-elevated)]"
+              >
+                {b.cta}
+                {b.action === "external" && <IconExternal className="h-3.5 w-3.5" />}
+              </button>
+            )}
+          </div>
+        </div>
 
         {count > 1 && (
           <>
+            {/* Стрелки по прототипу: «плавающие» круги с фоном и рамкой — не сливаются с CTA. */}
             <button
               type="button"
               aria-label="Предыдущий баннер"
               onClick={() => setIndex((i) => (i - 1 + count) % count)}
-              className="absolute left-1 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-[var(--radius-pill)] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              className="absolute left-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-[var(--radius-pill)] border border-[var(--border)] bg-[var(--bg-elevated)]/85 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             >
               <IconChevronLeft className="h-4 w-4" />
             </button>
@@ -98,7 +113,7 @@ export function PromoCarousel({ banners, donation }: { banners: FeedBanner[]; do
               type="button"
               aria-label="Следующий баннер"
               onClick={() => setIndex((i) => (i + 1) % count)}
-              className="absolute right-1 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-[var(--radius-pill)] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-[var(--radius-pill)] border border-[var(--border)] bg-[var(--bg-elevated)]/85 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             >
               <IconChevronRight className="h-4 w-4" />
             </button>
@@ -107,7 +122,7 @@ export function PromoCarousel({ banners, donation }: { banners: FeedBanner[]; do
       </div>
 
       {count > 1 && (
-        <div className="mt-2 flex justify-center gap-1.5">
+        <div className="mt-3 flex justify-center gap-2">
           {banners.map((bn, i) => (
             <button
               key={bn.id}
@@ -115,7 +130,7 @@ export function PromoCarousel({ banners, donation }: { banners: FeedBanner[]; do
               aria-label={`Баннер ${i + 1}`}
               aria-current={i === index ? "true" : undefined}
               onClick={() => setIndex(i)}
-              className={`h-1.5 rounded-[var(--radius-pill)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${i === index ? "w-5 bg-[var(--accent)]" : "w-1.5 bg-[var(--border)]"}`}
+              className={`h-[7px] rounded-[var(--radius-pill)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${i === index ? "w-[22px] bg-[var(--accent)]" : "w-[7px] bg-[var(--border)]"}`}
             />
           ))}
         </div>
