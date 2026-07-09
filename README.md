@@ -1,84 +1,49 @@
 # Recenza
 
-Многоглавный девблог с встроенным редакционным review-flow. Монолит на **Next.js 16**.
-Этот репозиторий — **bootstrap-кит для миграции** дизайн-прототипа в production через Claude Code.
-Код приложения генерируется по фазам плана; здесь — вся обвязка, документы и эталоны.
+Многоглавные девблоги с редакционным review-flow. Монолит на **Next.js 16** (App Router,
+TypeScript, Tailwind v4, Drizzle ORM/libsql, iron-session). Интерфейс на русском.
 
-## С чего начать (bootstrap — делаешь ты, до Claude)
+**Прод:** https://recenza.ru — VPS (Caddy → Node standalone → systemd), локальный SQLite,
+автодеплой из `main` через GitHub Actions. Альфа: аккаунты выдаёт администратор, регистрации нет.
 
-1. **Каркас** в пустой папке:
-   ```bash
-   git init
-   npx create-next-app@latest . --ts --app --tailwind --src-dir --import-alias "@/*" --eslint
-   ```
-2. **Вложи кит** поверх каркаса: `CLAUDE.md`, `.mcp.json`, `.env.example`, `.gitignore`, `.claude/`, `docs/` — в корень.
-   Блок `scripts` и devDeps из `package.json` влей в тот, что создал create-next-app (не заменяй целиком).
-3. **Зависимости:**
-   ```bash
-   npm i @libsql/client drizzle-orm iron-session bcryptjs ulid next-themes next-mdx-remote rehype-pretty-code shiki
-   npm i -D drizzle-kit tsx @playwright/test dotenv-cli && npx playwright install
-   ```
-4. **Секреты:** `cp .env.example .env.local` (внутри `DB_FILE_NAME=blog.db`) и `.env.test` (`DB_FILE_NAME=blog.test.db` +
-   `ADMIN_PASSWORD_PLAIN`). Сгенерируй `SESSION_SECRET` (32+ байт) и `ADMIN_PASSWORD_HASH` (bcrypt, `$`→`\$`).
-   `dotenv-cli` обязателен: `next dev` НЕ читает `.env.test` сам.
-5. **Запусти Claude Code** в этой папке и вставь первым сообщением **`docs/migration/PROMPT.md`**.
-   Дальше Claude идёт по **`docs/migration/PLAN.md`** (12 фаз) с Фазы 1; файлы БД создадут миграции+seed в Фазах 2–3.
+## Как устроено
 
-> Подробнее о стендах и создании БД — `docs/migration/ENVIRONMENTS.md`.
+- Доменная модель — глава-ориентированная: Blog → Chapter → Revision → blocks.
+- 4 роли с жёстким гейтингом: читатель / автор / ревьюер / админ.
+- Публикация главы — только через ревью (приглашения → вердикты → «все approve»), либо
+  force-approve админом. Отложенная публикация — cron.
 
-## Репозиторий и git-flow
+## Документы
 
-Репозиторий: **https://github.com/denjamin-ai/recenza** (права на ветки, PR, мерж и пуш в `main` выданы).
+| Что нужно | Куда смотреть |
+|---|---|
+| Конвенции, архитектура, гочи (контекст Claude Code) | `CLAUDE.md` |
+| Процесс изменений: тесты → качество → PR → автодеплой | `docs/migration/WORKFLOW.md` |
+| Промты для сессий Claude Code | `docs/migration/PROMPT.md` |
+| Стенды, прод-runbook (откат, бэкапы, SSH) | `docs/migration/ENVIRONMENTS.md` |
+| История: 12 фаз миграции + журнал итераций | `docs/migration/PLAN.md` |
+| Тест-слой (118+ e2e) | `docs/migration/TESTING.md`, `testing/**` |
+| Дизайн-токены и UX-эталон | `docs/migration/DESIGN-TOKENS.md`, `docs/prototype/**` |
 
-- Bootstrap Фазы 0 — первый коммит прямо в `main`.
-- Со следующей фазы: одна фаза = ветка `phase-<N>-<slug>` = PR → squash-merge в `main` после зелёного
-  Цикла качества → удалить ветку. Блокирующий баг — `hotfix-<slug>`.
-- Секреты и `*.db` не коммитятся (`.gitignore`); перед коммитом — `git status`.
+## Быстрый старт (dev)
 
-## Структура
-
-```
-recenza/
-├── CLAUDE.md                      # постоянный контекст для Claude Code (стек, конвенции, гейтинг)
-├── .mcp.json                      # Playwright MCP
-├── .env.example                   # переменные окружения (скопируй в .env.local и .env.test)
-├── package.json                   # блок scripts (слить с тем, что создаст create-next-app)
-├── .gitignore
-├── .claude/
-│   ├── settings.json              # permissions Claude Code
-│   ├── rules/                     # security · next-app-router · drizzle · mdx · frontend-design
-│   ├── agents/                    # playwright-tester · code/security/design/seo reviewers
-│   └── skills/                    # qa-test-planner · playwright-best-practices (+ next-best-practices — фаза 1)
-└── docs/
-    ├── migration/                 # PLAN · PROMPT · ENVIRONMENTS · DESIGN-TOKENS · TESTING · REVIEW-PROMPT
-    └── prototype/                 # README прототипа + ui_kits/blog (UX-эталон) + legacy CLAUDE
+```bash
+npm install
+npm run db:migrate && npm run seed   # локальная blog.db с демо-данными
+npm run dev                          # http://localhost:3000
 ```
 
-## Документы миграции (`docs/migration/`)
+Тестовый стенд и e2e:
 
-| Файл | Назначение |
-|------|------------|
-| `PLAN.md` | Фазовый план (12 фаз: Статус · Контекст входа · Цель · Подфазы/Todo · Цикл качества · DoD · Журнал фазы) — основной рабочий документ и живой журнал прогресса |
-| `PROMPT.md` | Промт запуска проекта + промт запуска отдельной фазы (для новых сессий) |
-| `ENVIRONMENTS.md` | Тестовый + продовый стенды, полная схема БД, флоу seed |
-| `DESIGN-TOKENS.md` | Дизайн-токены (цвет/шрифт/шкалы/темы) — источник правды для `globals.css` |
-| `TESTING.md` | Тест-кейсы, юзер-сценарии, Playwright MCP + TS-автотесты |
-| `REVIEW-PROMPT.md` | Промт для ревью самого миграционного пакета |
+```bash
+npm run dev:test        # :3001, детерминированный seed (blog.test.db)
+npx playwright test     # полный прогон (только на :3001)
+```
 
-## Эталоны (`docs/prototype/`)
+Демо-логины тестового стенда: `reader` / `author` / `reviewer`, пароль `password`.
 
-- `README.md` — архитектура прототипа и **глава-ориентированная** доменная модель (источник истины).
-- `ui_kits/blog/*` — исходники прототипа (реальное поведение экранов, UX-эталон).
-- `legacy-article-model-CLAUDE.md` — CLAUDE.md прежней **статейной** версии: референс по стеку и
-  тест-инфре, **не** образец доменной модели.
+## Деплой
 
-## Ключевые принципы
-
-- Монолит. Глава-ориентированная модель (Blog → Chapter → Revision → blocks).
-- Два стенда: **тест** (`:3001`, `blog.test.db`) и **прод** (Turso/Vercel). Тесты — только на тесте.
-- Все БД — миграциями Drizzle. Timestamps — Unix seconds. ID — `ulid()`. Интерфейс на русском.
-- Эстетика: Lora / Literata / Fira Code, teal-акцент, тонкие границы, без теней, dark/light.
-
-> Примечание: сабагенты и скиллы в `.claude/` уже приведены к глава-ориентированной модели и путям
-> `.claude/...`. Файл `docs/prototype/legacy-article-model-CLAUDE.md` — исторический референс прежней
-> статейной версии (пути `.agents/`, таблицы `articles`), **не** образец текущей модели.
+Merge в `main` → workflow `deploy.yml` сам собирает, доставляет на сервер, применяет миграции
+и перезапускает сервис. Подробности и откат — `CLAUDE.md` § «Деплой изменений» и
+`ENVIRONMENTS.md` §6.
