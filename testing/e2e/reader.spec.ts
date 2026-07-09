@@ -4,11 +4,43 @@
 // возвращаются в исходное состояние, новые комментарии аддитивны; reseed не требуется.
 // Локаторы/тексты — MCP-FINDINGS §2/§5. Формы API сверены с src/app/api/**.
 
+import { type Locator } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { loginViaUi, newApiContext, uniqueXff } from "./helpers/auth";
 import { BASE_URL, BLOG, CHAPTERS, COMMENTS, PASSWORD, USERS } from "./helpers/seed";
 import { ReaderPage } from "./pages/reader.page";
 import { CommentsPage } from "./pages/comments.page";
+
+/**
+ * Идемпотентный engagement-toggle с ожиданием СЕРВЕРНОГО подтверждения.
+ * Две ловушки (найдены CI Фазы 12):
+ *  1) «мёртвый» клик до гидрации (MCP-FINDINGS §4) — ретраим, кликая ТОЛЬКО если aria-pressed
+ *     ещё не в целевом состоянии (повторный клик перевернул бы toggle обратно);
+ *  2) EngagementBar оптимистичен: aria-pressed меняется ДО ответа сервера, и немедленный
+ *     page.reload() обрывает POST в полёте — состояние не сохраняется. Поэтому ждём
+ *     waitForResponse и только потом ассертим.
+ */
+async function toggleUntilPressed(
+  page: import("@playwright/test").Page,
+  btn: Locator,
+  expected: string,
+  urlPart: string,
+  click: () => Promise<void>,
+): Promise<void> {
+  await expect(async () => {
+    if ((await btn.getAttribute("aria-pressed")) !== expected) {
+      const [res] = await Promise.all([
+        page.waitForResponse(
+          (r) => r.url().includes(urlPart) && r.request().method() === "POST",
+          { timeout: 5_000 },
+        ),
+        click(),
+      ]);
+      expect(res.ok()).toBeTruthy();
+    }
+    await expect(btn).toHaveAttribute("aria-pressed", expected, { timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
+}
 
 test.describe("Читатель", () => {
   // ── TC-READER-01 (SMK-04) ───────────────────────────────────────────────────
@@ -62,15 +94,14 @@ test.describe("Читатель", () => {
 
     const btn = reader.voteUpButton();
     const initial = await btn.getAttribute("aria-pressed");
+    const flipped = initial === "true" ? "false" : "true";
 
-    await reader.voteUp();
-    await expect(btn).toHaveAttribute("aria-pressed", initial === "true" ? "false" : "true");
+    await toggleUntilPressed(page, btn, flipped, "/vote", () => reader.voteUp());
 
     await page.reload();
-    await expect(btn).toHaveAttribute("aria-pressed", initial === "true" ? "false" : "true");
+    await expect(btn).toHaveAttribute("aria-pressed", flipped);
 
-    await reader.voteUp(); // вернуть исходное
-    await expect(btn).toHaveAttribute("aria-pressed", initial ?? "false");
+    await toggleUntilPressed(page, btn, initial ?? "false", "/vote", () => reader.voteUp()); // вернуть исходное
   });
 
   test("TC-READER-06 @smoke: закладка — toggle и отражение в /bookmarks", async ({ asReader }) => {
@@ -80,12 +111,10 @@ test.describe("Читатель", () => {
 
     const btn = reader.bookmarkButton();
     const initial = await btn.getAttribute("aria-pressed");
+    const flipped = initial === "true" ? "false" : "true";
 
-    await reader.toggleBookmark();
-    await expect(btn).toHaveAttribute("aria-pressed", initial === "true" ? "false" : "true");
-
-    await reader.toggleBookmark(); // вернуть исходное
-    await expect(btn).toHaveAttribute("aria-pressed", initial ?? "false");
+    await toggleUntilPressed(page, btn, flipped, "/api/bookmarks", () => reader.toggleBookmark());
+    await toggleUntilPressed(page, btn, initial ?? "false", "/api/bookmarks", () => reader.toggleBookmark()); // вернуть исходное
 
     await page.goto("/bookmarks");
     await expect(page.getByText(BLOG.title).first()).toBeVisible();
@@ -100,12 +129,10 @@ test.describe("Читатель", () => {
 
     const btn = reader.followButton();
     const initial = await btn.getAttribute("aria-pressed");
+    const flipped = initial === "true" ? "false" : "true";
 
-    await reader.toggleFollow();
-    await expect(btn).toHaveAttribute("aria-pressed", initial === "true" ? "false" : "true");
-
-    await reader.toggleFollow(); // вернуть исходное (seed: подписан)
-    await expect(btn).toHaveAttribute("aria-pressed", initial ?? "false");
+    await toggleUntilPressed(page, btn, flipped, "/api/follows", () => reader.toggleFollow());
+    await toggleUntilPressed(page, btn, initial ?? "false", "/api/follows", () => reader.toggleFollow()); // вернуть исходное (seed: подписан)
   });
 
   // ── TC-READER-08 — уведомления ──────────────────────────────────────────────
