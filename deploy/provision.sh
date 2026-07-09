@@ -13,7 +13,10 @@ echo "== 1. Пользователь recenza и каталоги =="
 id -u recenza &>/dev/null || useradd --system --create-home --shell /bin/bash recenza
 mkdir -p /srv/recenza/{releases,backups,bin} /srv/recenza/shared/{data,uploads}
 chown -R recenza:recenza /srv/recenza
-chmod 750 /srv/recenza
+chmod 750 /srv/recenza /srv/recenza/shared
+# Caddy отдаёт /uploads/* напрямую с диска — ему нужен group-r/x доступ к shared/uploads
+# (найдено HTTPS-smoke'ом Фазы 12: без этого file_server отвечал 403).
+chmod -R g+rX /srv/recenza/shared/uploads
 
 echo "== 2. SSH-ключ деплоя =="
 install -d -m 700 -o recenza -g recenza /home/recenza/.ssh
@@ -37,6 +40,8 @@ if ! command -v caddy &>/dev/null; then
 fi
 apt-get install -y sqlite3 ufw unattended-upgrades rsync
 dpkg-reconfigure -f noninteractive unattended-upgrades || true
+# Доступ Caddy к /srv/recenza/shared/uploads (см. шаг 1) — через группу recenza.
+usermod -aG recenza caddy
 
 echo "== 5. Swap 2G (страховка для 2 ГБ RAM) =="
 if ! swapon --show | grep -q /swapfile; then
