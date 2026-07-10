@@ -60,16 +60,18 @@ export function AuthorProfile({
 
   const blogsPanel = (
     <section aria-label="Блоги автора">
+      {/* sr-only h2 держит иерархию h1→h2→h3 (карточки рендерят h3). */}
+      <h2 className="sr-only">Блоги автора</h2>
       {blogs.length === 0 ? (
         <p className="text-[var(--muted-foreground)]">Пока нет опубликованных блогов.</p>
       ) : (
         <>
           {pinned && (
             <div className="mb-6">
-              <p className="mb-3 flex items-center gap-1.5 text-[0.7rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+              <h3 className="mb-3 flex items-center gap-1.5 text-[0.7rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
                 <IconPin className="h-3.5 w-3.5 text-[var(--accent)]" />
                 {isOwner ? "Закреплённый блог" : "Рекомендует автор"}
-              </p>
+              </h3>
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                 <BlogCard blog={pinned} />
               </div>
@@ -78,9 +80,9 @@ export function AuthorProfile({
           {rest.length > 0 && (
             <>
               {pinned && (
-                <p className="mb-3 text-[0.7rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+                <h3 className="mb-3 text-[0.7rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
                   Остальные блоги
-                </p>
+                </h3>
               )}
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                 {rest.map((b) => (

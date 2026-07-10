@@ -57,6 +57,7 @@ const chapterRevisions = sqliteTable("chapter_revisions", {
   chapterId: text("chapter_id").notNull(),
   number: integer("number").notNull(),
   status: text("status").notNull(),
+  summary: text("summary"),
   blocks: text("blocks"),
   publishedAt: integer("published_at"),
 });
@@ -75,6 +76,7 @@ const CHAPTERS = [
   {
     slug: "dobro-pozhalovat",
     title: "Добро пожаловать в Recenza",
+    summary: "Что такое Recenza: многоглавные девблоги с редакционным ревью и четыре роли платформы.",
     blocks: [
       b.p("Привет! Вы читаете первый блог на **Recenza** — платформе многоглавных девблогов, где каждая статья проходит редакционное ревью до публикации."),
       b.callout("Recenza работает в режиме альфы: аккаунты создаёт администратор, а функциональность продолжает расти. Этот блог — живое руководство по платформе."),
@@ -92,6 +94,7 @@ const CHAPTERS = [
   {
     slug: "nasha-missiya",
     title: "Наша миссия",
+    summary: "Почему у технической статьи должны быть рецензенты и как ревью делает тексты достойными доверия.",
     blocks: [
       b.p("Технический интернет переполнен текстами, которые никто не проверял. Часть из них устарела, часть — просто ошибается. Читателю приходится самому отделять полезное от вредного."),
       b.quote("Мы верим, что у технической статьи должен быть не только автор, но и рецензенты — как у научной публикации."),
@@ -103,6 +106,7 @@ const CHAPTERS = [
   {
     slug: "chitatelyam",
     title: "Читателям",
+    summary: "Голоса, закладки, подписки и комментарии с привязкой к фрагменту — инструменты читателя Recenza.",
     blocks: [
       b.p("Читать Recenza можно без аккаунта. С аккаунтом читателя появляются инструменты участия:"),
       b.list([
@@ -118,6 +122,7 @@ const CHAPTERS = [
   {
     slug: "avtoram",
     title: "Авторам",
+    summary: "Блочный редактор, отправка на ревью с приглашениями и публикация после одобрения всех ревьюеров.",
     blocks: [
       b.p("Авторский кабинет строится вокруг блогов и глав. Внутри — блочный редактор, писать в котором можно не отрывая рук от клавиатуры."),
       b.list([
@@ -133,6 +138,7 @@ const CHAPTERS = [
   {
     slug: "revyueram",
     title: "Ревьюерам",
+    summary: "Приглашения по навыкам, треды замечаний, вердикты и приватная оценка — работа ревьюера на Recenza.",
     blocks: [
       b.p("Ревьюер — отдельная роль со своим кабинетом. Ревьюеры не ведут блоги и не пишут публичные комментарии: их работа — качество чужих статей."),
       b.list([
@@ -168,8 +174,14 @@ if (existingBlog) {
 
 await db.transaction(async (tx) => {
   let authorId;
-  const existingUser = (await tx.select({ id: users.id }).from(users).where(eq(users.handle, "recenza")).limit(1))[0];
+  const existingUser = (
+    await tx.select({ id: users.id, role: users.role }).from(users).where(eq(users.handle, "recenza")).limit(1)
+  )[0];
   if (existingUser) {
+    if (existingUser.role !== "author") {
+      // binding-инвариант: блог может вести только author — не вешаем контент на чужую роль.
+      throw new Error(`пользователь recenza уже существует с ролью "${existingUser.role}" (нужен author) — сид остановлен.`);
+    }
     authorId = existingUser.id;
     console.log("[seed-recenza] пользователь recenza уже существует — переиспользуем.");
   } else {
@@ -214,6 +226,7 @@ await db.transaction(async (tx) => {
       chapterId,
       number: 1,
       status: "published",
+      summary: ch.summary,
       blocks: JSON.stringify(ch.blocks),
       publishedAt: now,
     });

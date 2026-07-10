@@ -79,5 +79,5 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "Не удалось создать блог, попробуйте ещё раз." }, { status: 409 });
   }
 
-  return NextResponse.json({ ok: true, blogSlug, chapterSlug: "main", chapterId });
+  return NextResponse.json({ ok: true, blogId, blogSlug, chapterSlug: "main", chapterId });
 }

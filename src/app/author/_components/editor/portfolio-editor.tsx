@@ -42,7 +42,7 @@ export function PortfolioEditor({
 
   return (
     <div className="min-h-screen">
-      <div className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--bg)] px-6 py-3">
+      <div className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--background)] px-6 py-3">
         <BackLink href="/author">Кабинет</BackLink>
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1.5 text-[length:var(--type-small)] text-[var(--muted-foreground)]">

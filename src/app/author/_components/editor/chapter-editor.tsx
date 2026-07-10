@@ -81,9 +81,10 @@ export function ChapterEditor({ data, reviewers }: { data: EditorChapter; review
           });
         let res = await doFetch();
         if (res.status === 429) {
-          // Рейт-лимит author-save 1/с: один авторетрай по Retry-After.
-          const retryAfter = Number(res.headers.get("Retry-After") ?? "1");
-          await new Promise((r) => window.setTimeout(r, Math.max(1, retryAfter) * 1000 + 100));
+          // Рейт-лимит author-save 1/с: один авторетрай по Retry-After (нечисловой заголовок → 1с).
+          const parsed = Number(res.headers.get("Retry-After") ?? "1");
+          const retryAfter = Number.isFinite(parsed) ? Math.max(1, parsed) : 1;
+          await new Promise((r) => window.setTimeout(r, retryAfter * 1000 + 100));
           res = await doFetch();
         }
         const json = (await res.json().catch(() => ({}))) as { savedAt?: number; error?: string };
@@ -132,7 +133,7 @@ export function ChapterEditor({ data, reviewers }: { data: EditorChapter; review
 
   return (
     <div className="min-h-screen">
-      <div className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--bg)] px-6 py-3">
+      <div className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--background)] px-6 py-3">
         <BackLink href={`/author/blog/${data.blog.slug}`}>Кабинет</BackLink>
         <div className="flex items-center gap-3">
           <SaveState dirty={dirty} savedAt={savedAt} />

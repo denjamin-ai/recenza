@@ -296,7 +296,9 @@ test.describe("Роль «Ревьюер»: кабинет, ReviewPage, проф
 
     await test.step("Шапка профиля и агрегат рейтинга", async () => {
       await expect(page.getByRole("heading", { name: "Раиса Ревьюер" })).toBeVisible();
-      await expect(page.getByText(`@${USERS.reviewer.handle} · Ревьюер`)).toBeVisible();
+      // ui-feedback-3 (П5): шапка по прототипу ProfileScreen — @handle и пилюля роли отдельные элементы.
+      await expect(page.getByText(`@${USERS.reviewer.handle}`, { exact: true })).toBeVisible();
+      await expect(page.getByText("Ревьюер", { exact: true })).toBeVisible();
       // Только агрегат «★ N.N [· M оценок]» — точное число не ассертим (агрегат пересчитывается
       // по реальным строкам reviewer_ratings, MCP-FINDINGS §5).
       await expect(page.getByText(/★ \d\.\d/)).toBeVisible();

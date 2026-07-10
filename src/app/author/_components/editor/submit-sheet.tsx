@@ -316,47 +316,52 @@ export function SubmitSheet({
                       } ${disabled ? "opacity-50" : ""}`}
                     >
                       <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={isPicked}
-                          disabled={disabled}
-                          onChange={() => togglePick(r.handle)}
-                          aria-label={r.displayName}
+                        {/* label-обёртка: клик по аватару/имени тоже переключает выбор (хит-таргет ≥36px). */}
+                        <label
+                          className={`flex min-h-9 min-w-0 flex-1 items-center gap-2 ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}
                           title={disabled ? "Загружен" : isPicked ? "Убрать" : "Выбрать"}
-                          className="shrink-0 accent-[var(--accent)]"
-                        />
-                        <span
-                          aria-hidden="true"
-                          className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--muted)] font-display text-[0.7rem] font-semibold text-[var(--muted-foreground)] ${
-                            isLead ? "border-2 border-[var(--accent)]" : "border border-[var(--border)]"
-                          }`}
                         >
-                          {r.displayName.slice(0, 1).toUpperCase()}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
-                            <p className="truncate text-[length:var(--type-small)] font-medium leading-tight" title={r.displayName}>
-                              {r.displayName}
-                            </p>
-                            {isLead && (
-                              <span className="shrink-0 text-[0.6rem] font-semibold uppercase tracking-wider text-[var(--accent)]">
-                                ведущий
+                          <input
+                            type="checkbox"
+                            checked={isPicked}
+                            disabled={disabled}
+                            onChange={() => togglePick(r.handle)}
+                            aria-label={r.displayName}
+                            className="shrink-0 accent-[var(--accent)]"
+                          />
+                          <span
+                            aria-hidden="true"
+                            className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--muted)] font-display text-[0.7rem] font-semibold text-[var(--muted-foreground)] ${
+                              isLead ? "border-2 border-[var(--accent)]" : "border border-[var(--border)]"
+                            }`}
+                          >
+                            {r.displayName.slice(0, 1).toUpperCase()}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-1.5">
+                              <span className="truncate text-[length:var(--type-small)] font-medium leading-tight" title={r.displayName}>
+                                {r.displayName}
                               </span>
-                            )}
-                          </div>
-                          <div className="mt-0.5 flex flex-wrap items-center gap-2">
-                            <Stars rating={r.rating} />
-                            <span className="flex items-center gap-1 text-[0.7rem] tabular-nums text-[var(--muted-foreground)]">
-                              <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${AVAIL_META[r.availability].dot}`} />
-                              {AVAIL_META[r.availability].label}
+                              {isLead && (
+                                <span className="shrink-0 text-[0.6rem] font-semibold uppercase tracking-wider text-[var(--accent)]">
+                                  ведущий
+                                </span>
+                              )}
                             </span>
-                            {r.matchPct > 0 && (
-                              <span className="rounded-[var(--radius-pill)] bg-[var(--accent-bg)] px-1.5 py-0.5 text-[0.7rem] font-medium tabular-nums text-[var(--accent)]">
-                                {r.matchPct}%
+                            <span className="mt-0.5 flex flex-wrap items-center gap-2">
+                              <Stars rating={r.rating} />
+                              <span className="flex items-center gap-1 text-[0.7rem] tabular-nums text-[var(--muted-foreground)]">
+                                <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${AVAIL_META[r.availability].dot}`} />
+                                {AVAIL_META[r.availability].label}
                               </span>
-                            )}
-                          </div>
-                        </div>
+                              {r.matchPct > 0 && (
+                                <span className="rounded-[var(--radius-pill)] bg-[var(--accent-bg)] px-1.5 py-0.5 text-[0.7rem] font-medium tabular-nums text-[var(--accent)]">
+                                  {r.matchPct}%
+                                </span>
+                              )}
+                            </span>
+                          </span>
+                        </label>
                         <div className="flex shrink-0 flex-col items-end gap-1">
                           <span
                             title="Балл «Топ»: навыки 50% + рейтинг 30% + объём 20%"

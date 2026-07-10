@@ -183,24 +183,27 @@ export async function DELETE(
     return NextResponse.json({ error: "Опубликованный блог удалить нельзя." }, { status: 409 });
   }
 
-  const revisionStatuses = await db
-    .select({ status: chapterRevisions.status })
-    .from(chapterRevisions)
-    .innerJoin(chapters, eq(chapterRevisions.chapterId, chapters.id))
-    .where(eq(chapters.blogId, blogId));
-  const blocked = revisionStatuses.some((r) => !DELETABLE_REVISION_STATUSES.includes(r.status));
+  // Гейт «только черновики» перечитывается ВНУТРИ транзакции (анти-TOCTOU: конкурентный submit
+  // между проверкой и удалением не должен снести главу, ушедшую на ревью).
+  let blocked = false;
+  await db.transaction(async (tx) => {
+    const revisionStatuses = await tx
+      .select({ status: chapterRevisions.status })
+      .from(chapterRevisions)
+      .innerJoin(chapters, eq(chapterRevisions.chapterId, chapters.id))
+      .where(eq(chapters.blogId, blogId));
+    blocked = revisionStatuses.some((r) => !DELETABLE_REVISION_STATUSES.includes(r.status));
+    if (blocked) return;
+    await tx.delete(publicComments).where(eq(publicComments.blogSlug, blog.slug));
+    await tx.delete(removedReviewers).where(eq(removedReviewers.blogSlug, blog.slug));
+    await tx.delete(blogs).where(eq(blogs.id, blogId)); // каскады: chapters → revisions/threads/invitations/…
+  });
   if (blocked) {
     return NextResponse.json(
       { error: "Удалить можно только блог-черновик. Сначала снимите главы с ревью." },
       { status: 409 },
     );
   }
-
-  await db.transaction(async (tx) => {
-    await tx.delete(publicComments).where(eq(publicComments.blogSlug, blog.slug));
-    await tx.delete(removedReviewers).where(eq(removedReviewers.blogSlug, blog.slug));
-    await tx.delete(blogs).where(eq(blogs.id, blogId)); // каскады: chapters → revisions/threads/invitations/…
-  });
 
   return NextResponse.json({ ok: true });
 }

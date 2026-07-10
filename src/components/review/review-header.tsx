@@ -41,7 +41,7 @@ export function ReviewHeader({
   return (
     <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--background)]/95 backdrop-blur">
       <div className="flex min-w-0 items-center gap-2 px-3 py-2 sm:px-5">
-        <BackLink href={backHref} className="shrink-0">
+        <BackLink href={backHref} className="shrink-0" ariaLabel={pov === "author" ? "К блогу" : "К списку"}>
           <span className="hidden sm:inline">{pov === "author" ? "К блогу" : "К списку"}</span>
         </BackLink>
 

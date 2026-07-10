@@ -6,7 +6,7 @@
 // Вёрстка на токенах DS (без теней/raw-цветов); мобильный bottom-sheet; Esc/оверлей закрывают.
 // Админ шапку сайта не видит — admin-варианта нет намеренно.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { IconBookOpen, IconCheck, IconEdit } from "@/components/icons";
 import type { Role } from "@/types";
@@ -62,6 +62,7 @@ const GUIDE_CONTENT: Record<GuideRole, GuideContent> = {
 
 export function GuideButton({ role }: { role: Role | null }) {
   const [open, setOpen] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   const guideRole: GuideRole = role === "author" || role === "reviewer" ? role : "reader";
   const content = GUIDE_CONTENT[guideRole];
@@ -70,6 +71,8 @@ export function GuideButton({ role }: { role: Role | null }) {
 
   useEffect(() => {
     if (!open) return;
+    // Initial focus в диалог (паттерн donate-modal) — иначе Tab гуляет под оверлеем при aria-modal.
+    dialogRef.current?.focus();
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
     }
@@ -108,7 +111,11 @@ export function GuideButton({ role }: { role: Role | null }) {
             onClick={() => setOpen(false)}
             className="absolute inset-0 bg-[var(--overlay)]"
           />
-          <div className="relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-[var(--radius-lg)] border border-[var(--border)] bg-[var(--background)] sm:max-h-[88vh] sm:max-w-2xl sm:rounded-[var(--radius-lg)]">
+          <div
+            ref={dialogRef}
+            tabIndex={-1}
+            className="relative flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-[var(--radius-lg)] border border-[var(--border)] bg-[var(--background)] outline-none sm:max-h-[88vh] sm:max-w-2xl sm:rounded-[var(--radius-lg)]"
+          >
             {/* Ручка bottom-sheet на мобиле */}
             <div className="flex shrink-0 justify-center pb-1 pt-2.5 sm:hidden">
               <span aria-hidden="true" className="h-1 w-9 rounded-[var(--radius-pill)] bg-[var(--border)]" />

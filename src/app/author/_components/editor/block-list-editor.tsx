@@ -169,7 +169,17 @@ export function BlockListEditor({
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   const structural: BlocksChangeMeta = { structural: true };
-  const update = (id: string, b: Block) => onChange(blocks.map((x) => (x.id === id ? applyShortcut(b) : x)));
+  const update = (id: string, b: Block) => {
+    let typeChanged = false;
+    const next = blocks.map((x) => {
+      if (x.id !== id) return x;
+      const applied = applyShortcut(b);
+      typeChanged = applied.type !== x.type;
+      return applied;
+    });
+    // markdown-шорткат сменил тип блока — та же структурная правка, что и через меню.
+    onChange(next, typeChanged ? structural : undefined);
+  };
   const replace = (id: string, item: BlockMenuItem) =>
     onChange(blocks.map((x) => (x.id === id ? { ...newBlock(item.type, item.variant), id } : x)), structural);
   const remove = (id: string) => onChange(blocks.filter((x) => x.id !== id), structural);

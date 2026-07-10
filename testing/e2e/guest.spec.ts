@@ -370,4 +370,29 @@ test.describe("Гость (аноним)", () => {
       await expect(page.getByRole("heading", { name: "Лена Базы" })).toBeVisible();
     });
   });
+
+  // ── TC-GUEST-15 — «Руководство» в шапке (ui-feedback-3, П9) ─────────────────
+
+  test("TC-GUEST-15 @regression: кнопка «Руководство» → «Гид читателя», CTA «Войти», Escape закрывает", async ({
+    asGuest,
+  }) => {
+    const { page } = asGuest;
+    await page.goto("/");
+    const dialog = page.getByRole("dialog", { name: "Гид читателя" });
+
+    await test.step("открытие: гостю показывается гид читателя с CTA «Войти»", async () => {
+      // Клик до гидрации может потеряться — идемпотентный ретрай.
+      await expect(async () => {
+        await page.getByRole("banner").getByRole("button", { name: "Руководство" }).click();
+        await expect(dialog).toBeVisible({ timeout: 2_000 });
+      }).toPass({ timeout: 20_000 });
+      await expect(dialog.getByText("Тип пользователя · читатель")).toBeVisible();
+      await expect(dialog.getByRole("link", { name: /Войти/ })).toBeVisible();
+    });
+
+    await test.step("Escape закрывает модалку", async () => {
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+    });
+  });
 });

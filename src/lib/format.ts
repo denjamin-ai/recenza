@@ -12,12 +12,18 @@ export function formatDate(unixSeconds: number | null | undefined): string {
   return DATE_FMT.format(new Date(unixSeconds * 1000));
 }
 
-const MONTH_YEAR_FMT = new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric" });
+// Родительный падеж — Intl отдаёт именительный («июль 2026 г.»), а подпись «на платформе с …»
+// требует «с июля 2026».
+const MONTHS_GENITIVE = [
+  "января", "февраля", "марта", "апреля", "мая", "июня",
+  "июля", "августа", "сентября", "октября", "ноября", "декабря",
+] as const;
 
-/** Unix seconds → «июнь 2026» (профиль: «на платформе с …»). Пустой ввод → "". */
+/** Unix seconds → «июня 2026» (родительный; профиль: «на платформе с …»). Пустой ввод → "". */
 export function formatMonthYear(unixSeconds: number | null | undefined): string {
   if (unixSeconds == null) return "";
-  return MONTH_YEAR_FMT.format(new Date(unixSeconds * 1000));
+  const d = new Date(unixSeconds * 1000);
+  return `${MONTHS_GENITIVE[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 /** Компактное число для статистики: 999 → «999», 1200 → «1.2k», 15000 → «15k». */

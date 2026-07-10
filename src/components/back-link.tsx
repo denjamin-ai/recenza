@@ -22,22 +22,25 @@ export function BackLink({
   onClick,
   children,
   className,
+  ariaLabel,
 }: {
   href?: string;
   onClick?: () => void;
   children: ReactNode;
   className?: string;
+  /** Обязателен, когда текст скрывается на узких экранах (icon-only режим). */
+  ariaLabel?: string;
 }) {
   const cls = className ? `${CLS} ${className}` : CLS;
   if (href) {
     return (
-      <Link href={href} className={cls}>
+      <Link href={href} className={cls} aria-label={ariaLabel}>
         <Inner>{children}</Inner>
       </Link>
     );
   }
   return (
-    <button type="button" onClick={onClick} className={cls}>
+    <button type="button" onClick={onClick} className={cls} aria-label={ariaLabel}>
       <Inner>{children}</Inner>
     </button>
   );

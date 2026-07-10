@@ -64,6 +64,10 @@ const CONSOLE_ALLOWLIST = [
   /preload/i,
   // Dev-warning Next.js not-found страницы при рендере 404 — безобидный шум, не баг приложения.
   /Encountered a script tag while rendering/i,
+  // React 19 RSC performance track (только dev): при рассинхроне часов клиент/сервер
+  // performance.measure падает с negative time stamp — инструментарий, не код приложения
+  // (в прод-сборке трека нет). Наблюдался на 404-страницах после смены системной даты.
+  /Failed to execute 'measure' on 'Performance'/i,
 ];
 
 function isAllowedConsoleError(text: string, url: string | undefined): boolean {
