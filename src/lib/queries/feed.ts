@@ -1,6 +1,6 @@
-// Базовый запрос «публично читаемых глав» + производные: лента, каталог, подписки.
-// Binding-инварианты (visibility): автор НЕ заблокирован + у главы есть published-ревизия;
-// публичный контент главы = ревизия с наибольшим number при status='published'.
+// Базовый запрос «публично читаемых глав» + производные: каталог блогов, лента глав (feed.xml),
+// подписки (id авторов). Binding-инварианты (visibility): автор НЕ заблокирован + у главы есть
+// published-ревизия; публичный контент главы = ревизия с наибольшим number при status='published'.
 // cache() — дедуп в пределах одного запроса (generateMetadata + page).
 
 import { cache } from "react";
@@ -22,6 +22,7 @@ interface BaseRow {
   rating: number;
   bookmarkCount: number;
   lastActivityAt: number | null;
+  blogPublishedAt: number | null;
   authorId: string;
   authorHandle: string;
   authorSlug: string;
@@ -51,6 +52,7 @@ export const getReadableChapters = cache(async (): Promise<BaseRow[]> => {
       rating: blogs.rating,
       bookmarkCount: blogs.bookmarkCount,
       lastActivityAt: blogs.lastActivityAt,
+      blogPublishedAt: blogs.publishedAt,
       authorId: users.id,
       authorHandle: users.handle,
       authorSlug: users.slug,
@@ -146,6 +148,7 @@ export async function getVisibleBlogs(filter?: FeedFilter): Promise<BlogCardView
       rating: r.rating,
       bookmarkCount: r.bookmarkCount,
       lastActivityAt: r.lastActivityAt,
+      publishedAt: r.blogPublishedAt,
       author: authorOf(r),
       chapterCount: 1,
     });
@@ -155,40 +158,11 @@ export async function getVisibleBlogs(filter?: FeedFilter): Promise<BlogCardView
   );
 }
 
-/** Подписки: главы блогов авторов, на которых подписан пользователь (автор-центрично). */
-export async function getSubscriptionFeed(
-  userId: string,
-  filter?: FeedFilter,
-): Promise<FeedItemView[]> {
+/** Подписки: id авторов, на которых подписан пользователь (секция «Подписки» главной). */
+export async function getFollowedAuthorIds(userId: string): Promise<string[]> {
   const followed = await db
     .select({ authorId: follows.authorId })
     .from(follows)
     .where(eq(follows.userId, userId));
-  const ids = followed.map((f) => f.authorId);
-  if (ids.length === 0) return [];
-
-  const rows = await getReadableChapters();
-  return rows
-    .filter((r) => ids.includes(r.authorId) && matchesFilter(r, filter))
-    .map((r) => ({
-      blogSlug: r.blogSlug,
-      blogTitle: r.blogTitle,
-      chapterSlug: r.chapterSlug,
-      chapterTitle: r.chapterTitle,
-      skills: parseJson<string[]>(r.skills, []),
-      publishedAt: r.revPublishedAt,
-      summary: r.revSummary,
-      author: authorOf(r),
-    }));
-}
-
-/** Теги видимых блогов для фильтр-чипов (с учётом ролевой изоляции автора). */
-export async function getAllTags(restrictAuthorId?: string): Promise<string[]> {
-  const rows = await getReadableChapters();
-  const set = new Set<string>();
-  for (const r of rows) {
-    if (restrictAuthorId && r.authorId !== restrictAuthorId) continue;
-    for (const t of parseJson<string[]>(r.tags, [])) set.add(t);
-  }
-  return [...set].sort((a, b) => a.localeCompare(b, "ru"));
+  return followed.map((f) => f.authorId);
 }

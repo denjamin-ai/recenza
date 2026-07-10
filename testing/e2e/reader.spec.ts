@@ -355,4 +355,32 @@ test.describe("Читатель", () => {
     const res = await ctx.post(`/api/review/${CHAPTERS.underReview.id}/verdict`, { data: { verdict: "approve" } });
     expect(res.status()).toBe(403);
   });
+
+  // ── TC-READER-21 — «Ваша лента» (ui-feedback-4, П2: ролевой сплит главной) ───
+
+  test("TC-READER-21 @regression: главная читателя — «Ваша лента» с секцией «Подписки», переход «Все блоги →» в каталог", async ({
+    asReader,
+  }) => {
+    const { page } = asReader;
+    const reader = new ReaderPage(page, USERS.reader.handle);
+
+    await test.step("«Ваша лента»: h1, @handle, секция «Подписки» с блогом подписанного автора", async () => {
+      await reader.gotoFeed();
+      await expect(reader.homeHeading("Ваша лента")).toBeVisible();
+      await expect(page.getByText(`@${USERS.reader.handle}`)).toBeVisible();
+      // seed: reader подписан на author → его блог в секции «Подписки» (карточка БЛОГА, не главы).
+      await expect(page.getByRole("heading", { name: "Подписки", exact: true })).toBeVisible();
+      await expect(reader.blogCard(BLOG.title)).toBeVisible();
+      // Табов «Лента/Каталог/Подписки» и поиска больше нет.
+      await expect(page.getByRole("navigation", { name: "Разделы ленты" })).toHaveCount(0);
+      await expect(page.getByRole("searchbox")).toHaveCount(0);
+    });
+
+    await test.step("«Все блоги →» ведёт в каталог (?view=all): h1 «Все блоги»", async () => {
+      await page.getByRole("link", { name: "Все блоги →" }).first().click();
+      await page.waitForURL(/\/\?view=all/);
+      await expect(reader.homeHeading("Все блоги")).toBeVisible();
+      await expect(reader.blogCard(BLOG.title)).toBeVisible();
+    });
+  });
 });

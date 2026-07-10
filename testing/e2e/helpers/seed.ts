@@ -75,6 +75,11 @@ export const RECRUITS = { pending: "rec_pending", approved: "rec_approved", reje
 export const BOARD_CALLS = { frontend: "bc_frontend", backend: "bc_backend" } as const;
 export const APPLICATIONS = { user: "app_user", guest: "app_guest" } as const;
 export const BANNERS = { recruit: "pb_recruit", partner: "pb_partner", donate: "pb_donate" } as const;
+/** Тексты seed-баннеров карусели (ui-feedback-4 П7: recruit-слайд = тексты прототипа). */
+export const BANNER_TEXTS = {
+  recruit: { eyebrow: "Ищем ревьюеров", title: "Рецензируйте статьи по своим навыкам", cta: "Стать ревьюером" },
+  donate: { title: "Поддержите проект", cta: "Поддержать" },
+} as const;
 export const DONATION_METHODS = { link: "dm_link", qr: "dm_qr" } as const;
 export const REPORT_ID = "rpt_1";
 export const PRIMARY_CHANGE_ID = "pcr_1";

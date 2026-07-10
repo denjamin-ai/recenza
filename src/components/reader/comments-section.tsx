@@ -3,9 +3,15 @@
 // Клиентская обвязка секции комментариев: композер (или login-prompt / notice блокировки), список
 // текущей ревизии, спойлер «прошлые версии». Данные приходят с сервера (RSC); после мутаций —
 // router.refresh() в startTransition (фоновое обновление без перемонтажа Suspense-границы, CLAUDE gotcha).
-// Слушает событие фрагмент-якоря от FragmentCommentButton (фильтр по своей главе).
+// Слушает событие фрагмент-якоря от FragmentCommentButton.
+//
+// Два режима (ui-feedback-4 П8):
+//  - chapter: секция одной главы (chapterSlug задан, chapters не передан) — поведение Фазы 8;
+//  - blog: merged-секция «Весь блог» (chapters заданы) — якорь принимается от ЛЮБОЙ главы блога,
+//    целевая глава композера = глава якоря, без якоря — селект «К главе» (default — последняя).
+//    Блоговых комментариев нет по построению (chapter_slug NOT NULL) — коммент всегда у главы.
 
-import { startTransition, useEffect, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CommentItem } from "./comment-item";
 import { CommentComposer } from "./comment-composer";
@@ -21,6 +27,7 @@ export interface FragmentAnchorDetail {
 export function CommentsSection({
   blogSlug,
   chapterSlug,
+  chapters,
   sectionId,
   current,
   older,
@@ -31,7 +38,10 @@ export function CommentsSection({
   viewerId,
 }: {
   blogSlug: string;
-  chapterSlug: string;
+  /** chapter-режим: слаг главы секции. В blog-режиме null (главы — в chapters). */
+  chapterSlug: string | null;
+  /** blog-режим: опубликованные главы блога по порядку (для селекта и фильтра якоря). */
+  chapters?: { slug: string; title: string }[];
   sectionId: string;
   current: CommentView[];
   older: CommentView[];
@@ -42,42 +52,81 @@ export function CommentsSection({
   viewerId: string | null;
 }) {
   const router = useRouter();
-  const [pendingAnchor, setPendingAnchor] = useState<CommentAnchor | null>(null);
+  const blogMode = chapters != null;
+  const [pendingAnchor, setPendingAnchor] = useState<(CommentAnchor & { chapterSlug: string }) | null>(null);
+  // Целевая глава композера в blog-режиме (селект); якорь её перекрывает.
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+
+  const acceptSlugs = useMemo(
+    () => new Set(blogMode ? chapters!.map((c) => c.slug) : chapterSlug ? [chapterSlug] : []),
+    [blogMode, chapters, chapterSlug],
+  );
 
   const refresh = () => startTransition(() => router.refresh());
 
-  // Фрагмент-якорь из прозы: ловим событие, если оно про нашу главу и комментировать можно.
+  // Фрагмент-якорь из прозы: ловим событие, если оно про главу нашей секции и комментировать можно.
   useEffect(() => {
     if (!canComment) return;
     function onAnchor(e: Event) {
       const detail = (e as CustomEvent<FragmentAnchorDetail>).detail;
-      if (!detail || detail.chapterSlug !== chapterSlug) return;
-      setPendingAnchor({ blockId: detail.blockId, ...(detail.quote ? { quote: detail.quote } : {}) });
+      if (!detail || !acceptSlugs.has(detail.chapterSlug)) return;
+      setPendingAnchor({
+        chapterSlug: detail.chapterSlug,
+        blockId: detail.blockId,
+        ...(detail.quote ? { quote: detail.quote } : {}),
+      });
       document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
     window.addEventListener("recenza:comment-anchor", onAnchor as EventListener);
     return () => window.removeEventListener("recenza:comment-anchor", onAnchor as EventListener);
-  }, [canComment, chapterSlug, sectionId]);
+  }, [canComment, acceptSlugs, sectionId]);
+
+  // Глава, в которую уйдёт новый top-level коммент.
+  const lastChapterSlug = blogMode && chapters!.length > 0 ? chapters![chapters!.length - 1].slug : null;
+  const composerSlug = pendingAnchor?.chapterSlug ?? (blogMode ? (selectedSlug ?? lastChapterSlug) : chapterSlug);
+
+  const loginNext = blogMode
+    ? `/blog/${blogSlug}?mode=whole#${sectionId}`
+    : `/blog/${blogSlug}/${chapterSlug}#${sectionId}`;
 
   return (
     <div className="mt-4">
       {/* Композер / приглашение войти / уведомление о блокировке */}
-      {canComment ? (
-        <CommentComposer
-          blogSlug={blogSlug}
-          chapterSlug={chapterSlug}
-          isAuthed={isAuthed}
-          anchor={pendingAnchor}
-          onClearAnchor={() => setPendingAnchor(null)}
-          onPosted={() => {
-            setPendingAnchor(null);
-            refresh();
-          }}
-        />
+      {canComment && composerSlug ? (
+        <div>
+          {blogMode && !pendingAnchor && chapters!.length > 1 && (
+            <label className="mb-2 flex items-center gap-2 text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+              К главе:
+              <select
+                value={composerSlug}
+                onChange={(e) => setSelectedSlug(e.target.value)}
+                className="min-h-9 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1 text-[length:var(--type-small)] text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              >
+                {chapters!.map((c) => (
+                  <option key={c.slug} value={c.slug}>
+                    {c.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {/* Без key по composerSlug: смена целевой главы не должна терять набранный текст */}
+          <CommentComposer
+            blogSlug={blogSlug}
+            chapterSlug={composerSlug}
+            isAuthed={isAuthed}
+            anchor={pendingAnchor ? { blockId: pendingAnchor.blockId, ...(pendingAnchor.quote ? { quote: pendingAnchor.quote } : {}) } : null}
+            onClearAnchor={() => setPendingAnchor(null)}
+            onPosted={() => {
+              setPendingAnchor(null);
+              refresh();
+            }}
+          />
+        </div>
       ) : !isAuthed ? (
         <p className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">
           <a
-            href={`/login?next=${encodeURIComponent(`/blog/${blogSlug}/${chapterSlug}#${sectionId}`)}`}
+            href={`/login?next=${encodeURIComponent(loginNext)}`}
             className="font-medium text-[var(--accent)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded-[var(--radius-sm)]"
           >
             Войдите
@@ -98,7 +147,7 @@ export function CommentsSection({
               key={c.id}
               comment={c}
               blogSlug={blogSlug}
-              chapterSlug={chapterSlug}
+              chapterSlug={c.chapterSlug ?? chapterSlug ?? ""}
               isAuthed={isAuthed}
               viewerId={viewerId}
               onChanged={refresh}
@@ -125,7 +174,7 @@ export function CommentsSection({
                 key={c.id}
                 comment={c}
                 blogSlug={blogSlug}
-                chapterSlug={chapterSlug}
+                chapterSlug={c.chapterSlug ?? chapterSlug ?? ""}
                 isAuthed={isAuthed}
                 viewerId={viewerId}
                 onChanged={refresh}

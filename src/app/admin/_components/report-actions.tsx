@@ -1,9 +1,11 @@
 "use client";
 
 // Действия по жалобе (Фаза 10): «закрыть» (resolve) или «удалить комментарий» (soft-delete + resolve).
+// ui-feedback-4 П5: крупные кнопки-карточки ActionBtn с пояснением (прототип admin-users-reports.jsx).
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { adminMutate } from "@/app/admin/_components/client";
+import { ActionBtn } from "@/app/admin/_components/buttons";
 
 export function ReportActions({ reportId, canDeleteComment }: { reportId: string; canDeleteComment: boolean }) {
   const router = useRouter();
@@ -30,24 +32,22 @@ export function ReportActions({ reportId, canDeleteComment }: { reportId: string
           {error}
         </p>
       )}
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+        <ActionBtn
+          tone="neutral"
           disabled={pending}
           onClick={() => run("resolve")}
-          className="min-h-9 rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-2 text-[length:var(--type-small)] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-60"
-        >
-          Оставить контент, закрыть жалобу
-        </button>
+          title="Оставить контент, закрыть жалобу"
+          hint="Жалоба необоснованна — контент и автор остаются."
+        />
         {canDeleteComment && (
-          <button
-            type="button"
+          <ActionBtn
+            tone="danger-strong"
             disabled={pending}
             onClick={() => run("delete_comment")}
-            className="min-h-9 rounded-[var(--radius-md)] border border-[var(--danger-border)] bg-[var(--danger-bg)] px-3 py-2 text-[length:var(--type-small)] text-[var(--danger)] transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-60"
-          >
-            Удалить комментарий и закрыть
-          </button>
+            title="Удалить комментарий и закрыть"
+            hint="Удалить только этот комментарий, автор продолжит писать."
+          />
         )}
       </div>
     </div>

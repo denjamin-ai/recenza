@@ -38,19 +38,27 @@ async function createSandboxBlog(
 test.describe("Автор (author)", () => {
   // ── TC-AUTHOR-01 (SMK-07) ───────────────────────────────────────────────────
 
-  test("TC-AUTHOR-01 @smoke: кабинет /author — h1 «Кабинет автора», карточка блога, title «Кабинет автора | Recenza»", async ({
+  test("TC-AUTHOR-01 @smoke: кабинет /author — h1 «Мои блоги», карточка блога, aside «Об авторе», title «Кабинет автора | Recenza»", async ({
     asAuthor,
   }) => {
     const { page } = asAuthor;
     await asAuthor.goto("/author");
 
-    await expect(page.getByRole("heading", { level: 1, name: "Кабинет автора" })).toBeVisible();
+    // ui-feedback-4 П1 (прототип author-portal.jsx): eyebrow «Кабинет автора» + h1 «Мои блоги».
+    await expect(page.getByRole("heading", { level: 1, name: "Мои блоги" })).toBeVisible();
+    await expect(page.getByText("Кабинет автора", { exact: true })).toBeVisible();
     // Единственный надёжный title-маркер роли (MCP-FINDINGS §5).
     await expect(page).toHaveTitle("Кабинет автора | Recenza");
-    // Секция «Мои блоги»: плитка создания + карточка seed-блога.
+    // Сетка: плитка создания + карточка seed-блога с футером «＋ Глава»
+    // («＋» — aria-hidden, accessible name = «Глава»).
     await expect(page.getByRole("button", { name: "Новый блог" })).toBeVisible();
     await expect(page.getByRole("heading", { name: BLOG.title })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Об авторе →" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Глава", exact: true }).first()).toBeVisible();
+    // Aside: карточка «Об авторе» (seed-портфолио есть → «Изменить») и секция «События».
+    const aboutCard = page.getByRole("region", { name: "Об авторе" });
+    await expect(aboutCard).toBeVisible();
+    await expect(aboutCard.getByRole("link", { name: "Изменить" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "События" })).toBeVisible();
   });
 
   // ── TC-AUTHOR-02 — деталь блога: фильтр-чипы и независимые статусы глав ─────
@@ -142,11 +150,15 @@ test.describe("Автор (author)", () => {
       await expect(page.getByRole("button", { name: "Отправить на ревью →" })).toBeVisible();
     });
 
-    await test.step("в кабинете появилась карточка нового блога с бейджем «Черновик»", async () => {
+    await test.step("в кабинете появилась карточка нового блога с черновиковой статистикой", async () => {
+      // ui-feedback-4 П1: статус-бейджа «Опубликован/Черновик» на карточке больше нет —
+      // черновиковость видна по счётчикам («N глав(ы) · 0 опубл.» + бейдж «N черн.»);
+      // точное N не ассертим (создание блога может заводить стартовую главу).
       await asAuthor.goto("/author");
       const card = page.locator("article", { has: page.getByRole("heading", { name: title }) });
       await expect(card).toBeVisible();
-      await expect(card.getByText("Черновик", { exact: true })).toBeVisible();
+      await expect(card.getByText(/глав[аы]? · 0 опубл\./)).toBeVisible();
+      await expect(card.getByText(/\d+ черн\./)).toBeVisible();
     });
   });
 
@@ -500,14 +512,10 @@ test.describe("Автор (author)", () => {
     const { page } = asAuthor;
     const reader = new ReaderPage(page, USERS.author.handle);
 
-    await test.step("лента: свой блог виден, «Скрытый блог» отсутствует", async () => {
+    await test.step("главная-каталог автора: только свои блоги, чужого «Скрытого блога» нет", async () => {
+      // ui-feedback-4 П2: главная автора = каталог «Все блоги» с restrictAuthorId (табов больше нет).
       await reader.gotoFeed();
-      await expect(page.getByText(BLOG.title).first()).toBeVisible();
-      await expect(page.getByText(HIDDEN_BLOG.title)).toHaveCount(0);
-    });
-
-    await test.step("каталог: только свои блоги, чужого нет", async () => {
-      await reader.feedTab("Каталог").click();
+      await expect(reader.homeHeading("Все блоги")).toBeVisible();
       await expect(page.getByText(BLOG.title).first()).toBeVisible();
       await expect(page.getByText(HIDDEN_BLOG.title)).toHaveCount(0);
     });

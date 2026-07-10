@@ -720,7 +720,7 @@ export async function seedAll(db: Db): Promise<void> {
 
   // ── 27. ПРОМО-БАННЕРЫ ЛЕНТЫ (разные action: internal/external/donate) ──
   await db.insert(promoBanners).values([
-    { id: "pb_recruit", eyebrow: "Сообщество", title: "Станьте ревьюером Recenza", cta: "Подать заявку", tone: "teal", icon: "users", action: "internal", target: "/board", visible: true, sort: 0 },
+    { id: "pb_recruit", eyebrow: "Ищем ревьюеров", title: "Рецензируйте статьи по своим навыкам", cta: "Стать ревьюером", tone: "teal", icon: "pen", action: "internal", target: "/board", visible: true, sort: 0 },
     { id: "pb_partner", eyebrow: "Партнёрам", title: "Курс по асинхронности", cta: "Узнать больше", tone: "neutral", icon: "book", action: "external", target: "https://example.com/course", visible: true, sort: 1 },
     { id: "pb_donate", eyebrow: "Поддержка", title: "Поддержите проект", cta: "Поддержать", tone: "amber", icon: "heart", action: "donate", target: "", visible: true, sort: 2 },
   ]);

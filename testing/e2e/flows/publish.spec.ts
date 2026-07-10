@@ -244,16 +244,19 @@ test.describe("Флоу публикации: гейт all-approve, force-approv
     });
   });
 
-  test("PUB-ARTICLE @critical: обе свежеопубликованные главы видны гостю в ленте", async ({ asGuest }) => {
-    // После PUB-DRAFT (promises) и PUB-CHAPTER-V2 (async-await v2) лента гостя
-    // содержит карточки обеих глав (article с link «Блог + Глава»).
+  test("PUB-ARTICLE @critical: обе свежеопубликованные главы видны гостю", async ({ asGuest }) => {
+    // ui-feedback-4 П2: главная показывает карточки БЛОГОВ (не глав) — публикацию глав проверяем
+    // в самом блоге: карточка блога на главной-каталоге + обе главы в навигации ридера (SeriesNav).
     const reader = new ReaderPage(asGuest.page);
     await reader.gotoFeed();
+    await expect(reader.blogCard(BLOG.title)).toBeVisible();
+
+    await reader.gotoChapter(BLOG.slug, CHAPTERS.published.slug);
     await expect(
-      asGuest.page.getByRole("link", { name: /Промисы изнутри/ }).first(),
+      asGuest.page.getByRole("link", { name: CHAPTERS.underReview.title }).first(), // «Промисы изнутри»
     ).toBeVisible();
     await expect(
-      asGuest.page.getByRole("link", { name: /Async\/await на практике/ }).first(),
+      asGuest.page.getByRole("link", { name: CHAPTERS.changesRequested.title }).first(), // «Async/await…»
     ).toBeVisible();
   });
 

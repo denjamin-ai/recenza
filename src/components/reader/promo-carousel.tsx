@@ -6,7 +6,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { IconHeart, IconUsers, IconStar, IconChevronLeft, IconChevronRight, IconExternal } from "@/components/icons";
+import { IconHeart, IconUsers, IconStar, IconEdit, IconChevronLeft, IconChevronRight, IconExternal } from "@/components/icons";
 import { DonateModal } from "@/components/reader/donate-modal";
 import { isHttpUrl, isInternalPath } from "@/lib/url";
 import type { FeedBanner } from "@/lib/queries/monetization";
@@ -24,6 +24,7 @@ function tone(t: string | null): string {
 function BannerIcon({ name, className }: { name: string | null; className?: string }) {
   if (name === "users") return <IconUsers className={className} />;
   if (name === "heart") return <IconHeart className={className} />;
+  if (name === "pen") return <IconEdit className={className} />;
   return <IconStar className={className} />;
 }
 
@@ -68,35 +69,35 @@ export function PromoCarousel({ banners, donation }: { banners: FeedBanner[]; do
       onFocusCapture={() => { pausedRef.current = true; }}
       onBlurCapture={() => { pausedRef.current = false; }}
     >
-      {/* Слайд по прототипу: декоративная панель-иконка (sm+) + контент на градиентной заливке.
-          CTA — пилюля цвета ink с иконкой в полупрозрачном круге (donation-ui.jsx), всегда справа:
-          sm+ — вертикально по центру правого края (с запасом от стрелки), <sm — под текстом вправо. */}
-      <div className={`promo-slide relative flex min-h-36 overflow-hidden rounded-[var(--radius-lg)] ${tone(b.tone)}`}>
+      {/* Слайд по прототипу (donation-ui.jsx BannerSlide): декоративная панель-иконка (sm+) +
+          контент колонкой на градиентной заливке: eyebrow → title → CTA ПОД текстом слева
+          (ui-feedback-4, реверс «всегда справа» из ui-feedback-3). CTA — пилюля --promo-cta-bg
+          с ВСЕГДА белым текстом (в dark фон кнопки затемняется токеном, см. globals.css). */}
+      <div className={`promo-slide relative flex min-h-36 overflow-hidden rounded-[var(--radius-xl)] ${tone(b.tone)}`}>
         <div className="promo-slide-art relative hidden w-[30%] shrink-0 sm:block">
           <span aria-hidden="true" className="absolute inset-0 flex items-center justify-center text-[var(--promo-ink)] opacity-40">
             <BannerIcon name={b.icon} className="h-10 w-10" />
           </span>
         </div>
-        <div className="promo-slide-wash flex min-w-0 flex-1 flex-col justify-center gap-3 px-5 py-5 sm:flex-row sm:items-center sm:gap-4 sm:px-6">
-          <div className="min-w-0 flex-1">
-            {b.eyebrow && (
-              <p className="mb-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-[var(--promo-ink)]">{b.eyebrow}</p>
-            )}
-            {b.title && (
-              <p className="max-w-md font-display text-[length:var(--type-h4)] font-bold leading-tight text-[var(--foreground)] [text-wrap:pretty] sm:text-[21px]">
-                {b.title}
-              </p>
-            )}
-          </div>
+        {/* max-sm:pl-12 — на узких экранах контент начинается правее левой стрелки (панели-иконки нет) */}
+        <div className={`promo-slide-wash flex min-w-0 flex-1 flex-col justify-center px-5 py-5 sm:px-6 ${count > 1 ? "max-sm:pl-12" : ""}`}>
+          {b.eyebrow && (
+            <p className="mb-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-[var(--promo-ink)]">{b.eyebrow}</p>
+          )}
+          {b.title && (
+            <p className="max-w-md font-display text-[length:var(--type-h4)] font-bold leading-tight text-[var(--foreground)] [text-wrap:pretty] sm:text-[21px]">
+              {b.title}
+            </p>
+          )}
           {b.cta && (
             <button
               type="button"
               onClick={() => activate(b)}
-              className={`inline-flex shrink-0 items-center gap-2 self-end rounded-[var(--radius-pill)] bg-[var(--promo-ink)] py-2 pl-2.5 pr-4 text-[length:var(--type-small)] font-semibold text-[var(--promo-ink-contrast)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-elevated)] sm:self-center ${count > 1 ? "sm:mr-10" : ""}`}
+              className="mt-3.5 inline-flex items-center gap-2 self-start rounded-[var(--radius-pill)] bg-[var(--promo-cta-bg)] py-2 pl-2.5 pr-4 text-[length:var(--type-small)] font-semibold text-[var(--promo-cta-foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-elevated)]"
             >
               <span
                 aria-hidden="true"
-                className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-[var(--radius-pill)] bg-[color-mix(in_srgb,var(--promo-ink-contrast)_22%,transparent)]"
+                className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-[var(--radius-pill)] bg-[color-mix(in_srgb,var(--promo-cta-foreground)_22%,transparent)]"
               >
                 <BannerIcon name={b.icon} className="h-3.5 w-3.5" />
               </span>

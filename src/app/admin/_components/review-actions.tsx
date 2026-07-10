@@ -5,6 +5,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { adminMutate } from "@/app/admin/_components/client";
+import { btnPrimary, btnSecondary, btnText, btnWarning, btnWarningStrong } from "@/app/admin/_components/buttons";
 import type { AdminReviewReviewer } from "@/lib/queries/admin";
 
 export function ReviewActions(props: {
@@ -50,7 +51,7 @@ export function ReviewActions(props: {
               type="button"
               disabled={pending}
               onClick={() => run(() => adminMutate(`/api/admin/review/${props.chapterId}/primary`, "POST", { action: "approve", requestId: props.pendingPrimaryChange!.id }))}
-              className="min-h-9 rounded-[var(--radius-md)] bg-[var(--accent)] px-3 py-1.5 text-[length:var(--type-small)] text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-60"
+              className={btnPrimary}
             >
               Утвердить смену
             </button>
@@ -58,7 +59,7 @@ export function ReviewActions(props: {
               type="button"
               disabled={pending}
               onClick={() => run(() => adminMutate(`/api/admin/review/${props.chapterId}/primary`, "POST", { action: "reject", requestId: props.pendingPrimaryChange!.id }))}
-              className="min-h-9 rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[length:var(--type-small)] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-60"
+              className={btnSecondary}
             >
               Отклонить
             </button>
@@ -72,7 +73,7 @@ export function ReviewActions(props: {
             type="button"
             disabled={pending}
             onClick={() => setConfirmForce(true)}
-            className="min-h-9 rounded-[var(--radius-md)] border border-[var(--warning-border)] bg-[var(--warning-bg)] px-3 py-2 text-[length:var(--type-small)] text-[var(--warning)] transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-60"
+            className={btnWarning}
           >
             Force-approve (опубликовать)
           </button>
@@ -83,7 +84,7 @@ export function ReviewActions(props: {
               type="button"
               disabled={pending}
               onClick={() => run(() => adminMutate(`/api/admin/review/${props.chapterId}/force-approve`, "POST"), () => setConfirmForce(false))}
-              className="min-h-9 rounded-[var(--radius-md)] bg-[var(--accent)] px-3 py-1.5 text-[length:var(--type-small)] text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-60"
+              className={btnWarningStrong}
             >
               Да, опубликовать
             </button>
@@ -91,7 +92,7 @@ export function ReviewActions(props: {
               type="button"
               disabled={pending}
               onClick={() => setConfirmForce(false)}
-              className="min-h-9 rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[length:var(--type-small)] text-[var(--muted-foreground)] hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              className={btnText}
             >
               Отмена
             </button>

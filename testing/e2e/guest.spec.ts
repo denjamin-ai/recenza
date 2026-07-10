@@ -7,23 +7,27 @@
 import { test, expect } from "./fixtures";
 import { loginViaUi } from "./helpers/auth";
 import { throttleMutation } from "./helpers/throttle";
-import { BLOG, CHAPTERS, COMMENTS, HIDDEN_BLOG, USERS } from "./helpers/seed";
+import { BANNER_TEXTS, BLOG, CHAPTERS, COMMENTS, HIDDEN_BLOG, USERS } from "./helpers/seed";
 import { ReaderPage } from "./pages/reader.page";
 import { CommentsPage } from "./pages/comments.page";
 
 test.describe("Гость (аноним)", () => {
   // ── TC-GUEST-01 (SMK-01) ────────────────────────────────────────────────────
 
-  test("TC-GUEST-01 @smoke: лента гостю — карточка блога, карусель «Промо» и модалка «Поддержать проект»", async ({
+  test("TC-GUEST-01 @smoke: главная гостю — каталог «Все блоги» без табов, карусель «Промо» и модалка «Поддержать проект»", async ({
     asGuest,
   }) => {
     const { page } = asGuest;
     const reader = new ReaderPage(page);
 
-    await test.step("лента отдаётся гостю: «Войти» в шапке, карточка блога видна", async () => {
+    await test.step("главная отдаётся гостю: «Войти» в шапке, h1 «Все блоги», карточка блога, табов нет", async () => {
       await reader.gotoFeed();
       await expect(page.getByRole("banner").getByRole("link", { name: "Войти" })).toBeVisible();
-      await expect(page.getByText(BLOG.title).first()).toBeVisible();
+      // ui-feedback-4 П2: главная = каталог карточек БЛОГОВ, без табов «Лента/Каталог/Подписки» и поиска.
+      await expect(reader.homeHeading("Все блоги")).toBeVisible();
+      await expect(reader.blogCard(BLOG.title)).toBeVisible();
+      await expect(page.getByRole("navigation", { name: "Разделы ленты" })).toHaveCount(0);
+      await expect(page.getByRole("searchbox")).toHaveCount(0);
     });
 
     await test.step("карусель «Промо»: фиксируем слайд точкой «Баннер 3» (donate-баннер)", async () => {
@@ -261,14 +265,9 @@ test.describe("Гость (аноним)", () => {
     const { page } = asGuest;
     const reader = new ReaderPage(page);
 
-    await test.step("лента: «Скрытый блог» отсутствует", async () => {
+    await test.step("главная-каталог: «Скрытый блог» отсутствует", async () => {
+      // ui-feedback-4 П2: главная гостя = каталог «Все блоги» (табов больше нет).
       await reader.gotoFeed();
-      await expect(page.getByText(BLOG.title).first()).toBeVisible(); // лента загрузилась
-      await expect(page.getByText(HIDDEN_BLOG.title)).toHaveCount(0);
-    });
-
-    await test.step("каталог: карточки «Скрытый блог» нет", async () => {
-      await reader.feedTab("Каталог").click();
       await expect(page.getByText(BLOG.title).first()).toBeVisible(); // каталог загрузился
       await expect(page.getByText(HIDDEN_BLOG.title)).toHaveCount(0);
     });
@@ -393,6 +392,36 @@ test.describe("Гость (аноним)", () => {
     await test.step("Escape закрывает модалку", async () => {
       await page.keyboard.press("Escape");
       await expect(dialog).toBeHidden();
+    });
+  });
+
+  // ── TC-GUEST-16 — слайд «Ищем ревьюеров» (ui-feedback-4, П7) ────────────────
+
+  test("TC-GUEST-16 @regression: слайд карусели «Ищем ревьюеров» — тексты прототипа, CTA «Стать ревьюером» → /board", async ({
+    asGuest,
+  }) => {
+    const { page } = asGuest;
+    const reader = new ReaderPage(page);
+    await reader.gotoFeed();
+
+    await test.step("Слайд 1 (pb_recruit): eyebrow, title и CTA — тексты прототипа", async () => {
+      await expect(reader.promo).toBeVisible();
+      // Авторотация ~6с + гидрация: пин точкой ретраим до появления recruit-слайда.
+      await expect(async () => {
+        await reader.pinPromoSlide(1);
+        await expect(reader.promo.getByText(BANNER_TEXTS.recruit.title)).toBeVisible({ timeout: 2_000 });
+      }).toPass({ timeout: 20_000 });
+      await expect(reader.promo.getByText(BANNER_TEXTS.recruit.eyebrow)).toBeVisible();
+    });
+
+    await test.step("CTA «Стать ревьюером» ведёт на публичную доску /board", async () => {
+      await expect(async () => {
+        await reader.promo.getByRole("button", { name: BANNER_TEXTS.recruit.cta }).click();
+        await page.waitForURL("**/board", { timeout: 5_000 });
+      }).toPass({ timeout: 15_000 });
+      await expect(
+        page.getByRole("heading", { name: "Помогите авторам выпускать качественные статьи" }),
+      ).toBeVisible();
     });
   });
 });

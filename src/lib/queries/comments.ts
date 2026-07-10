@@ -37,6 +37,9 @@ export interface CommentView {
   editExpiresAt: number | null;
   canReply: boolean;
   children: CommentView[];
+  /** Заполнены ТОЛЬКО в blog-режиме (merged-секция «Весь блог», ui-feedback-4 П8). */
+  chapterSlug?: string;
+  chapterTitle?: string;
 }
 
 export interface ChapterCommentsView {
@@ -126,6 +129,52 @@ export async function resolveCommentTarget(
   };
 }
 
+/** Сырые поля комментария для сборщика треда (общие для chapter- и blog-режимов). */
+const commentSelection = {
+  id: publicComments.id,
+  parentId: publicComments.parentId,
+  chapterSlug: publicComments.chapterSlug,
+  revision: publicComments.revision,
+  text: publicComments.text,
+  anchor: publicComments.anchor,
+  editedAt: publicComments.editedAt,
+  deletedAt: publicComments.deletedAt,
+  createdAt: publicComments.createdAt,
+  authorId: publicComments.authorId,
+  authorHandle: users.handle,
+  authorSlug: users.slug,
+  authorName: users.displayName,
+  authorAvatar: users.avatarUrl,
+  authorRole: users.role,
+};
+
+interface RawCommentRow {
+  id: string;
+  parentId: string | null;
+  chapterSlug: string;
+  revision: number;
+  text: string;
+  anchor: string | null;
+  editedAt: number | null;
+  deletedAt: number | null;
+  createdAt: number;
+  authorId: string | null;
+  authorHandle: string | null;
+  authorSlug: string | null;
+  authorName: string | null;
+  authorAvatar: string | null;
+  authorRole: string | null;
+}
+
+interface AssembleOpts {
+  viewer: CommentViewer | null;
+  gate: { canComment: boolean; blockedReason: string | null };
+  /** Текущая published-ревизия главы комментария (blog-режим — по своей главе). */
+  revisionFor: (chapterSlug: string) => number;
+  /** blog-режим: подписи глав для eyebrow + chapterSlug у узлов (reply-композер). */
+  chapterTitles?: Map<string, string>;
+}
+
 /** Полный тред главы для ридера: дерево, счёт/мой голос, спойлер старых ревизий, гейтинг. */
 export async function getChapterComments(args: {
   blogSlug: string;
@@ -135,29 +184,63 @@ export async function getChapterComments(args: {
   blogAuthorId: string;
 }): Promise<ChapterCommentsView> {
   const { blogSlug, chapterSlug, currentRevision, viewer, blogAuthorId } = args;
-  const now = Math.floor(Date.now() / 1000);
   const gate = commentGate(viewer, blogAuthorId);
 
-  const rows = await db
-    .select({
-      id: publicComments.id,
-      parentId: publicComments.parentId,
-      revision: publicComments.revision,
-      text: publicComments.text,
-      anchor: publicComments.anchor,
-      editedAt: publicComments.editedAt,
-      deletedAt: publicComments.deletedAt,
-      createdAt: publicComments.createdAt,
-      authorId: publicComments.authorId,
-      authorHandle: users.handle,
-      authorSlug: users.slug,
-      authorName: users.displayName,
-      authorAvatar: users.avatarUrl,
-      authorRole: users.role,
-    })
+  const rows = (await db
+    .select(commentSelection)
     .from(publicComments)
     .leftJoin(users, eq(publicComments.authorId, users.id))
-    .where(and(eq(publicComments.blogSlug, blogSlug), eq(publicComments.chapterSlug, chapterSlug)));
+    .where(and(eq(publicComments.blogSlug, blogSlug), eq(publicComments.chapterSlug, chapterSlug)))) as RawCommentRow[];
+
+  return assembleThread(rows, { viewer, gate, revisionFor: () => currentRevision });
+}
+
+/**
+ * Merged-тред режима «Весь блог» (ui-feedback-4 П8, прототип CommentsSection wholeMode):
+ * комментарии всех глав блога одним деревом, сквозная сортировка по времени; «старость» комментария
+ * считается по ревизии СВОЕЙ главы. Узлы несут chapterSlug/chapterTitle (eyebrow + reply-композер).
+ */
+export async function getBlogComments(args: {
+  blogSlug: string;
+  chapters: { slug: string; title: string; revision: number }[];
+  viewer: CommentViewer | null;
+  blogAuthorId: string;
+}): Promise<ChapterCommentsView> {
+  const { blogSlug, chapters, viewer, blogAuthorId } = args;
+  const gate = commentGate(viewer, blogAuthorId);
+  if (chapters.length === 0) {
+    return { current: [], older: [], total: 0, canComment: gate.canComment, blockedReason: gate.blockedReason };
+  }
+
+  const revisions = new Map(chapters.map((c) => [c.slug, c.revision]));
+  const titles = new Map(chapters.map((c) => [c.slug, c.title]));
+
+  const rows = (await db
+    .select(commentSelection)
+    .from(publicComments)
+    .leftJoin(users, eq(publicComments.authorId, users.id))
+    .where(
+      and(
+        eq(publicComments.blogSlug, blogSlug),
+        inArray(
+          publicComments.chapterSlug,
+          chapters.map((c) => c.slug),
+        ),
+      ),
+    )) as RawCommentRow[];
+
+  return assembleThread(rows, {
+    viewer,
+    gate,
+    revisionFor: (slug) => revisions.get(slug) ?? 0,
+    chapterTitles: titles,
+  });
+}
+
+/** Общий сборщик треда: голоса, дерево ≤2, tombstone-prune, split current/older. */
+async function assembleThread(rows: RawCommentRow[], opts: AssembleOpts): Promise<ChapterCommentsView> {
+  const { viewer, gate, revisionFor, chapterTitles } = opts;
+  const now = Math.floor(Date.now() / 1000);
 
   if (rows.length === 0) {
     return { current: [], older: [], total: 0, canComment: gate.canComment, blockedReason: gate.blockedReason };
@@ -202,7 +285,7 @@ export async function getChapterComments(args: {
   const nodeMap = new Map<string, CommentView>();
   for (const r of rows) {
     const isDeleted = r.deletedAt != null;
-    const isOld = r.revision < currentRevision;
+    const isOld = r.revision < revisionFor(r.chapterSlug);
     const depth = depthOf(r);
     const isOwn = !!viewer && r.authorId === viewer.id;
     const canEdit = isOwn && !isDeleted && now - r.createdAt < EDIT_WINDOW_S;
@@ -234,6 +317,10 @@ export async function getChapterComments(args: {
       editExpiresAt: canEdit ? r.createdAt + EDIT_WINDOW_S : null,
       canReply: gate.canComment && !isDeleted && !isOld && depth < 2,
       children: [],
+      // blog-режим: узел знает свою главу (eyebrow у корней, reply-композер у детей)
+      ...(chapterTitles
+        ? { chapterSlug: r.chapterSlug, chapterTitle: chapterTitles.get(r.chapterSlug) ?? r.chapterSlug }
+        : {}),
     });
   }
 
@@ -262,9 +349,12 @@ export async function getChapterComments(args: {
   }
   const prunedRoots = prune(roots);
 
+  const slugById = new Map(rows.map((r) => [r.id, r.chapterSlug] as const));
   const current: CommentView[] = [];
   const older: CommentView[] = [];
-  for (const n of prunedRoots) (n.revision < currentRevision ? older : current).push(n);
+  for (const n of prunedRoots) {
+    (n.revision < revisionFor(slugById.get(n.id)!) ? older : current).push(n);
+  }
 
   let total = 0;
   (function countLive(nodes: CommentView[]) {

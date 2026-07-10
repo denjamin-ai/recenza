@@ -5,6 +5,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { adminMutate } from "@/app/admin/_components/client";
+import { btnDangerSoft, btnDangerStrong, btnPrimary, btnSecondary, btnText, inputCls } from "@/app/admin/_components/buttons";
 
 function useRun() {
   const router = useRouter();
@@ -34,13 +35,6 @@ function Err({ error }: { error: string | null }) {
   );
 }
 
-const btnPrimary =
-  "min-h-9 rounded-[var(--radius-md)] bg-[var(--accent)] px-3 py-1.5 text-[length:var(--type-small)] text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-60";
-const btnGhost =
-  "min-h-9 rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[length:var(--type-small)] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-60";
-const inputCls =
-  "h-9 w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-secondary)] px-2.5 text-[length:var(--type-small)] text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]";
-
 export function RecruitRequestActions({ id, defaultArea }: { id: string; defaultArea: string }) {
   const { run, pending, error } = useRun();
   const [mode, setMode] = useState<null | "approve" | "reject">(null);
@@ -57,7 +51,7 @@ export function RecruitRequestActions({ id, defaultArea }: { id: string; default
           <button type="button" disabled={pending} className={btnPrimary} onClick={() => run(() => adminMutate(`/api/admin/recruit-requests/${id}`, "POST", { action: "approve", area: area || undefined, note: note || undefined }), () => setMode(null))}>
             Опубликовать на доске
           </button>
-          <button type="button" className={btnGhost} onClick={() => setMode(null)}>Отмена</button>
+          <button type="button" className={btnText} onClick={() => setMode(null)}>Отмена</button>
         </div>
         <Err error={error} />
       </div>
@@ -68,10 +62,10 @@ export function RecruitRequestActions({ id, defaultArea }: { id: string; default
       <div className="mt-2 space-y-2">
         <input className={inputCls} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Причина отклонения" aria-label="Причина отклонения" />
         <div className="flex gap-2">
-          <button type="button" disabled={pending || !reason.trim()} className={btnPrimary} onClick={() => run(() => adminMutate(`/api/admin/recruit-requests/${id}`, "POST", { action: "reject", reason }), () => setMode(null))}>
+          <button type="button" disabled={pending || !reason.trim()} className={btnDangerStrong} onClick={() => run(() => adminMutate(`/api/admin/recruit-requests/${id}`, "POST", { action: "reject", reason }), () => setMode(null))}>
             Отклонить с причиной
           </button>
-          <button type="button" className={btnGhost} onClick={() => setMode(null)}>Отмена</button>
+          <button type="button" className={btnText} onClick={() => setMode(null)}>Отмена</button>
         </div>
         <Err error={error} />
       </div>
@@ -81,7 +75,7 @@ export function RecruitRequestActions({ id, defaultArea }: { id: string; default
     <div className="mt-2">
       <div className="flex gap-2">
         <button type="button" disabled={pending} className={btnPrimary} onClick={() => setMode("approve")}>Одобрить</button>
-        <button type="button" disabled={pending} className={btnGhost} onClick={() => setMode("reject")}>Отклонить</button>
+        <button type="button" disabled={pending} className={btnDangerSoft} onClick={() => setMode("reject")}>Отклонить</button>
       </div>
       <Err error={error} />
     </div>
@@ -96,7 +90,7 @@ export function ApplicationActions({ id, canPromote }: { id: string; canPromote:
         <button type="button" disabled={pending} className={btnPrimary} onClick={() => run(() => adminMutate(`/api/admin/applications/${id}`, "POST", { action: "accept" }))}>
           {canPromote ? "Принять (выдать роль)" : "Принять"}
         </button>
-        <button type="button" disabled={pending} className={btnGhost} onClick={() => run(() => adminMutate(`/api/admin/applications/${id}`, "POST", { action: "decline" }))}>
+        <button type="button" disabled={pending} className={btnDangerSoft} onClick={() => run(() => adminMutate(`/api/admin/applications/${id}`, "POST", { action: "decline" }))}>
           Отклонить
         </button>
       </div>
@@ -114,7 +108,7 @@ export function BoardCallCreate() {
 
   if (!open) {
     return (
-      <button type="button" className={btnGhost} onClick={() => setOpen(true)}>+ Добавить направление</button>
+      <button type="button" className={btnSecondary} onClick={() => setOpen(true)}>+ Добавить направление</button>
     );
   }
   return (
@@ -136,7 +130,7 @@ export function BoardCallCreate() {
         >
           Создать
         </button>
-        <button type="button" className={btnGhost} onClick={() => setOpen(false)}>Отмена</button>
+        <button type="button" className={btnText} onClick={() => setOpen(false)}>Отмена</button>
       </div>
       <Err error={error} />
     </div>

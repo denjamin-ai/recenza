@@ -7,6 +7,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { adminMutate } from "@/app/admin/_components/client";
+import { btnDangerSoft, btnSecondary } from "@/app/admin/_components/buttons";
 
 interface BlogRow {
   id: string;
@@ -57,11 +58,7 @@ export function UserModeration(props: {
           type="button"
           disabled={pending}
           onClick={() => run(() => patchUser({ isBlocked: !props.isBlocked }))}
-          className={`min-h-9 rounded-[var(--radius-md)] border px-3 py-2 text-[length:var(--type-small)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-60 ${
-            props.isBlocked
-              ? "border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--muted)]"
-              : "border-[var(--danger-border)] bg-[var(--danger-bg)] text-[var(--danger)] hover:opacity-90"
-          }`}
+          className={props.isBlocked ? btnSecondary : btnDangerSoft}
         >
           {props.isBlocked ? "Разблокировать" : "Заблокировать (бан)"}
         </button>
@@ -70,7 +67,7 @@ export function UserModeration(props: {
           type="button"
           disabled={pending}
           onClick={() => run(() => patchUser({ commentingBlocked: !props.commentingBlocked }))}
-          className="min-h-9 rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-2 text-[length:var(--type-small)] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-60"
+          className={btnSecondary}
         >
           {props.commentingBlocked ? "Разрешить комментарии" : "Запретить комментарии"}
         </button>
@@ -128,7 +125,7 @@ export function UserModeration(props: {
                 },
               )
             }
-            className="min-h-9 rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-2 text-[length:var(--type-small)] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-60"
+            className={btnSecondary}
           >
             Задать пароль
           </button>
@@ -157,7 +154,7 @@ export function UserModeration(props: {
                   type="button"
                   disabled={pending}
                   onClick={() => run(() => adminMutate(`/api/admin/blogs/${b.id}`, "PATCH", { hidden: !b.hidden }))}
-                  className="shrink-0 min-h-9 rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[length:var(--type-small)] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-60"
+                  className={`shrink-0 ${btnSecondary}`}
                 >
                   {b.hidden ? "Показать" : "Скрыть"}
                 </button>
