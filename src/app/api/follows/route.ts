@@ -1,5 +1,6 @@
 // Подписка на автора (toggle), автор-центрично. Нельзя подписаться на себя; цель — существующий
 // незаблокированный автор. PK(userId, authorId) — страховка от гонки.
+// ui-feedback-5: подписки — ТОЛЬКО роль reader (модель ролей; решение владельца).
 
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
@@ -22,7 +23,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   const csrf = assertSameOrigin(req);
   if (csrf) return csrf;
 
-  const session = await requireUser();
+  const session = await requireUser("reader");
   if (session instanceof NextResponse) return session;
   const userId = session.userId;
   if (!userId) return NextResponse.json({ error: "Требуется вход." }, { status: 401 });

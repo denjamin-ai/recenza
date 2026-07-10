@@ -18,7 +18,8 @@ async function replayIntent(raw?: string): Promise<void> {
   const common = { method: "POST", headers: { "Content-Type": "application/json" } } as const;
   try {
     if (intent.verb === "vote") {
-      await fetch(`/api/chapters/${intent.id}/vote`, { ...common, body: JSON.stringify({ value: intent.value }) });
+      // ui-feedback-5 П1: голоса блоговые — intent.id = blogId.
+      await fetch(`/api/blogs/${intent.id}/vote`, { ...common, body: JSON.stringify({ value: intent.value }) });
     } else if (intent.verb === "bookmark") {
       await fetch(`/api/bookmarks`, { ...common, body: JSON.stringify({ blogId: intent.id }) });
     } else if (intent.verb === "follow") {

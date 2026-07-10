@@ -43,6 +43,13 @@
       "when": 1783536968839,
       "tag": "0005_steady_silver_samurai",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1783693645245,
+      "tag": "0006_brainy_sphinx",
+      "breakpoints": true
     }
   ]
 }

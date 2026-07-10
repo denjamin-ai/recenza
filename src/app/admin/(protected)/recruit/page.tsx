@@ -59,13 +59,27 @@ export default async function AdminRecruitPage() {
         )}
       </Card>
 
-      {/* Публичная доска */}
+      {/* Публичная доска. ui-feedback-5 П5: создание направления — НАВЕРХУ секции (владелец не
+          находил кнопку под списком) + ссылка на публичную доску для сверки результата. */}
       <Card>
-        <SectionTitle count={calls.length}>Доска «Ищем ревьюеров»</SectionTitle>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <SectionTitle count={calls.length}>Доска «Ищем ревьюеров»</SectionTitle>
+          <a
+            href="/board"
+            target="_blank"
+            rel="noopener"
+            className="rounded-[var(--radius-sm)] text-[0.75rem] text-[var(--muted-foreground)] underline-offset-2 hover:text-[var(--accent)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            Открыть доску →
+          </a>
+        </div>
+        <div className="mb-3">
+          <BoardCallCreate />
+        </div>
         {calls.length === 0 ? (
-          <EmptyState>Доска пуста.</EmptyState>
+          <EmptyState>Доска пуста — добавьте первое направление.</EmptyState>
         ) : (
-          <ul className="mb-3 space-y-2">
+          <ul className="space-y-2">
             {calls.map((c) => (
               <li key={c.id} className="rounded-[var(--radius-md)] border border-[var(--border-secondary)] p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -82,7 +96,6 @@ export default async function AdminRecruitPage() {
             ))}
           </ul>
         )}
-        <BoardCallCreate />
       </Card>
 
       {/* Заявки с доски */}

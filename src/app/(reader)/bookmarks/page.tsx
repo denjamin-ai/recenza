@@ -17,6 +17,8 @@ export const metadata: Metadata = {
 export default async function BookmarksPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login?next=/bookmarks");
+  // ui-feedback-5 П4: закладки — только у читателя (модель ролей).
+  if (user.role !== "reader") redirect("/");
 
   const blogs = await getBookmarkedBlogs(user.id);
 

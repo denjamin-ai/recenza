@@ -37,8 +37,9 @@ export function PromoCarousel({ banners, donation }: { banners: FeedBanner[]; do
   const count = banners.length;
   useEffect(() => {
     if (count <= 1) return;
-    // WCAG 2.2.2: не авто-прокручиваем при prefers-reduced-motion; пауза при hover/focus — через pausedRef.
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    // Авторотация ВСЕГДА (ui-feedback-5 П3): смена слайда мгновенная (не анимация), поэтому
+    // prefers-reduced-motion её не блокирует; WCAG 2.2.2-контроль — пауза при hover/focus
+    // (pausedRef) + ручные точки/стрелки.
     const t = window.setInterval(() => {
       if (!pausedRef.current) setIndex((i) => (i + 1) % count);
     }, ROTATE_MS);

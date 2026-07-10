@@ -3,7 +3,9 @@
 // Правый рельс (SeriesNav) — на lg+; на узких экранах главы/ToC доступны через <details> сверху.
 // ui-feedback-4 П8 (по прототипу WholeBlogReader): в whole-режиме кредит ревьюеров и комментарии
 // НЕ рендерятся после каждой главы — после всех глав идёт ОДНА агрегированная карточка
-// «Блог ревьюили» и ОДИН merged-блок комментариев (реакции остаются per-chapter).
+// «Блог ревьюили» и ОДИН merged-блок комментариев.
+// ui-feedback-5 П1/П4: engagement — БЛОГОВЫЙ и рендерится один раз (whole — наверху под шапкой,
+// single — после контента главы); показывается только гостю (login-intent) и читателю.
 
 import Link from "next/link";
 import { BlockRenderer } from "@/components/blocks/block-renderer";
@@ -19,24 +21,24 @@ import { BlogCommentsSlot } from "@/components/reader/blog-comments-slot";
 import { BlogReviewerCredit } from "@/components/reader/blog-reviewer-credit";
 import { FragmentCommentButton } from "@/components/reader/fragment-comment-button";
 import { commentGate, type CommentViewer } from "@/lib/queries/comments";
+import type { ReaderEngagement } from "@/lib/queries/engagement";
 import type { ReadableBlog, ReaderSection } from "@/lib/queries/types";
 
 function ChapterBody({
   blog,
   section,
   mode,
-  isAuthed,
-  canFollow,
+  engagementBar,
   viewer,
 }: {
   blog: ReadableBlog;
   section: ReaderSection;
   mode: "single" | "whole";
-  isAuthed: boolean;
-  canFollow: boolean;
+  /** single-режим: бар реакций после контента главы (null — зритель без права engagement). */
+  engagementBar: React.ReactNode;
   viewer: CommentViewer | null;
 }) {
-  const { chapter, engagement, credit, canVote } = section;
+  const { chapter, credit } = section;
   const prefix = mode === "whole" ? chapter.slug : undefined;
   const titleId = `chapter-${chapter.slug}`;
 
@@ -62,25 +64,10 @@ function ChapterBody({
         <BlockRenderer blocks={chapter.blocks} prefix={prefix} />
       </div>
 
-      <EngagementBar
-        chapterId={chapter.id}
-        blogId={blog.id}
-        authorId={blog.author.id}
-        isAuthed={isAuthed}
-        canVote={canVote}
-        canFollow={canFollow}
-        initial={{
-          score: engagement.score,
-          myVote: engagement.myVote,
-          isBookmarked: engagement.isBookmarked,
-          bookmarkCount: blog.bookmarkCount,
-          isFollowing: engagement.isFollowing,
-        }}
-      />
-
-      {/* single: кредит + комментарии у главы; whole: единые блоки после всех глав (П8) */}
+      {/* single: бар реакций (блоговый) + кредит + комментарии у главы; whole: всё после всех глав */}
       {mode === "single" && (
         <>
+          {engagementBar}
           <ChapterReviewerCredit credit={credit} />
           <CommentsSlot
             blogSlug={blog.slug}
@@ -102,7 +89,8 @@ export function BlogReaderView({
   activeSlug,
   sections,
   isAuthed,
-  canFollow,
+  engagement,
+  canEngage,
   singleHref,
   wholeHref,
   viewer,
@@ -112,7 +100,10 @@ export function BlogReaderView({
   activeSlug: string;
   sections: ReaderSection[];
   isAuthed: boolean;
-  canFollow: boolean;
+  /** Блоговое engagement-состояние (голос/закладка/подписка) — один бар на страницу. */
+  engagement: ReaderEngagement;
+  /** true — гость (login-intent) или reader; author/reviewer/admin бар не видят (ui-feedback-5 П4). */
+  canEngage: boolean;
   singleHref: string;
   wholeHref: string;
   viewer: CommentViewer | null;
@@ -120,6 +111,22 @@ export function BlogReaderView({
   const multiChapter = blog.chapters.length > 1;
   // Право комментировать одинаково для всех глав блога (один автор) — для плавающей кнопки фрагмента.
   const canCommentBlog = commentGate(viewer, blog.author.id).canComment;
+
+  const engagementBar = canEngage ? (
+    <EngagementBar
+      blogId={blog.id}
+      authorId={blog.author.id}
+      isAuthed={isAuthed}
+      className={mode === "whole" ? "mt-5" : "mt-8"}
+      initial={{
+        score: engagement.score,
+        myVote: engagement.myVote,
+        isBookmarked: engagement.isBookmarked,
+        bookmarkCount: blog.bookmarkCount,
+        isFollowing: engagement.isFollowing,
+      }}
+    />
+  ) : null;
 
   // Ссылки глав для SeriesNav: single → страницы глав; whole → якоря секций.
   const chapterLinks: ChapterLink[] = blog.chapters.map((c) => ({
@@ -175,6 +182,8 @@ export function BlogReaderView({
               <header className="mb-8">
                 <h1 className="text-[length:var(--type-h1)]">{blog.title}</h1>
                 {blog.summary && <p className="mt-3 text-[var(--muted-foreground)]">{blog.summary}</p>}
+                {/* ui-feedback-5 П1: реакции блога — ОДИН раз наверху (не после каждой главы) */}
+                {engagementBar}
               </header>
             )}
 
@@ -184,8 +193,7 @@ export function BlogReaderView({
                 blog={blog}
                 section={s}
                 mode={mode}
-                isAuthed={isAuthed}
-                canFollow={canFollow}
+                engagementBar={engagementBar}
                 viewer={viewer}
               />
             ))}

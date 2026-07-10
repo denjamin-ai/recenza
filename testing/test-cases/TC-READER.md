@@ -134,31 +134,34 @@
 
 ---
 
-## TC-READER-05: Голос за главу — toggle (снять и вернуть голос)
+## TC-READER-05: Голос за блог — toggle (снять и вернуть голос)
 
 **Priority:** P1
 **Type:** Functional
 
 ### Objective
-Проверить toggle-семантику голоса ±1 за главу: повторный клик по активному значению снимает голос; счётчик и `aria-pressed` синхронны.
+Проверить toggle-семантику БЛОГОВОГО голоса ±1 (ui-feedback-5: голоса относятся к блогу, не к главе):
+повторный клик по активному значению снимает голос; счётчик и `aria-pressed` синхронны.
 
 ### Preconditions
 - Тест-стенд :3001, seed выполнен (`npm run test:reset`).
 - Вход как `reader` / `password`.
-- Seed-состояние: у `reader` уже стоит голос +1 за `chp_published` (`chv_1`); суммарный счёт главы = 2 (`chv_1` + `chv_2` от troll).
+- Seed-состояние: у `reader` уже стоит голос +1 за `blog_async` (`bv_1`); суммарный счёт блога = 1.
 
 ### Test Steps
 1. Открыть ридер `http://localhost:3001/blog/async-deep-dive/event-loop` и проскроллить к панели `aria-label="Реакции"` в конце главы.
-   **Expected:** Кнопка ▲ (`aria-label="Полезно"`) в активном состоянии (`aria-pressed="true"`, акцентная рамка); счётчик = 2.
+   **Expected:** Кнопка ▲ (`aria-label="Полезно"`) в активном состоянии (`aria-pressed="true"`, акцентная рамка); счётчик = 1.
 2. Нажать ▲ («Полезно»).
-   **Expected:** Голос снят: `aria-pressed="false"`, счётчик = 1 (оптимистично, затем подтверждается ответом `POST /api/chapters/chp_published/vote`).
+   **Expected:** Голос снят: `aria-pressed="false"`, счётчик = 0 (оптимистично, затем подтверждается ответом `POST /api/blogs/blog_async/vote`).
 3. Подождать ≥1 секунду (rate-limit действий 1/сек) и снова нажать ▲.
-   **Expected:** Голос возвращён: `aria-pressed="true"`, счётчик = 2.
+   **Expected:** Голос возвращён: `aria-pressed="true"`, счётчик = 1.
 4. Обновить страницу (F5).
-   **Expected:** Состояние сохранилось: ▲ активна, счётчик = 2 — в БД ровно одна строка голоса (uniqueIndex user+chapter).
+   **Expected:** Состояние сохранилось: ▲ активна, счётчик = 1 — в БД ровно одна строка голоса (uniqueIndex user+blog).
+5. Открыть режим «Весь блог» (`?mode=whole`).
+   **Expected:** Бар «Реакции» ОДИН — наверху под шапкой блога (после каждой главы баров нет); состояние то же (голос блоговый).
 
 ### Test Data
-- Глава: `chp_published` (slug `event-loop`, блог `async-deep-dive`).
+- Блог: `blog_async` (slug `async-deep-dive`).
 
 ### Post-conditions
 - Состояние голосов идентично seed (toggle выполнен чётное число раз).

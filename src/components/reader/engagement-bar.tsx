@@ -1,8 +1,10 @@
 "use client";
 
-// Панель реакций в конце главы: голос ±1 (по главе), закладка (по блогу), подписка (на автора).
+// Панель реакций БЛОГА (ui-feedback-5): голос ±1 за блог, закладка (по блогу), подписка (на автора).
+// Рендерится ОДИН раз на страницу: в whole-режиме — наверху под шапкой блога, в режиме главы —
+// после контента. Показывается только гостю (login-intent) и читателю — рендер-гейт у родителя.
 // Оптимистичные апдейты; гость → редирект на /login?next=…&intent=… (реплей после входа).
-// Все мутации — авторизованный API (server-side: CSRF same-origin + auth + ownership + rate-limit).
+// Все мутации — авторизованный API (server-side: CSRF same-origin + reader-only + rate-limit).
 
 import { useState } from "react";
 import { usePathname } from "next/navigation";
@@ -17,21 +19,17 @@ interface InitialState {
 }
 
 export function EngagementBar({
-  chapterId,
   blogId,
   authorId,
   initial,
   isAuthed,
-  canVote,
-  canFollow,
+  className = "mt-8",
 }: {
-  chapterId: string;
   blogId: string;
   authorId: string;
   initial: InitialState;
   isAuthed: boolean;
-  canVote: boolean;
-  canFollow: boolean;
+  className?: string;
 }) {
   const pathname = usePathname();
   const [score, setScore] = useState(initial.score);
@@ -60,7 +58,7 @@ export function EngagementBar({
 
   async function vote(value: 1 | -1) {
     if (busy) return;
-    if (!isAuthed) return goLogin({ verb: "vote", id: chapterId, value });
+    if (!isAuthed) return goLogin({ verb: "vote", id: blogId, value });
 
     const prev = { score, myVote };
     // оптимистично
@@ -70,8 +68,8 @@ export function EngagementBar({
     setScore(score + delta);
     setBusy(true);
     try {
-      const data = await post(`/api/chapters/${chapterId}/vote`, { value });
-      if (data == null) return goLogin({ verb: "vote", id: chapterId, value });
+      const data = await post(`/api/blogs/${blogId}/vote`, { value });
+      if (data == null) return goLogin({ verb: "vote", id: blogId, value });
       if (typeof data.score === "number") setScore(data.score);
       if (data.myVote === 1 || data.myVote === -1 || data.myVote === 0) setMyVote(data.myVote);
     } catch {
@@ -126,34 +124,32 @@ export function EngagementBar({
   const pressed = "border-[var(--accent)] text-[var(--accent)]";
 
   return (
-    <div className="mt-8 flex flex-wrap items-center gap-2" aria-label="Реакции">
-      {canVote && (
-        <div className="inline-flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => vote(1)}
-            disabled={busy}
-            aria-pressed={myVote === 1}
-            aria-label="Полезно"
-            className={`${btn} ${myVote === 1 ? pressed : "text-[var(--foreground)]"}`}
-          >
-            <span aria-hidden="true">▲</span>
-          </button>
-          <span aria-live="polite" className="min-w-6 text-center text-[length:var(--type-small)] tabular-nums text-[var(--foreground)]">
-            {score}
-          </span>
-          <button
-            type="button"
-            onClick={() => vote(-1)}
-            disabled={busy}
-            aria-pressed={myVote === -1}
-            aria-label="Не полезно"
-            className={`${btn} ${myVote === -1 ? pressed : "text-[var(--foreground)]"}`}
-          >
-            <span aria-hidden="true">▼</span>
-          </button>
-        </div>
-      )}
+    <div className={`${className} flex flex-wrap items-center gap-2`} aria-label="Реакции">
+      <div className="inline-flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => vote(1)}
+          disabled={busy}
+          aria-pressed={myVote === 1}
+          aria-label="Полезно"
+          className={`${btn} ${myVote === 1 ? pressed : "text-[var(--foreground)]"}`}
+        >
+          <span aria-hidden="true">▲</span>
+        </button>
+        <span aria-live="polite" className="min-w-6 text-center text-[length:var(--type-small)] tabular-nums text-[var(--foreground)]">
+          {score}
+        </span>
+        <button
+          type="button"
+          onClick={() => vote(-1)}
+          disabled={busy}
+          aria-pressed={myVote === -1}
+          aria-label="Не полезно"
+          className={`${btn} ${myVote === -1 ? pressed : "text-[var(--foreground)]"}`}
+        >
+          <span aria-hidden="true">▼</span>
+        </button>
+      </div>
 
       <button
         type="button"
@@ -167,17 +163,15 @@ export function EngagementBar({
         <span>{bookmarkCount}</span>
       </button>
 
-      {canFollow && (
-        <button
-          type="button"
-          onClick={toggleFollow}
-          disabled={busy}
-          aria-pressed={following}
-          className={`${btn} ${following ? pressed : "text-[var(--foreground)]"}`}
-        >
-          {following ? "Вы подписаны" : "Подписаться на автора"}
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={toggleFollow}
+        disabled={busy}
+        aria-pressed={following}
+        className={`${btn} ${following ? pressed : "text-[var(--foreground)]"}`}
+      >
+        {following ? "Вы подписаны" : "Подписаться на автора"}
+      </button>
     </div>
   );
 }

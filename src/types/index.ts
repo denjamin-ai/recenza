@@ -111,8 +111,12 @@ export type PublicComment = typeof schema.publicComments.$inferSelect;
 export type NewPublicComment = typeof schema.publicComments.$inferInsert;
 export type CommentVote = typeof schema.commentVotes.$inferSelect;
 export type NewCommentVote = typeof schema.commentVotes.$inferInsert;
+/** @deprecated ui-feedback-5: голоса блоговые (BlogVote); chapter_votes не используется в новом коде. */
 export type ChapterVote = typeof schema.chapterVotes.$inferSelect;
+/** @deprecated ui-feedback-5: голоса блоговые (NewBlogVote). */
 export type NewChapterVote = typeof schema.chapterVotes.$inferInsert;
+export type BlogVote = typeof schema.blogVotes.$inferSelect;
+export type NewBlogVote = typeof schema.blogVotes.$inferInsert;
 export type Bookmark = typeof schema.bookmarks.$inferSelect;
 export type NewBookmark = typeof schema.bookmarks.$inferInsert;
 export type Follow = typeof schema.follows.$inferSelect;

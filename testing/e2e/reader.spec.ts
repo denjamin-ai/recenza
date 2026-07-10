@@ -82,10 +82,11 @@ test.describe("Читатель", () => {
   });
 
   // ── TC-READER-05/06 (SMK-05) — голос и закладка toggle (self-restoring) ──────
-  // У reader в seed уже есть голос (chv_1) и закладка (bm_1) на blog_async —
+  // У reader в seed уже есть голос за блог (bv_1) и закладка (bm_1) на blog_async —
   // тест снимает и возвращает, оставляя seed в исходном состоянии.
+  // ui-feedback-5: голос — БЛОГОВЫЙ (POST /api/blogs/{id}/vote), бар на странице главы остаётся.
 
-  test("TC-READER-05 @smoke @critical: голос за главу — toggle снять/вернуть, состояние переживает reload", async ({
+  test("TC-READER-05 @smoke @critical: голос за блог — toggle снять/вернуть, состояние переживает reload", async ({
     asReader,
   }) => {
     const { page } = asReader;

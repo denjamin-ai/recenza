@@ -1,9 +1,12 @@
 "use client";
 
-// Меню аватара: профиль (автор/ревьюер) + закладки + вход в ролевой кабинет (автор/ревьюер) + выход.
+// Меню аватара: профиль (автор/ревьюер) + закладки (только reader, ui-feedback-5 П4) +
+// смена аватарки (все роли, ui-feedback-5 П2) + вход в ролевой кабинет + выход.
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
+import { AvatarChanger } from "@/components/profile/avatar-changer";
 import type { Role } from "@/types";
 
 type AvatarUser = {
@@ -72,9 +75,13 @@ export function AvatarMenu({ user }: { user: AvatarUser }) {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="Меню пользователя"
-        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] text-[length:var(--type-small)] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-elevated)]"
+        className="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] text-[length:var(--type-small)] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-elevated)]"
       >
-        <span aria-hidden="true">{initial}</span>
+        {user.avatarUrl ? (
+          <Image src={user.avatarUrl} alt="" width={36} height={36} unoptimized className="h-full w-full object-cover" />
+        ) : (
+          <span aria-hidden="true">{initial}</span>
+        )}
       </button>
 
       {open && (
@@ -99,9 +106,14 @@ export function AvatarMenu({ user }: { user: AvatarUser }) {
                 Мой профиль
               </Link>
             )}
-            <Link role="menuitem" href="/bookmarks" className={menuItem} onClick={() => setOpen(false)}>
-              Закладки
-            </Link>
+            {/* Смена аватарки — всем ролям (у читателя нет страницы профиля — меняет отсюда). */}
+            <AvatarChanger variant="menuitem" onDone={() => setOpen(false)} />
+            {/* Закладки — только читатель (ui-feedback-5 П4). */}
+            {user.role === "reader" && (
+              <Link role="menuitem" href="/bookmarks" className={menuItem} onClick={() => setOpen(false)}>
+                Закладки
+              </Link>
+            )}
             {portal && (
               <Link role="menuitem" href={portal.href} className={menuItem} onClick={() => setOpen(false)}>
                 {portal.label}

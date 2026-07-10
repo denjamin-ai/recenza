@@ -237,25 +237,26 @@
 
 ### Test Steps
 1. В панели реакций (aria-label «Реакции») кликнуть кнопку «Полезно», запомнив текущий счётчик.
-   **Expected:** Полный переход на `/login?next=%2Fblog%2Fasync-deep-dive%2Fevent-loop…&intent=vote:chp_published:1`; голос НЕ записан (нет сессии — мутация не выполняется).
-2. На `/login` ввести «Никнейм» = `reader`, «Пароль» = `password`, нажать «Войти».
-   **Expected:** Вход успешен; выполняется реплей intent (`POST /api/chapters/chp_published/vote`, value 1); браузер возвращается на страницу главы из `next`.
+   **Expected:** Полный переход на `/login?next=%2Fblog%2Fasync-deep-dive%2Fevent-loop…&intent=vote:blog_async:1` (ui-feedback-5: голос блоговый); голос НЕ записан (нет сессии — мутация не выполняется).
+2. На `/login` ввести «Никнейм» = `troll`, «Пароль» = `password`, нажать «Войти» (troll — reader БЕЗ seed-голоса; у `reader` голос bv_1 уже стоит, и реплей-toggle снял бы его).
+   **Expected:** Вход успешен; выполняется реплей intent (`POST /api/blogs/blog_async/vote`, value 1); браузер возвращается на страницу главы из `next`.
 3. Осмотреть панель реакций после возврата.
    **Expected:** Кнопка «Полезно» в активном состоянии, счётчик увеличен на 1 относительно шага 1.
 4. (Изоляция) Кликнуть «Полезно» повторно, чтобы снять голос, и выйти через меню (aria-label «Меню пользователя») → «Выйти».
    **Expected:** Голос снят (toggle), сессия завершена, в шапке снова «Войти».
 
 ### Test Data
-- Пользователь: `reader` / `password`.
-- Intent-токен: `vote:chp_published:1`; `next=/blog/async-deep-dive/event-loop`.
+- Пользователь: `troll` / `password` (reader).
+- Intent-токен: `vote:blog_async:1`; `next=/blog/async-deep-dive/event-loop`.
 
 ### Post-conditions
-- После шага 4 состояние `chapter_votes` возвращено к seed; иначе — `npm run test:reset`.
+- После шага 4 состояние `blog_votes` возвращено к seed; иначе — `npm run test:reset`.
 
 ### Notes
 - Строка матрицы §2 «Голос/закладка/подписка: гость → login».
 - Реплей идемпотентен (toggle-API не задваивает) — повторный вход с тем же intent не должен ломать состояние.
-- Кнопка «Не полезно» ведёт себя симметрично (`intent=vote:chp_published:-1`) — быстрая доп. проверка.
+- Кнопка «Не полезно» ведёт себя симметрично (`intent=vote:blog_async:-1`) — быстрая доп. проверка.
+- ui-feedback-5: голосовать может ТОЛЬКО роль reader — вход автором/ревьюером реплей не применит (API 403).
 
 ---
 

@@ -163,14 +163,15 @@ test.describe("Гость (аноним)", () => {
   });
 
   // ── TC-GUEST-07 — intent-replay голоса ──────────────────────────────────────
-  // sergey_review без seed-голоса → реплей = чистая установка. reader НЕ использовать:
-  // у него seed-голос, а реплей — toggle и снял бы его (баг №4, MCP-FINDINGS §6).
+  // ui-feedback-5: голоса БЛОГОВЫЕ и только для роли reader. troll — reader без seed-голоса →
+  // реплей = чистая установка. reader НЕ использовать: у него seed-голос bv_1, а реплей — toggle
+  // и снял бы его (баг №4, MCP-FINDINGS §6). Ревьюеры голосовать больше не могут (403).
 
-  test("TC-GUEST-07 @critical: голос гостя → /login с intent=vote, после входа sergey_review голос реплеится", async ({
+  test("TC-GUEST-07 @critical: голос гостя → /login с intent=vote (блоговый), после входа troll голос реплеится", async ({
     asGuest,
   }) => {
     const { page } = asGuest;
-    const reader = new ReaderPage(page, USERS.sergey.handle);
+    const reader = new ReaderPage(page, USERS.troll.handle);
     const chapterPath = `/blog/${BLOG.slug}/${CHAPTERS.published.slug}`;
 
     await test.step("клик «Полезно» гостем → редирект на /login с next и intent", async () => {
@@ -182,19 +183,19 @@ test.describe("Гость (аноним)", () => {
       }).toPass({ timeout: 20_000 });
 
       const url = new URL(page.url());
-      expect(url.searchParams.get("intent")).toBe(`vote:${CHAPTERS.published.id}:1`);
+      expect(url.searchParams.get("intent")).toBe(`vote:${BLOG.id}:1`);
       expect(url.searchParams.get("next")).toBe(chapterPath);
     });
 
-    await test.step("вход sergey_review → возврат по next, реплей ставит голос", async () => {
-      await loginViaUi(page, USERS.sergey.handle);
+    await test.step("вход troll (reader) → возврат по next, реплей ставит голос", async () => {
+      await loginViaUi(page, USERS.troll.handle);
       await page.waitForURL(`**${chapterPath}`);
       await expect(reader.voteUpButton()).toHaveAttribute("aria-pressed", "true");
     });
 
     await test.step("самовосстановление: повторный клик снимает голос (toggle)", async () => {
       // Реплей-POST только что прошёл — отмечаем его как мутацию, чтобы voteUp() выждал rate-limit.
-      await throttleMutation(USERS.sergey.handle);
+      await throttleMutation(USERS.troll.handle);
       await reader.voteUp();
       await expect(reader.voteUpButton()).toHaveAttribute("aria-pressed", "false");
     });
@@ -287,10 +288,15 @@ test.describe("Гость (аноним)", () => {
     const { page } = asGuest;
     await page.goto("/board");
 
-    await test.step("доска отдаётся: h1, направления seed, кнопка «Откликнуться»", async () => {
+    await test.step("доска отдаётся: hero по прототипу (метрики), направления seed, «Откликнуться»", async () => {
       await expect(
         page.getByRole("heading", { name: "Помогите авторам выпускать качественные статьи" }),
       ).toBeVisible();
+      // ui-feedback-5 П5 (прототип reviewer-board.jsx): метрики hero + секция направлений.
+      await expect(page.getByText("открытых направлений")).toBeVisible();
+      await expect(page.getByText("глав ждут ревью")).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Открытые направления" })).toBeVisible();
+      await expect(page.getByText("Список ведёт редакция")).toBeVisible();
       await expect(page.getByRole("heading", { name: "Frontend" })).toBeVisible(); // bc_frontend
       await expect(page.getByRole("heading", { name: "Backend" })).toBeVisible(); // bc_backend
       await expect(page.getByText("срочно")).toBeVisible(); // hot-бейдж bc_frontend

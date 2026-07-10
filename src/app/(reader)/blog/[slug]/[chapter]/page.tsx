@@ -6,6 +6,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { getReadableBlog } from "@/lib/queries/chapters";
+import { getReaderEngagement } from "@/lib/queries/engagement";
 import { buildReaderSections } from "@/lib/queries/reader-sections";
 import { BlogReaderView } from "@/components/reader/blog-reader-view";
 import { extractPlainText } from "@/components/blocks/extract-plain-text";
@@ -52,7 +53,10 @@ export default async function ChapterPage({ params }: { params: Params }) {
   const active = blog.chapters.find((c) => c.slug === chapter);
   if (!active) notFound();
 
-  const sections = await buildReaderSections(blog, [active], viewer?.id);
+  const [sections, engagement] = await Promise.all([
+    buildReaderSections(blog, [active]),
+    getReaderEngagement({ blogId: blog.id, authorId: blog.author.id, userId: viewer?.id }),
+  ]);
 
   const description = truncate(active.summary || extractPlainText(active.blocks) || "");
   const url = absoluteUrl(`/blog/${slug}/${chapter}`);
@@ -77,7 +81,8 @@ export default async function ChapterPage({ params }: { params: Params }) {
         activeSlug={active.slug}
         sections={sections}
         isAuthed={!!viewer}
-        canFollow={viewer?.id !== blog.author.id}
+        engagement={engagement}
+        canEngage={!viewer || viewer.role === "reader"}
         singleHref={`/blog/${slug}/${active.slug}`}
         wholeHref={`/blog/${slug}?mode=whole`}
         viewer={viewer ? { id: viewer.id, role: viewer.role, commentingBlocked: viewer.commentingBlocked } : null}

@@ -1,11 +1,15 @@
 "use client";
 
-// Публичная доска «Ищем ревьюеров» (Фаза 10, §11.6): фильтр по навыкам, карточки направлений,
-// «Откликнуться»/«Стать ревьюером» → ApplyModal (навыки + сообщение). Откликнуться может и гость
-// (тогда нужно имя). «Как это работает» — 3 шага. Заявка → POST /api/board/applications.
+// Публичная доска «Ищем ревьюеров» (Фаза 10, §11.6; вёрстка — по прототипу reviewer-board.jsx,
+// ui-feedback-5 П5): центрированный hero (eyebrow между линиями, 2 CTA, 3 метрики), секция
+// «Открытые направления» с фильтром по навыкам, карточки направлений с футером «N глав ждут».
+// «Откликнуться»/«Стать ревьюером» → ApplyModal (навыки + сообщение; гостю нужно имя).
+// «Как это работает» — 3 шага. Заявка → POST /api/board/applications.
 
 import { useEffect, useRef, useState } from "react";
-import { IconX, IconScan } from "@/components/icons";
+import { BackLink } from "@/components/back-link";
+import { IconX, IconScan, IconEdit } from "@/components/icons";
+import { plural } from "@/lib/plural";
 import type { BoardCallView } from "@/lib/queries/board";
 
 // Esc закрывает модалку + автофокус на диалог при открытии (a11y для role="dialog"). Два эффекта:
@@ -32,52 +36,86 @@ export function ReviewerBoard({ calls, isAuthed }: { calls: BoardCallView[]; isA
 
   const allSkills = [...new Set(calls.flatMap((c) => c.skills))].sort((a, b) => a.localeCompare(b, "ru"));
   const visible = filter ? calls.filter((c) => c.skills.includes(filter)) : calls;
+  const totalWaiting = calls.reduce((sum, c) => sum + c.waiting, 0);
+
+  const chip = (active: boolean) =>
+    `min-h-9 rounded-[var(--radius-pill)] border px-3 py-1 text-[length:var(--type-small)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+      active
+        ? "border-[var(--accent)] bg-[var(--accent-bg)] text-[var(--accent)]"
+        : "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+    }`;
 
   return (
-    <div className="mx-auto w-full max-w-[var(--max-content)] px-6 py-10">
-      <header className="mb-8 max-w-2xl">
-        <p className="mb-1 text-[0.7rem] font-medium uppercase tracking-wider text-[var(--accent)]">Сообщество</p>
-        <h1 className="font-display text-[length:var(--type-h2)] font-bold text-[var(--foreground)] [text-wrap:pretty]">
+    <div className="mx-auto w-full max-w-[var(--max-content)] px-6 py-6">
+      <div className="mb-4">
+        <BackLink href="/">К блогам</BackLink>
+      </div>
+
+      {/* Hero по прототипу: центр, eyebrow между линиями, 2 CTA, ряд метрик */}
+      <header className="mx-auto mb-10 max-w-2xl border-b border-[var(--border)] pb-10 pt-4 text-center">
+        <p className="mb-4 inline-flex items-center gap-2 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-[var(--accent)]">
+          <span aria-hidden="true" className="h-px w-6 bg-[color-mix(in_srgb,var(--accent)_45%,transparent)]" />
+          Ищем ревьюеров
+          <span aria-hidden="true" className="h-px w-6 bg-[color-mix(in_srgb,var(--accent)_45%,transparent)]" />
+        </p>
+        <h1 className="mx-auto mb-4 max-w-2xl font-display text-3xl font-extrabold leading-[1.08] tracking-tight text-[var(--foreground)] sm:text-5xl [text-wrap:pretty]">
           Помогите авторам выпускать качественные статьи
         </h1>
-        <p className="mt-2 text-[length:var(--type-body)] text-[var(--muted-foreground)] [text-wrap:pretty]">
-          Рецензируйте главы по своим компетенциям. Откликнитесь на открытое направление — или подайте общую заявку.
+        <p className="mx-auto mb-7 max-w-xl text-[length:var(--type-small)] leading-relaxed text-[var(--muted-foreground)] [text-wrap:pretty]">
+          Каждая статья проходит ревью перед публикацией. Мы ищем специалистов по направлениям ниже —
+          выберите своё и подключайтесь.
         </p>
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center justify-center gap-3">
           <button
             type="button"
             onClick={() => setApply({ area: "", skills: [] })}
-            className="inline-flex items-center rounded-[var(--radius-md)] bg-[var(--accent)] px-4 py-2 text-[length:var(--type-small)] font-medium text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+            className="inline-flex items-center gap-2 rounded-[var(--radius-md)] bg-[var(--accent)] px-5 py-2.5 text-[length:var(--type-small)] font-semibold text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
           >
+            <IconEdit className="h-4 w-4" />
             Стать ревьюером
           </button>
           <button
             type="button"
             onClick={() => setHowOpen(true)}
-            className="inline-flex items-center rounded-[var(--radius-md)] border border-[var(--border)] px-4 py-2 text-[length:var(--type-small)] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            className="inline-flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] px-5 py-2.5 text-[length:var(--type-small)] font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
           >
             Как это работает
           </button>
         </div>
+        <div className="mt-10 flex items-start justify-center gap-8 sm:gap-12">
+          {(
+            [
+              [String(calls.length), "открытых направлений"],
+              [String(totalWaiting), "глав ждут ревью"],
+              ["1–5", "звёзд — оценка авторов"],
+            ] as const
+          ).map(([n, label]) => (
+            <div key={label} className="text-center">
+              <p className="font-display text-2xl font-extrabold leading-none tabular-nums text-[var(--accent)] sm:text-[26px]">{n}</p>
+              <p className="mt-1.5 max-w-[110px] text-[0.72rem] text-[var(--muted-foreground)]">{label}</p>
+            </div>
+          ))}
+        </div>
       </header>
+
+      {/* Открытые направления: заголовок + подпись «ведёт редакция» + фильтр по навыкам */}
+      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
+        <h2 className="font-display text-xl font-bold tracking-tight text-[var(--foreground)]">Открытые направления</h2>
+        <span className="shrink-0 text-[0.75rem] text-[var(--muted-foreground)]">Список ведёт редакция</span>
+      </div>
 
       {allSkills.length > 0 && (
         <div className="mb-5 flex flex-wrap gap-1.5">
-          <button
-            type="button"
-            onClick={() => setFilter(null)}
-            aria-pressed={filter === null}
-            className={`min-h-9 rounded-[var(--radius-pill)] border px-3 py-1 text-[length:var(--type-small)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${filter === null ? "border-[var(--accent)] bg-[var(--accent-bg)] text-[var(--accent)]" : "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--muted)]"}`}
-          >
+          <button type="button" onClick={() => setFilter(null)} aria-pressed={filter === null} className={chip(filter === null)}>
             Все
           </button>
           {allSkills.map((s) => (
             <button
               key={s}
               type="button"
-              onClick={() => setFilter(s)}
+              onClick={() => setFilter(filter === s ? null : s)}
               aria-pressed={filter === s}
-              className={`min-h-9 rounded-[var(--radius-pill)] border px-3 py-1 text-[length:var(--type-small)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${filter === s ? "border-[var(--accent)] bg-[var(--accent-bg)] text-[var(--accent)]" : "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--muted)]"}`}
+              className={chip(filter === s)}
             >
               {s}
             </button>
@@ -87,32 +125,39 @@ export function ReviewerBoard({ calls, isAuthed }: { calls: BoardCallView[]; isA
 
       {visible.length === 0 ? (
         <p className="rounded-[var(--radius-lg)] border border-dashed border-[var(--border)] bg-[var(--bg-secondary)] p-8 text-center text-[length:var(--type-small)] text-[var(--muted-foreground)]">
-          Пока нет открытых направлений. Вы всё равно можете подать общую заявку.
+          {calls.length === 0
+            ? "Открытых направлений сейчас нет. Вы всё равно можете подать общую заявку."
+            : "Нет направлений по этому навыку."}
         </p>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {visible.map((c) => (
-            <li key={c.id} className="flex flex-col rounded-[var(--radius-lg)] border border-[var(--border-secondary)] bg-[var(--bg-elevated)] p-4">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <h2 className="font-display text-[length:var(--type-h4)] font-bold text-[var(--foreground)]">{c.area}</h2>
+            <li
+              key={c.id}
+              className="flex flex-col gap-3 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-elevated)] p-5 transition-colors hover:border-[color-mix(in_srgb,var(--foreground)_18%,var(--border))]"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="font-display text-[17px] font-bold leading-snug tracking-tight text-[var(--foreground)]">{c.area}</h3>
                 {c.hot && (
-                  <span className="rounded-[var(--radius-pill)] border border-[var(--danger-border)] bg-[var(--danger-bg)] px-2 py-0.5 text-[0.7rem] font-medium text-[var(--danger)]">срочно</span>
+                  <span className="shrink-0 rounded-[var(--radius-pill)] border border-[color-mix(in_srgb,var(--accent)_30%,transparent)] bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-wider text-[var(--accent)]">срочно</span>
                 )}
               </div>
               {c.skills.length > 0 && (
-                <div className="mb-2 flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1.5">
                   {c.skills.map((s) => (
-                    <span key={s} className="rounded-[var(--radius-pill)] border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-0.5 text-[0.7rem] text-[var(--muted-foreground)]">{s}</span>
+                    <span key={s} className="rounded-[var(--radius-pill)] border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-0.5 text-[0.72rem] text-[var(--muted-foreground)]">{s}</span>
                   ))}
                 </div>
               )}
-              {c.note && <p className="mb-3 text-[length:var(--type-small)] text-[var(--muted-foreground)] [text-wrap:pretty]">{c.note}</p>}
-              <div className="mt-auto flex items-center justify-between gap-2 pt-2">
-                <span className="text-[0.7rem] text-[var(--muted-foreground)]">в ожидании: {c.waiting}</span>
+              <p className="flex-1 text-[length:var(--type-small)] leading-relaxed text-[var(--muted-foreground)] [text-wrap:pretty]">{c.note}</p>
+              <div className="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-3">
+                <span className="text-[0.75rem] tabular-nums text-[var(--muted-foreground)]">
+                  {c.waiting} {plural(c.waiting, "глава ждёт", "главы ждут", "глав ждут")}
+                </span>
                 <button
                   type="button"
                   onClick={() => setApply({ area: c.area, skills: c.skills })}
-                  className="min-h-9 rounded-[var(--radius-md)] border border-[var(--accent)] bg-[var(--accent-bg)] px-3 py-1.5 text-[length:var(--type-small)] font-medium text-[var(--accent)] transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  className="min-h-9 rounded-[var(--radius-md)] bg-[var(--accent)] px-3.5 py-1.5 text-[length:var(--type-small)] font-semibold text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-elevated)]"
                 >
                   Откликнуться
                 </button>

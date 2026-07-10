@@ -260,6 +260,11 @@ export const commentVotes = sqliteTable(
   (t) => [uniqueIndex("comment_votes_user_comment_uq").on(t.userId, t.commentId)],
 );
 
+/**
+ * @deprecated ui-feedback-5: голоса переехали на уровень блога (`blog_votes`, как в прототипе).
+ * Таблица оставлена в схеме и БД (деструктивные миграции запрещены; данные сконвертированы
+ * миграцией 0006), новые записи НЕ создаются. Не использовать в новом коде.
+ */
 export const chapterVotes = sqliteTable(
   "chapter_votes",
   {
@@ -274,6 +279,23 @@ export const chapterVotes = sqliteTable(
     createdAt: integer("created_at").notNull(),
   },
   (t) => [uniqueIndex("chapter_votes_user_chapter_uq").on(t.userId, t.chapterId)],
+);
+
+// Голос «Полезно/Не полезно» за БЛОГ целиком (ui-feedback-5; модель прототипа — votes по blogSlug).
+export const blogVotes = sqliteTable(
+  "blog_votes",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    blogId: text("blog_id")
+      .notNull()
+      .references(() => blogs.id, { onDelete: "cascade" }),
+    value: integer("value").notNull(), // +1 / -1
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [uniqueIndex("blog_votes_user_blog_uq").on(t.userId, t.blogId)],
 );
 
 export const bookmarks = sqliteTable(

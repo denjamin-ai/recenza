@@ -1,6 +1,5 @@
 // Сериализуемые view-типы для читательского слоя (Фаза 5). Пользователи — без passwordHash.
 import type { Block, Complexity } from "@/types";
-import type { ReaderEngagement } from "./engagement";
 import type { ChapterReviewerCredit } from "./reviewer-credit";
 
 export interface AuthorView {
@@ -79,10 +78,8 @@ export interface FeedFilter {
   restrictAuthorId?: string;
 }
 
-/** Глава ридера вместе с её engagement-состоянием и кредитом ревьюеров (для рендера секции). */
+/** Глава ридера вместе с кредитом ревьюеров (ui-feedback-5: engagement — блоговый, один на страницу). */
 export interface ReaderSection {
   chapter: ReadableChapter;
-  engagement: ReaderEngagement;
   credit: ChapterReviewerCredit;
-  canVote: boolean;
 }

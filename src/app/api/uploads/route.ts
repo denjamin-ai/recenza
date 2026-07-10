@@ -1,9 +1,10 @@
 // Загрузка изображений (Фаза 12). Гейт по назначению файла: article/cover — автор,
-// donation/banner — админ. MIME проверяется ДВАЖДЫ: заявленный тип + magic-bytes содержимого.
-// Возвращает { ok, path } с путём "/uploads/…" — его же валидируют существующие поля (cover_url и др.).
+// donation/banner — админ, avatar — любой пользователь (ui-feedback-5; файл — для собственного
+// профиля, привязка к пользователю — в PATCH /api/profile/avatar). MIME проверяется ДВАЖДЫ:
+// заявленный тип + magic-bytes содержимого. Возвращает { ok, path } с путём "/uploads/…".
 
 import { NextResponse } from "next/server";
-import { requireAdmin, requireAuthor } from "@/lib/auth";
+import { requireAdmin, requireAuthor, requireUser } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { hitActionRate } from "@/lib/rate-limit";
 import {
@@ -43,7 +44,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   const kind = form.get("kind");
   if (typeof kind !== "string" || !(kind in UPLOAD_DIRS)) {
     return NextResponse.json(
-      { error: "kind: article, cover, donation или banner." },
+      { error: "kind: article, cover, donation, banner или avatar." },
       { status: 400 },
     );
   }
@@ -53,6 +54,10 @@ export async function POST(req: Request): Promise<NextResponse> {
     const gate = await requireAdmin();
     if (gate instanceof NextResponse) return gate;
     rateKey = "upload:admin";
+  } else if (kind === "avatar") {
+    const gate = await requireUser(); // любая роль с users-строкой (админ без неё — отказ)
+    if (gate instanceof NextResponse) return gate;
+    rateKey = `upload:${gate.userId}`;
   } else {
     const gate = await requireAuthor();
     if (gate instanceof NextResponse) return gate;
