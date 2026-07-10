@@ -93,6 +93,18 @@ test.describe("Читатель", () => {
     const reader = new ReaderPage(page, USERS.reader.handle);
     await reader.gotoChapter(BLOG.slug, CHAPTERS.published.slug);
 
+    await test.step("ui-feedback-6 П1: бар «Реакции» — наверху главы, до контента", async () => {
+      await expect(page.locator('[aria-label="Реакции"]')).toHaveCount(1);
+      const barBeforeContent = await page.evaluate(() => {
+        const bar = document.querySelector('article [aria-label="Реакции"]');
+        const firstBlock = document.querySelector("article [data-block-id]");
+        return (
+          !!bar && !!firstBlock && !!(bar.compareDocumentPosition(firstBlock) & Node.DOCUMENT_POSITION_FOLLOWING)
+        );
+      });
+      expect(barBeforeContent).toBe(true);
+    });
+
     const btn = reader.voteUpButton();
     const initial = await btn.getAttribute("aria-pressed");
     const flipped = initial === "true" ? "false" : "true";

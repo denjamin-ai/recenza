@@ -16,6 +16,7 @@ import {
   IconUsers,
   IconImage,
   IconHeart,
+  IconListLines,
   IconSearch,
 } from "@/components/icons";
 
@@ -34,6 +35,8 @@ const GROUPS: { label: string | null; items: NavItem[] }[] = [
   {
     label: "Платформа",
     items: [
+      // «Доска ревьюеров» — вакансии публичной доски /board (ui-feedback-6 П5).
+      { href: "/admin/board", label: "Доска ревьюеров", Icon: IconListLines },
       { href: "/admin/banners", label: "Баннеры", Icon: IconImage },
       { href: "/admin/donation", label: "Пожертвования", Icon: IconHeart },
     ],

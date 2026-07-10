@@ -35,14 +35,15 @@ export default async function HomePage({ searchParams }: { searchParams: Search 
   if (user?.role === "reader" && view !== "all") {
     return <ReaderHome user={user} blogs={blogs} />;
   }
-  return <Catalog blogs={blogs} />;
+  // ui-feedback-6 П6: автор видит только свои блоги — каталог называется «Все мои блоги».
+  return <Catalog blogs={blogs} title={user?.role === "author" ? "Все мои блоги" : "Все блоги"} />;
 }
 
-/** Каталог «Все блоги» — гость/автор/ревьюер и reader по «Все блоги →» (прототип ArticleIndexScreen). */
-function Catalog({ blogs }: { blogs: BlogCardView[] }) {
+/** Каталог — гость/ревьюер и reader по «Все блоги →»; автор — «Все мои блоги» (прототип ArticleIndexScreen). */
+function Catalog({ blogs, title }: { blogs: BlogCardView[]; title: string }) {
   return (
     <div className="mx-auto w-full max-w-[var(--max-content)] px-6 py-10">
-      <h1 className="mb-3">Все блоги</h1>
+      <h1 className="mb-3">{title}</h1>
       <p className="mb-6 text-[var(--muted-foreground)]">
         {blogs.length} {plural(blogs.length, "публикация", "публикации", "публикаций")}
       </p>

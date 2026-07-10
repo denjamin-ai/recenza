@@ -76,7 +76,7 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
     });
 
     await test.step("Навигация портала: все разделы на месте", async () => {
-      for (const name of ["Сводка", "Жалобы", "Ревью глав", "Заявки ревьюеров", "Пользователи", "Баннеры", "Пожертвования"] as const) {
+      for (const name of ["Сводка", "Жалобы", "Ревью глав", "Заявки ревьюеров", "Пользователи", "Доска ревьюеров", "Баннеры", "Пожертвования"] as const) {
         await expect(admin.nav.getByRole("link", { name, exact: true })).toBeVisible();
       }
     });
@@ -322,12 +322,14 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
   test("TC-ADMIN-12+13 @regression: recruit-запрос — «Одобрить» публикует направление на /board; «Отклонить с причиной» disabled без причины", async ({ asAdmin, asGuest, api }) => {
     const admin = new AdminPage(asAdmin.page);
 
-    await test.step("Одобрить rec_pending → направление в списке доски", async () => {
+    await test.step("Одобрить rec_pending → направление в списке на «Доске ревьюеров»", async () => {
       await asAdmin.goto("/admin/recruit");
       const row = pendingRecruitRow(asAdmin.page);
       await expect(row).toBeVisible();
       await admin.approveRecruit(row, "Тестовое направление", "Ищем ревьюера по итераторам");
       await expect(asAdmin.page.getByText("Нет запросов на рассмотрении.")).toBeVisible();
+      // ui-feedback-6 П5: список направлений живёт на отдельной странице /admin/board.
+      await asAdmin.goto("/admin/board");
       await expect(asAdmin.page.getByText("Тестовое направление")).toBeVisible();
     });
 
@@ -358,6 +360,45 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
       await expect(asAdmin.page.getByText("Нет запросов на рассмотрении.")).toBeVisible();
       // Вердикт с причиной виден в списке разобранных
       await expect(asAdmin.page.getByText("Навыки описаны слишком общо")).toBeVisible();
+    });
+  });
+
+  // ── TC-ADMIN-19 — «Доска ревьюеров»: отдельная страница с раскрытой формой (ui-feedback-6, П5) ──
+
+  test("TC-ADMIN-19 @regression: «Доска ревьюеров» — форма раскрыта сразу; создание направления → /board; удаление", async ({
+    asAdmin,
+    asGuest,
+  }) => {
+    const admin = new AdminPage(asAdmin.page);
+    const area = "Направление e2e-доски";
+    const row = () => asAdmin.page.locator("li").filter({ hasText: area });
+
+    await test.step("Переход из сайдбара «Платформа»: форма «Новое направление» видна без кликов", async () => {
+      await asAdmin.goto("/admin/dashboard");
+      await admin.gotoSection("Доска ревьюеров");
+      await asAdmin.page.waitForURL("**/admin/board");
+      await expect(asAdmin.page.getByRole("heading", { name: "Доска ревьюеров" })).toBeVisible();
+      await expect(asAdmin.page.getByText("Новое направление")).toBeVisible();
+      await expect(asAdmin.page.getByLabel("Направление", { exact: true })).toBeVisible();
+    });
+
+    await test.step("Создать направление → в списке админки и на публичной /board", async () => {
+      await asAdmin.page.getByLabel("Направление", { exact: true }).fill(area);
+      await asAdmin.page.getByLabel("Навыки", { exact: true }).fill("Playwright, e2e");
+      // Ретрай против потери клика до гидрации; успех = форма очистилась.
+      await expect(async () => {
+        await asAdmin.page.getByRole("button", { name: "Создать", exact: true }).click();
+        await expect(asAdmin.page.getByLabel("Направление", { exact: true })).toHaveValue("", { timeout: 3_000 });
+      }).toPass({ timeout: 20_000 });
+      await expect(row()).toBeVisible();
+
+      await asGuest.goto("/board");
+      await expect(asGuest.page.getByRole("heading", { name: area })).toBeVisible();
+    });
+
+    await test.step("«удалить» — направление уходит из списка (восстановление состояния)", async () => {
+      await row().getByRole("button", { name: "удалить" }).click();
+      await expect(row()).toHaveCount(0);
     });
   });
 

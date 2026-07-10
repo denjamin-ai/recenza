@@ -1,19 +1,16 @@
-// Заявки ревьюеров (Фаза 10): запросы авторов на подбор (approve→доска / reject→причина),
-// публичная доска board_calls (ведёт админ) и заявки apply-to-review (accept→роль / decline).
+// Заявки ревьюеров (Фаза 10): запросы авторов на подбор (approve→доска / reject→причина)
+// и заявки apply-to-review (accept→роль / decline). Сама доска board_calls ведётся на
+// отдельной странице «Доска ревьюеров» (ui-feedback-6 П5).
+import Link from "next/link";
 import { getAdminRecruit } from "@/lib/queries/admin";
 import { ScreenHead, Pill, Card, SectionTitle, EmptyState, SkillChips } from "@/app/admin/_components/primitives";
 import { formatRelativeTime } from "@/lib/format";
-import {
-  RecruitRequestActions,
-  ApplicationActions,
-  BoardCallCreate,
-  BoardCallActions,
-} from "@/app/admin/_components/recruit-actions";
+import { RecruitRequestActions, ApplicationActions } from "@/app/admin/_components/recruit-actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminRecruitPage() {
-  const { requests, calls, applications } = await getAdminRecruit();
+  const { requests, applications } = await getAdminRecruit();
   const pendingReq = requests.filter((r) => r.status === "pending");
   const resolvedReq = requests.filter((r) => r.status !== "pending");
   const pendingApps = applications.filter((a) => a.status === "pending");
@@ -21,7 +18,7 @@ export default async function AdminRecruitPage() {
 
   return (
     <div className="max-w-3xl space-y-4">
-      <ScreenHead eyebrow="Модерация" title="Заявки ревьюеров" description="Запросы авторов на подбор, публичная доска «Ищем ревьюеров» и отклики с неё." />
+      <ScreenHead eyebrow="Модерация" title="Заявки ревьюеров" description="Запросы авторов на подбор и отклики с публичной доски «Ищем ревьюеров»." />
 
       {/* Запросы авторов «найдите ревьюеров» */}
       <Card>
@@ -59,43 +56,18 @@ export default async function AdminRecruitPage() {
         )}
       </Card>
 
-      {/* Публичная доска. ui-feedback-5 П5: создание направления — НАВЕРХУ секции (владелец не
-          находил кнопку под списком) + ссылка на публичную доску для сверки результата. */}
+      {/* Доска переехала на свою страницу (ui-feedback-6 П5) — здесь только перекрёстная ссылка. */}
       <Card>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <SectionTitle count={calls.length}>Доска «Ищем ревьюеров»</SectionTitle>
-          <a
-            href="/board"
-            target="_blank"
-            rel="noopener"
-            className="rounded-[var(--radius-sm)] text-[0.75rem] text-[var(--muted-foreground)] underline-offset-2 hover:text-[var(--accent)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        <p className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+          Направления доски ведутся на странице{" "}
+          <Link
+            href="/admin/board"
+            className="rounded-[var(--radius-sm)] text-[var(--accent)] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
           >
-            Открыть доску →
-          </a>
-        </div>
-        <div className="mb-3">
-          <BoardCallCreate />
-        </div>
-        {calls.length === 0 ? (
-          <EmptyState>Доска пуста — добавьте первое направление.</EmptyState>
-        ) : (
-          <ul className="space-y-2">
-            {calls.map((c) => (
-              <li key={c.id} className="rounded-[var(--radius-md)] border border-[var(--border-secondary)] p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="flex items-center gap-2">
-                    <span className="font-medium text-[var(--foreground)]">{c.area}</span>
-                    {c.hot && <Pill tone="danger">срочно</Pill>}
-                    <span className="text-[0.7rem] text-[var(--muted-foreground)]">в ожидании: {c.waiting}</span>
-                  </span>
-                  <BoardCallActions id={c.id} hot={c.hot} />
-                </div>
-                {c.skills.length > 0 && <div className="mt-1.5"><SkillChips skills={c.skills} /></div>}
-                {c.note && <p className="mt-1.5 text-[0.7rem] text-[var(--muted-foreground)]">{c.note}</p>}
-              </li>
-            ))}
-          </ul>
-        )}
+            «Доска ревьюеров»
+          </Link>
+          .
+        </p>
       </Card>
 
       {/* Заявки с доски */}
