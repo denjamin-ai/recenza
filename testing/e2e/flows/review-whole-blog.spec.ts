@@ -173,6 +173,14 @@ test.describe("REV-WHOLE-BLOG: ревью всего блога — strip гла
       await expect(blogCredit.getByRole("heading", { name: "Блог ревьюили" })).toBeVisible();
     });
 
+    await test.step("Реакции (ui-feedback-5 П1): ОДИН бар на весь блог — наверху, до секций глав", async () => {
+      const bars = page.locator('[aria-label="Реакции"]');
+      await expect(bars).toHaveCount(1);
+      // Бар живёт в шапке блога (header с h1), а не внутри секций глав.
+      await expect(page.locator("header").filter({ has: bars })).toHaveCount(1);
+      await expect(page.locator("article").filter({ has: bars })).toHaveCount(0);
+    });
+
     await test.step("Seed-комментарий «Цикла событий» виден с eyebrow своей главы", async () => {
       const rootNode = comments.node(COMMENTS.root);
       await expect(rootNode).toBeVisible();

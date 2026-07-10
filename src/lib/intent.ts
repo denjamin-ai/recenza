@@ -16,7 +16,7 @@ const VERBS: readonly IntentVerb[] = ["vote", "bookmark", "follow"];
 // id наших сущностей — ulid/фиксированные seed-id: латиница/цифры/_/-, до 64 символов.
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
-/** Кодирование: `vote:<chapterId>:1` | `bookmark:<blogId>` | `follow:<authorId>`. */
+/** Кодирование: `vote:<blogId>:1` (ui-feedback-5: голоса блоговые) | `bookmark:<blogId>` | `follow:<authorId>`. */
 export function encodeIntent(intent: Intent): string {
   if (intent.verb === "vote") return `vote:${intent.id}:${intent.value ?? 1}`;
   return `${intent.verb}:${intent.id}`;

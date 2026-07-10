@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { getReadableBlog } from "@/lib/queries/chapters";
+import { getReaderEngagement } from "@/lib/queries/engagement";
 import { buildReaderSections } from "@/lib/queries/reader-sections";
 import { BlogReaderView } from "@/components/reader/blog-reader-view";
 import { absoluteUrl, truncate } from "@/lib/seo";
@@ -50,7 +51,10 @@ export default async function BlogPage({ params, searchParams }: { params: Param
     redirect(`/blog/${slug}/${blog.chapters[0].slug}`);
   }
 
-  const sections = await buildReaderSections(blog, blog.chapters, viewer?.id);
+  const [sections, engagement] = await Promise.all([
+    buildReaderSections(blog, blog.chapters),
+    getReaderEngagement({ blogId: blog.id, authorId: blog.author.id, userId: viewer?.id }),
+  ]);
 
   return (
     <BlogReaderView
@@ -59,7 +63,8 @@ export default async function BlogPage({ params, searchParams }: { params: Param
       activeSlug={blog.chapters[0].slug}
       sections={sections}
       isAuthed={!!viewer}
-      canFollow={viewer?.id !== blog.author.id}
+      engagement={engagement}
+      canEngage={!viewer || viewer.role === "reader"}
       singleHref={`/blog/${slug}/${blog.chapters[0].slug}`}
       wholeHref={`/blog/${slug}?mode=whole`}
       viewer={viewer ? { id: viewer.id, role: viewer.role, commentingBlocked: viewer.commentingBlocked } : null}

@@ -6,6 +6,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
+import { AvatarChanger } from "@/components/profile/avatar-changer";
 import { getProfileBySlug } from "@/lib/queries/profile";
 import { getPortfolioForAuthor } from "@/lib/queries/author";
 import { getCurrentUser } from "@/lib/auth";
@@ -98,6 +100,8 @@ export default async function ProfilePage({ params }: { params: Params }) {
   const { user } = profile;
   const viewer = await getCurrentUser();
   const isOwner = profile.kind === "author" && viewer?.id === profile.user.id;
+  // Владелец профиля любой роли (и автор, и ревьюер) — для смены аватарки (ui-feedback-5 П2).
+  const isOwnProfile = viewer?.id === profile.user.id;
   // Владелец видит своё портфолио даже скрытым (профиль-запрос отдаёт только видимое).
   const ownerPortfolio = isOwner ? await getPortfolioForAuthor(profile.user.id) : null;
   const roleLabel = profile.kind === "author" ? "Автор" : "Ревьюер";
@@ -122,13 +126,21 @@ export default async function ProfilePage({ params }: { params: Params }) {
 
       <header className="relative mb-8 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-5 sm:p-7">
         <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:items-start sm:gap-6 sm:text-left">
-          <div
-            className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--bg-elevated)] sm:h-24 sm:w-24"
-            aria-hidden="true"
-          >
-            <span className="font-display text-[30px] font-semibold uppercase text-[var(--muted-foreground)] sm:text-[34px]">
-              {initial}
-            </span>
+          <div className="flex shrink-0 flex-col items-center gap-2">
+            <div
+              className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border border-[var(--border)] bg-[var(--bg-elevated)] sm:h-24 sm:w-24"
+              aria-hidden="true"
+            >
+              {user.avatarUrl ? (
+                <Image src={user.avatarUrl} alt="" width={96} height={96} unoptimized className="h-full w-full object-cover" />
+              ) : (
+                <span className="font-display text-[30px] font-semibold uppercase text-[var(--muted-foreground)] sm:text-[34px]">
+                  {initial}
+                </span>
+              )}
+            </div>
+            {/* ui-feedback-5 П2: смена аватарки на своей странице (автор и ревьюер) */}
+            {isOwnProfile && <AvatarChanger variant="button" />}
           </div>
           <div className="w-full min-w-0">
             <div className="mb-1 flex flex-wrap items-center justify-center gap-2.5 sm:justify-start sm:pr-44">

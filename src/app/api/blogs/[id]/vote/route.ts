@@ -1,27 +1,28 @@
-// Голос за главу (±1), race-safe toggle. Порядок: CSRF → auth → rate-limit → валидация → ownership → транзакция.
-// Автор не голосует за свою главу. Счёт — SUM в той же транзакции (идемпотентный ответ).
+// Голос за БЛОГ (±1), race-safe toggle (ui-feedback-5: голоса блоговые, как в прототипе).
+// Порядок: CSRF → auth (ТОЛЬКО reader — модель ролей) → rate-limit → валидация → цель → транзакция.
+// Счёт — SUM в той же транзакции (идемпотентный ответ).
 
 import { NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { blogs, chapterVotes, chapters } from "@/lib/db/schema";
+import { blogVotes, blogs } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { hitActionRate } from "@/lib/rate-limit";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-async function readState(userId: string, chapterId: string) {
+async function readState(userId: string, blogId: string) {
   const [voteRow, scoreRow] = await Promise.all([
     db
-      .select({ value: chapterVotes.value })
-      .from(chapterVotes)
-      .where(and(eq(chapterVotes.userId, userId), eq(chapterVotes.chapterId, chapterId)))
+      .select({ value: blogVotes.value })
+      .from(blogVotes)
+      .where(and(eq(blogVotes.userId, userId), eq(blogVotes.blogId, blogId)))
       .limit(1),
     db
-      .select({ score: sql<number>`coalesce(sum(${chapterVotes.value}), 0)` })
-      .from(chapterVotes)
-      .where(eq(chapterVotes.chapterId, chapterId)),
+      .select({ score: sql<number>`coalesce(sum(${blogVotes.value}), 0)` })
+      .from(blogVotes)
+      .where(eq(blogVotes.blogId, blogId)),
   ]);
   const myVote = voteRow[0]?.value === 1 ? 1 : voteRow[0]?.value === -1 ? -1 : 0;
   return { myVote, score: Number(scoreRow[0]?.score ?? 0) };
@@ -31,7 +32,8 @@ export async function POST(req: Request, ctx: Ctx): Promise<NextResponse> {
   const csrf = assertSameOrigin(req);
   if (csrf) return csrf;
 
-  const session = await requireUser();
+  // Голосует только читатель (ui-feedback-5, решение владельца: engagement — прерогатива reader).
+  const session = await requireUser("reader");
   if (session instanceof NextResponse) return session;
   const userId = session.userId;
   if (!userId) return NextResponse.json({ error: "Требуется вход." }, { status: 401 });
@@ -44,7 +46,7 @@ export async function POST(req: Request, ctx: Ctx): Promise<NextResponse> {
     );
   }
 
-  const { id: chapterId } = await ctx.params;
+  const { id: blogId } = await ctx.params;
 
   let value: 1 | -1;
   try {
@@ -56,57 +58,49 @@ export async function POST(req: Request, ctx: Ctx): Promise<NextResponse> {
     return NextResponse.json({ error: "Некорректное тело запроса." }, { status: 400 });
   }
 
-  const chapterRow = (
-    await db
-      .select({ id: chapters.id, authorId: blogs.authorId })
-      .from(chapters)
-      .innerJoin(blogs, eq(chapters.blogId, blogs.id))
-      .where(eq(chapters.id, chapterId))
-      .limit(1)
+  const blogRow = (
+    await db.select({ id: blogs.id }).from(blogs).where(eq(blogs.id, blogId)).limit(1)
   )[0];
-  if (!chapterRow) return NextResponse.json({ error: "Глава не найдена." }, { status: 404 });
-  if (chapterRow.authorId === userId) {
-    return NextResponse.json({ error: "Нельзя голосовать за свою главу." }, { status: 403 });
-  }
+  if (!blogRow) return NextResponse.json({ error: "Блог не найден." }, { status: 404 });
 
   try {
     const result = await db.transaction(async (tx) => {
       const existing = (
         await tx
-          .select({ id: chapterVotes.id, value: chapterVotes.value })
-          .from(chapterVotes)
-          .where(and(eq(chapterVotes.userId, userId), eq(chapterVotes.chapterId, chapterId)))
+          .select({ id: blogVotes.id, value: blogVotes.value })
+          .from(blogVotes)
+          .where(and(eq(blogVotes.userId, userId), eq(blogVotes.blogId, blogId)))
           .limit(1)
       )[0];
 
       let myVote: 1 | -1 | 0;
       if (!existing) {
-        await tx.insert(chapterVotes).values({
+        await tx.insert(blogVotes).values({
           userId,
-          chapterId,
+          blogId,
           value,
           createdAt: Math.floor(Date.now() / 1000),
         });
         myVote = value;
       } else if (existing.value === value) {
-        await tx.delete(chapterVotes).where(eq(chapterVotes.id, existing.id));
+        await tx.delete(blogVotes).where(eq(blogVotes.id, existing.id));
         myVote = 0;
       } else {
-        await tx.update(chapterVotes).set({ value }).where(eq(chapterVotes.id, existing.id));
+        await tx.update(blogVotes).set({ value }).where(eq(blogVotes.id, existing.id));
         myVote = value;
       }
 
       const scoreRow = (
         await tx
-          .select({ score: sql<number>`coalesce(sum(${chapterVotes.value}), 0)` })
-          .from(chapterVotes)
-          .where(eq(chapterVotes.chapterId, chapterId))
+          .select({ score: sql<number>`coalesce(sum(${blogVotes.value}), 0)` })
+          .from(blogVotes)
+          .where(eq(blogVotes.blogId, blogId))
       )[0];
       return { myVote, score: Number(scoreRow?.score ?? 0) };
     });
     return NextResponse.json({ ok: true, ...result });
   } catch {
-    // Гонка (uniqueIndex user+chapter) — отдаём актуальное состояние идемпотентно.
-    return NextResponse.json({ ok: true, ...(await readState(userId, chapterId)) });
+    // Гонка (uniqueIndex user+blog) — отдаём актуальное состояние идемпотентно.
+    return NextResponse.json({ ok: true, ...(await readState(userId, blogId)) });
   }
 }

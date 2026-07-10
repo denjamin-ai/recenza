@@ -68,7 +68,8 @@ test.describe("UPL — загрузка изображений", () => {
     const ctx = await api("author");
 
     // kind валидируется ДО гейта/лимита — rate-limit не тратится.
-    const badKind = await ctx.post("/api/uploads", pngUpload("avatar"));
+    // (avatar с ui-feedback-5 — ВАЛИДНЫЙ kind, поэтому невалидный пример — произвольная строка.)
+    const badKind = await ctx.post("/api/uploads", pngUpload("evil"));
     expect(badKind.status()).toBe(400);
 
     // Дальше каждый запрос проходит гейт → тратит action-limit 1/сек — выдерживаем паузы.
@@ -147,5 +148,39 @@ test.describe("UPL — загрузка изображений", () => {
       .setInputFiles({ name: "e2e-ui.png", mimeType: "image/png", buffer: PNG_BYTES });
 
     await expect(pathInput).toHaveValue(/^\/uploads\/articles\/[0-9a-z]+\.png$/);
+  });
+
+  test("UPL-05 @regression: аватарка (ui-feedback-5) — kind=avatar доступен всем ролям, PATCH /api/profile/avatar валидирует путь", async ({
+    api,
+  }) => {
+    // reseed в flows-спеках восстановит seed-аватарки; загрузка additive (файлы gitignored).
+    const reader = await api("reader");
+    await throttleMutation("upload:reader");
+    const up = await reader.post("/api/uploads", pngUpload("avatar"));
+    expect(up.status()).toBe(201);
+    const { path } = (await up.json()) as { path: string };
+    expect(path).toMatch(/^\/uploads\/avatars\/[0-9a-z]+\.png$/);
+
+    // Привязка к своему профилю: валидный путь → 200; путь вне avatars → 400; гость → 401.
+    await throttleMutation("avatar:reader");
+    const ok = await reader.patch("/api/profile/avatar", { data: { avatarUrl: path } });
+    expect(ok.status()).toBe(200);
+
+    await throttleMutation("avatar:reader");
+    const bad = await reader.patch("/api/profile/avatar", { data: { avatarUrl: "/uploads/articles/x.png" } });
+    expect(bad.status()).toBe(400);
+
+    const guest = await api();
+    expect((await guest.patch("/api/profile/avatar", { data: { avatarUrl: path } })).status()).toBe(401);
+
+    // Ревьюер тоже может загрузить аватарку (kind=avatar — любой пользователь).
+    const reviewer = await api("reviewer");
+    await throttleMutation("upload:reviewer");
+    expect((await reviewer.post("/api/uploads", pngUpload("avatar"))).status()).toBe(201);
+
+    // Самовосстановление: возвращаем reader'у seed-аватарку.
+    await throttleMutation("avatar:reader");
+    const restore = await reader.patch("/api/profile/avatar", { data: { avatarUrl: "/uploads/avatars/reader.png" } });
+    expect(restore.status()).toBe(200);
   });
 });

@@ -386,4 +386,22 @@ test.describe("Роль «Ревьюер»: кабинет, ReviewPage, проф
     const location = res.headers()["location"] ?? "";
     expect(new URL(location, BASE_URL).pathname).toBe("/");
   });
+
+  // ── TC-REVIEWER-19 — engagement только у читателя (ui-feedback-5, П4) ────────
+
+  test("TC-REVIEWER-19 @critical: голос/закладка/подписка ревьюеру → 403; бара «Реакции» в ридере нет", async ({
+    asReviewer,
+    api,
+  }) => {
+    const ctx = await api("reviewer");
+    await throttleMutation(USERS.reviewer.handle);
+    expect((await ctx.post(`/api/blogs/${BLOG.id}/vote`, { data: { value: 1 } })).status()).toBe(403);
+    expect((await ctx.post("/api/bookmarks", { data: { blogId: BLOG.id } })).status()).toBe(403);
+    expect((await ctx.post("/api/follows", { data: { authorId: USERS.author.id } })).status()).toBe(403);
+
+    const { page } = asReviewer;
+    await page.goto(`/blog/${BLOG.slug}/${CHAPTERS.published.slug}`);
+    await expect(page.getByRole("heading", { level: 1, name: CHAPTERS.published.title })).toBeVisible();
+    await expect(page.locator('[aria-label="Реакции"]')).toHaveCount(0);
+  });
 });

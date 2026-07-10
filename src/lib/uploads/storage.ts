@@ -8,13 +8,14 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ulid } from "ulid";
 
-export type UploadKind = "article" | "cover" | "donation" | "banner";
+export type UploadKind = "article" | "cover" | "donation" | "banner" | "avatar";
 
 export const UPLOAD_DIRS: Record<UploadKind, string> = {
   article: "articles",
   cover: "covers",
   donation: "donations",
   banner: "banners",
+  avatar: "avatars", // ui-feedback-5: аватарки пользователей (любая роль, только для себя)
 };
 
 export const ALLOWED_MIME: Record<string, string> = {

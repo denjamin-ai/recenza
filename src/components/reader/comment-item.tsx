@@ -99,7 +99,12 @@ export function CommentItem({
         </p>
       )}
       <div className="flex items-start gap-2.5">
-        <Avatar name={comment.author?.displayName} handle={comment.author?.handle ?? "?"} size={28} />
+        <Avatar
+          name={comment.author?.displayName}
+          handle={comment.author?.handle ?? "?"}
+          size={28}
+          src={comment.author?.avatarUrl}
+        />
         <div className="min-w-0 flex-1">
           {/* шапка */}
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[length:var(--type-small)]">

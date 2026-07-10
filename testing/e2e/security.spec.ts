@@ -5,7 +5,7 @@
 // Дисциплина файла — read-only / additive / изолировано:
 //   - CSRF/энумерация/логин-лимит: мутации отклоняются (403/401/429) → состояние не меняется;
 //   - XSS: создаётся песочница-блог + глава (additive, новые сущности, не трогаем seed);
-//   - TC-READER-21: max_review получает один голос (additive; счётчики точным числом не ассертим);
+//   - TC-READER-21: troll получает один голос (additive; счётчики точным числом не ассертим);
 //   - все rate-limit тесты изолированы уникальным X-Forwarded-For / отдельным userId.
 // Файл идёт ПОСЛЕДНИМ по алфавиту, rate-limit тесты — в самом конце файла (in-memory лимит
 // reseed НЕ сбрасывает, поэтому уникальный XFF на каждый негативный логин обязателен).
@@ -31,14 +31,14 @@ test.describe("Безопасность (SEC-*)", () => {
 
     try {
       await test.step("POST голоса БЕЗ заголовка Origin → 403 (отсутствует Origin)", async () => {
-        const res = await noOrigin.post(`/api/chapters/${CHAPTERS.published.id}/vote`, {
+        const res = await noOrigin.post(`/api/blogs/${BLOG.id}/vote`, {
           data: { value: 1 },
         });
         expect(res.status()).toBe(403);
       });
 
       await test.step("POST голоса с чужим Origin https://evil.example → 403 (межсайтовый запрос)", async () => {
-        const res = await evilOrigin.post(`/api/chapters/${CHAPTERS.published.id}/vote`, {
+        const res = await evilOrigin.post(`/api/blogs/${BLOG.id}/vote`, {
           data: { value: 1 },
         });
         expect(res.status()).toBe(403);
@@ -184,13 +184,14 @@ test.describe("Безопасность (SEC-*)", () => {
   // ── TC-READER-21 — rate-limit действий: 2-й быстрый голос → 429 ─────────────
 
   test("TC-READER-21 @critical: два POST голоса подряд без паузы → второй 429 «Слишком часто. Подождите секунду.» + Retry-After", async () => {
-    // max_review без seed-голосов: первый POST точно 200 (toggle с нуля), второй в пределах секунды — 429.
-    // Голос max — additive; точный счётчик не ассертим (uniqueIndex защищает от дублей).
-    const ctx = await apiLoginUser(USERS.max.handle);
+    // ui-feedback-5: голоса блоговые и только reader → troll (reader без seed-голоса):
+    // первый POST точно 200 (toggle с нуля), второй в пределах секунды — 429.
+    // Голос troll — additive; точный счётчик не ассертим (uniqueIndex защищает от дублей).
+    const ctx = await apiLoginUser(USERS.troll.handle);
     try {
       // Последовательно, но БЕЗ паузы (localhost-round-trip ≪ 1с) → детерминированно 200, затем 429.
-      const r1 = await ctx.post(`/api/chapters/${CHAPTERS.published.id}/vote`, { data: { value: 1 } });
-      const r2 = await ctx.post(`/api/chapters/${CHAPTERS.published.id}/vote`, { data: { value: 1 } });
+      const r1 = await ctx.post(`/api/blogs/${BLOG.id}/vote`, { data: { value: 1 } });
+      const r2 = await ctx.post(`/api/blogs/${BLOG.id}/vote`, { data: { value: 1 } });
 
       expect(r1.status()).toBe(200);
       expect(r2.status()).toBe(429);

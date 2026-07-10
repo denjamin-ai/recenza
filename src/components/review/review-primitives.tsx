@@ -2,18 +2,34 @@
 // тон по тредам, Toast (aria-live). Цвета — только токены.
 "use client";
 
+import Image from "next/image";
 import type { ReviewThread } from "@/lib/queries/review";
 
-export function Avatar({ name, handle, size = 20 }: { name?: string; handle: string; size?: number }) {
+export function Avatar({
+  name,
+  handle,
+  size = 20,
+  src,
+}: {
+  name?: string;
+  handle: string;
+  size?: number;
+  /** ui-feedback-5 П2: загруженная аватарка (users.avatarUrl); нет — инициал. */
+  src?: string | null;
+}) {
   const letter = (name || handle || "?").slice(0, 1).toUpperCase();
   return (
     <span
       title={`@${handle}`}
       aria-hidden="true"
-      className="inline-flex shrink-0 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--muted)] font-semibold text-[var(--muted-foreground)]"
+      className="inline-flex shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-pill)] bg-[var(--muted)] font-semibold text-[var(--muted-foreground)]"
       style={{ width: size, height: size, fontSize: Math.round(size * 0.45) }}
     >
-      {letter}
+      {src ? (
+        <Image src={src} alt="" width={size} height={size} unoptimized className="h-full w-full object-cover" />
+      ) : (
+        letter
+      )}
     </span>
   );
 }

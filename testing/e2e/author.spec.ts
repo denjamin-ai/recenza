@@ -561,6 +561,38 @@ test.describe("Автор (author)", () => {
     });
   });
 
+  // ── TC-AUTHOR-28 — engagement только у читателя (ui-feedback-5, П4) ──────────
+
+  test("TC-AUTHOR-28 @critical: голос/закладка/подписка автору → 403; бара «Реакции» и пункта «Закладки» нет", async ({
+    asAuthor,
+    api,
+  }) => {
+    const ctx = await api("author");
+
+    await test.step("API: vote/bookmarks/follows под автором → 403 (reader-only)", async () => {
+      await throttleMutation(USERS.author.handle);
+      expect((await ctx.post(`/api/blogs/${BLOG.id}/vote`, { data: { value: 1 } })).status()).toBe(403);
+      expect((await ctx.post("/api/bookmarks", { data: { blogId: BLOG.id } })).status()).toBe(403);
+      expect((await ctx.post("/api/follows", { data: { authorId: USERS.author.id } })).status()).toBe(403);
+      // Страница закладок автору недоступна — 307 на главную.
+      const page = await ctx.get("/bookmarks", { maxRedirects: 0 });
+      expect(page.status()).toBe(307);
+    });
+
+    await test.step("UI: в ридере своего блога бара «Реакции» нет; в меню нет «Закладок», есть «Сменить аватар»", async () => {
+      const { page } = asAuthor;
+      await page.goto(`/blog/${BLOG.slug}/${CHAPTERS.published.slug}`);
+      await expect(page.locator('[aria-label="Реакции"]')).toHaveCount(0);
+
+      const reader = new ReaderPage(page, USERS.author.handle);
+      await reader.userMenuButton.click();
+      const menu = page.getByRole("menu", { name: "Меню пользователя" });
+      await expect(menu).toBeVisible();
+      await expect(menu.getByRole("menuitem", { name: "Закладки" })).toHaveCount(0);
+      await expect(menu.getByRole("menuitem", { name: "Сменить аватар" })).toBeVisible();
+    });
+  });
+
   // ── TC-AUTHOR-26 — автосейв структурных правок + «Просмотр» (ui-feedback-3, П10) ─
 
   test("TC-AUTHOR-26 @critical: «+ Блок» автосейвится без «Сохранить»; «Просмотр» сохраняет и открывает превью", async ({

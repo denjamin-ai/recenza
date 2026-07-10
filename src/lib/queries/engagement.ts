@@ -1,9 +1,11 @@
-// Чтение engagement-состояния для ридера: счёт голосов главы (агрегат), мой голос, закладка, подписка.
+// Чтение engagement-состояния для ридера: счёт голосов БЛОГА (агрегат), мой голос, закладка, подписка.
+// ui-feedback-5: голоса переехали с глав на блоги (blog_votes; модель прототипа). Состояние считается
+// ОДИН раз на страницу (бар один: в whole-режиме наверху, в главе — после контента).
 // Счёт голосов выводится на чтении через SUM (без денормализованного счётчика/миграции).
 
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { bookmarks, chapterVotes, follows } from "@/lib/db/schema";
+import { blogVotes, bookmarks, follows } from "@/lib/db/schema";
 
 export interface ReaderEngagement {
   score: number;
@@ -13,18 +15,17 @@ export interface ReaderEngagement {
 }
 
 export async function getReaderEngagement(args: {
-  chapterId: string;
   blogId: string;
   authorId: string;
   userId?: string;
 }): Promise<ReaderEngagement> {
-  const { chapterId, blogId, authorId, userId } = args;
+  const { blogId, authorId, userId } = args;
 
   const scoreRow = (
     await db
-      .select({ score: sql<number>`coalesce(sum(${chapterVotes.value}), 0)` })
-      .from(chapterVotes)
-      .where(eq(chapterVotes.chapterId, chapterId))
+      .select({ score: sql<number>`coalesce(sum(${blogVotes.value}), 0)` })
+      .from(blogVotes)
+      .where(eq(blogVotes.blogId, blogId))
   )[0];
   const score = Number(scoreRow?.score ?? 0);
 
@@ -34,9 +35,9 @@ export async function getReaderEngagement(args: {
 
   const [voteRow, bookmarkRow, followRow] = await Promise.all([
     db
-      .select({ value: chapterVotes.value })
-      .from(chapterVotes)
-      .where(and(eq(chapterVotes.userId, userId), eq(chapterVotes.chapterId, chapterId)))
+      .select({ value: blogVotes.value })
+      .from(blogVotes)
+      .where(and(eq(blogVotes.userId, userId), eq(blogVotes.blogId, blogId)))
       .limit(1),
     db
       .select({ id: bookmarks.id })

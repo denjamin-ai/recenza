@@ -23,6 +23,7 @@ import {
   chapterRevisions,
   chapterReviewers,
   chapters,
+  blogVotes,
   chapterVotes,
   commentVotes,
   donationMethods,
@@ -150,7 +151,8 @@ const portfolioBlocks: Block[] = [
 export async function seedAll(db: Db): Promise<void> {
   // ── 1. ОЧИСТКА (порядок child→parent; FK включены в db/index.ts) ──
   await db.delete(commentVotes);
-  await db.delete(chapterVotes);
+  await db.delete(chapterVotes); // deprecated (ui-feedback-5) — чистим на случай легаси-строк
+  await db.delete(blogVotes);
   await db.delete(bookmarks);
   await db.delete(follows);
   await db.delete(threadReplies);
@@ -599,10 +601,11 @@ export async function seedAll(db: Db): Promise<void> {
     { id: "cv_3", userId: "usr_troll", commentId: "cmt_root", value: -1, createdAt: ago(1 * DAY) },
   ]);
 
-  // ── 14. ГОЛОСА ЗА ГЛАВЫ (ненулевые; uniqueIndex user+chapter) ──
-  await db.insert(chapterVotes).values([
-    { id: "chv_1", userId: "usr_reader", chapterId: "chp_published", value: 1, createdAt: ago(2 * DAY) },
-    { id: "chv_2", userId: "usr_troll", chapterId: "chp_published", value: 1, createdAt: ago(2 * DAY) },
+  // ── 14. ГОЛОСА ЗА БЛОГ (ui-feedback-5: блоговые; ненулевые; uniqueIndex user+blog).
+  //    troll намеренно БЕЗ голоса — «чистый» reader для intent-replay (TC-GUEST-07)
+  //    и rate-limit-кейса (голос reader'а — toggle, снял бы seed-состояние). ──
+  await db.insert(blogVotes).values([
+    { id: "bv_1", userId: "usr_reader", blogId: "blog_async", value: 1, createdAt: ago(2 * DAY) },
   ]);
 
   // ── 15. ЗАКЛАДКИ (ненулевые; uniqueIndex user+blog) ──
