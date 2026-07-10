@@ -1,7 +1,8 @@
 // Идемпотentный additive-сид служебного контента. Секции независимы, каждая — no-op при повторе:
 //   1) «О Recenza» (ui-feedback-3, П13): автор «Recenza» + приветственный блог из 5 published-глав.
 //   2) recruit-баннер карусели (ui-feedback-4, П7): тексты прототипа «Ищем ревьюеров» /
-//      «Стать ревьюером» — UPDATE только пока title равен старому сидовому (правки админа не трогаем).
+//      «Стать ревьюером» — INSERT первым слайдом, если строки нет (прод сидился не из seed-core);
+//      UPDATE только пока title равен старому сидовому (правки админа не трогаем).
 // НЕ seedAll: ничего не удаляет, существующие данные не трогает. Паттерн — scripts/migrate.mjs:
 // plain JS, prod-зависимости (drizzle-orm + @libsql/client + ulid + bcryptjs; deploy.yml докладывает
 // их в артефакт), схема TS не импортируется — минимальные inline-определения нужных таблиц
@@ -69,7 +70,12 @@ const promoBanners = sqliteTable("promo_banners", {
   eyebrow: text("eyebrow"),
   title: text("title").notNull(),
   cta: text("cta"),
+  tone: text("tone"),
   icon: text("icon"),
+  action: text("action"),
+  target: text("target"),
+  visible: integer("visible", { mode: "boolean" }).notNull(),
+  sort: integer("sort").notNull(),
 });
 
 // ── Контент: блоки канонической формы validate.ts/normalize.ts (p/h2/quote/list/callout) ──
@@ -249,28 +255,43 @@ async function seedAboutBlog() {
   console.log(`[seed-recenza] готово: блог «О Recenza» (/blog/o-recenza), глав: ${CHAPTERS.length}.`);
 }
 
-// ── Секция 2: recruit-баннер карусели → тексты прототипа (ui-feedback-4, П7).
-//    Идемпотентно и не затирает ручные правки админа: UPDATE только если title
-//    в точности равен старому сидовому; иначе (нет строки / уже изменён) — no-op. ──
+// ── Секция 2: recruit-баннер карусели с текстами прототипа (ui-feedback-4, П7).
+//    Идемпотентно и не затирает ручные правки админа:
+//    - строки pb_recruit нет (прод сидился не из seed-core) → INSERT первым слайдом (sort = min−1);
+//    - строка есть со старым сидовым title → UPDATE текстов;
+//    - строка есть и уже изменена → no-op. ──
 
-async function updateRecruitBanner() {
+async function upsertRecruitBanner() {
+  const PROTO = { eyebrow: "Ищем ревьюеров", title: "Рецензируйте статьи по своим навыкам", cta: "Стать ревьюером", icon: "pen" };
   const row = (await db.select({ id: promoBanners.id, title: promoBanners.title }).from(promoBanners).where(eq(promoBanners.id, "pb_recruit")).limit(1))[0];
   if (!row) {
-    console.log("[seed-recenza] баннер pb_recruit не найден — секция пропущена (no-op).");
+    const sorts = (await db.select({ sort: promoBanners.sort }).from(promoBanners)).map((r) => r.sort);
+    const sort = sorts.length > 0 ? Math.min(...sorts) - 1 : 0;
+    await db.insert(promoBanners).values({
+      id: "pb_recruit",
+      ...PROTO,
+      tone: "teal",
+      action: "internal",
+      target: "/board",
+      visible: true,
+      sort,
+    });
+    console.log(`[seed-recenza] баннер pb_recruit создан первым слайдом (sort=${sort}): «Ищем ревьюеров» / «Стать ревьюером».`);
+    return;
+  }
+  if (row.title === PROTO.title) {
+    console.log("[seed-recenza] баннер pb_recruit уже актуален — секция пропущена (no-op).");
     return;
   }
   if (row.title !== "Станьте ревьюером Recenza") {
     console.log("[seed-recenza] баннер pb_recruit уже изменён (вероятно, админом) — секция пропущена (no-op).");
     return;
   }
-  await db
-    .update(promoBanners)
-    .set({ eyebrow: "Ищем ревьюеров", title: "Рецензируйте статьи по своим навыкам", cta: "Стать ревьюером", icon: "pen" })
-    .where(eq(promoBanners.id, "pb_recruit"));
+  await db.update(promoBanners).set(PROTO).where(eq(promoBanners.id, "pb_recruit"));
   console.log("[seed-recenza] баннер pb_recruit обновлён до текстов прототипа («Ищем ревьюеров» / «Стать ревьюером»).");
 }
 
 await seedAboutBlog();
-await updateRecruitBanner();
+await upsertRecruitBanner();
 
 process.exit(0); // libsql держит соединение (гоча seed-скриптов)
