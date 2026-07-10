@@ -22,7 +22,7 @@ export class AdminPage {
   }
 
   async gotoSection(
-    name: "Сводка" | "Жалобы" | "Ревью глав" | "Заявки ревьюеров" | "Пользователи" | "Баннеры" | "Пожертвования",
+    name: "Сводка" | "Жалобы" | "Ревью глав" | "Заявки ревьюеров" | "Пользователи" | "Доска ревьюеров" | "Баннеры" | "Пожертвования",
   ): Promise<void> {
     await this.nav.getByRole("link", { name }).click();
   }
@@ -111,10 +111,6 @@ export class AdminPage {
 
   acceptApplication(row: Locator): Locator {
     return row.getByRole("button", { name: "Принять (выдать роль)" });
-  }
-
-  addBoardCall(): Locator {
-    return this.page.getByRole("button", { name: "+ Добавить направление" });
   }
 
   // --- Баннеры ---

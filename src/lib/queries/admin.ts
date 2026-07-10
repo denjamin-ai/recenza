@@ -450,8 +450,15 @@ export interface AdminApplicationRow {
 
 export interface AdminRecruitData {
   requests: AdminRecruitRow[];
-  calls: AdminBoardCall[];
   applications: AdminApplicationRow[];
+}
+
+/** Направления доски «Ищем ревьюеров» — экран «Доска ревьюеров» (ui-feedback-6 П5). */
+export async function getAdminBoardCalls(): Promise<AdminBoardCall[]> {
+  const callRows = await db.select().from(boardCalls);
+  return callRows
+    .map((c) => ({ id: c.id, area: c.area, skills: parseJson<string[]>(c.skills, []), waiting: c.waiting, note: c.note, hot: c.hot }))
+    .sort((a, b) => Number(b.hot) - Number(a.hot) || a.area.localeCompare(b.area, "ru"));
 }
 
 export async function getAdminRecruit(): Promise<AdminRecruitData> {
@@ -491,11 +498,6 @@ export async function getAdminRecruit(): Promise<AdminRecruitData> {
     resolvedAt: r.resolvedAt,
   }));
 
-  const callRows = await db.select().from(boardCalls);
-  const calls: AdminBoardCall[] = callRows
-    .map((c) => ({ id: c.id, area: c.area, skills: parseJson<string[]>(c.skills, []), waiting: c.waiting, note: c.note, hot: c.hot }))
-    .sort((a, b) => Number(b.hot) - Number(a.hot) || a.area.localeCompare(b.area, "ru"));
-
   const appRows = await db
     .select({
       id: reviewerApplications.id,
@@ -526,7 +528,7 @@ export async function getAdminRecruit(): Promise<AdminRecruitData> {
     createdAt: a.createdAt,
   }));
 
-  return { requests, calls, applications };
+  return { requests, applications };
 }
 
 // ───────────────────────────── Снятые ревьюеры (история) ─────────────────────────────

@@ -1,11 +1,11 @@
 // Публичный профиль /u/[slug]. Автор → «Об авторе» + блоги; ревьюер → «что отрецензировал».
 // Читатель/админ/заблокированный → 404 (нет публичного профиля).
 // Шапка — по прототипу ProfileScreen (feed.jsx): back вверху, карточка с аватаром, пилюлей роли,
-// «на платформе с …», соц-иконками и статистикой; «Изменить профиль» для владельца.
+// «на платформе с …», соц-иконками и статистикой. «Изменить профиль» убран (ui-feedback-6 П3) —
+// редактирование «Об авторе» живёт кнопкой внутри одноимённого таба (AuthorProfile).
 
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import Image from "next/image";
 import { AvatarChanger } from "@/components/profile/avatar-changer";
 import { getProfileBySlug } from "@/lib/queries/profile";
@@ -14,7 +14,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { AuthorProfile } from "@/components/profile/author-profile";
 import { ReviewerProfile } from "@/components/profile/reviewer-profile";
 import { BackLink } from "@/components/back-link";
-import { IconEdit, IconGitHub, IconGlobe, IconTelegram } from "@/components/icons";
+import { IconGitHub, IconGlobe, IconTelegram } from "@/components/icons";
 import { formatCompact, formatMonthYear } from "@/lib/format";
 import { absoluteUrl, truncate } from "@/lib/seo";
 import type { LinkItem } from "@/types";
@@ -124,7 +124,7 @@ export default async function ProfilePage({ params }: { params: Params }) {
         <BackLink href="/">На главную</BackLink>
       </div>
 
-      <header className="relative mb-8 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-5 sm:p-7">
+      <header className="mb-8 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-5 sm:p-7">
         <div className="flex flex-col items-center gap-4 text-center sm:flex-row sm:items-start sm:gap-6 sm:text-left">
           <div className="flex shrink-0 flex-col items-center gap-2">
             <div
@@ -140,10 +140,10 @@ export default async function ProfilePage({ params }: { params: Params }) {
               )}
             </div>
             {/* ui-feedback-5 П2: смена аватарки на своей странице (автор и ревьюер) */}
-            {isOwnProfile && <AvatarChanger variant="button" />}
+            {isOwnProfile && <AvatarChanger />}
           </div>
           <div className="w-full min-w-0">
-            <div className="mb-1 flex flex-wrap items-center justify-center gap-2.5 sm:justify-start sm:pr-44">
+            <div className="mb-1 flex flex-wrap items-center justify-center gap-2.5 sm:justify-start">
               <h1 className="font-display text-[26px] font-extrabold leading-[1.1] tracking-tight sm:text-4xl">
                 {user.displayName}
               </h1>
@@ -167,15 +167,6 @@ export default async function ProfilePage({ params }: { params: Params }) {
             <StatCells stats={stats} />
           </div>
         </div>
-        {isOwner && (
-          <Link
-            href="/author/portfolio"
-            className="mt-5 flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-[length:var(--type-small)] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--accent)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] sm:absolute sm:right-7 sm:top-7 sm:mt-0 sm:w-auto sm:min-h-9 sm:bg-transparent sm:py-1"
-          >
-            <IconEdit className="h-3.5 w-3.5" />
-            Изменить профиль
-          </Link>
-        )}
       </header>
 
       <div>

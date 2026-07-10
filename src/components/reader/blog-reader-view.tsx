@@ -4,8 +4,9 @@
 // ui-feedback-4 П8 (по прототипу WholeBlogReader): в whole-режиме кредит ревьюеров и комментарии
 // НЕ рендерятся после каждой главы — после всех глав идёт ОДНА агрегированная карточка
 // «Блог ревьюили» и ОДИН merged-блок комментариев.
-// ui-feedback-5 П1/П4: engagement — БЛОГОВЫЙ и рендерится один раз (whole — наверху под шапкой,
-// single — после контента главы); показывается только гостю (login-intent) и читателю.
+// ui-feedback-5 П1/П4 + ui-feedback-6 П1: engagement — БЛОГОВЫЙ и рендерится один раз НАВЕРХУ
+// (whole — в шапке блога, single — после заголовка/навыков главы, до контента);
+// показывается только гостю (login-intent) и читателю.
 
 import Link from "next/link";
 import { BlockRenderer } from "@/components/blocks/block-renderer";
@@ -34,7 +35,7 @@ function ChapterBody({
   blog: ReadableBlog;
   section: ReaderSection;
   mode: "single" | "whole";
-  /** single-режим: бар реакций после контента главы (null — зритель без права engagement). */
+  /** single-режим: бар реакций наверху, до контента (null — зритель без права engagement). */
   engagementBar: React.ReactNode;
   viewer: CommentViewer | null;
 }) {
@@ -60,14 +61,16 @@ function ChapterBody({
         </div>
       )}
 
+      {/* ui-feedback-6 П1: бар реакций (блоговый) — наверху главы, до контента */}
+      {mode === "single" && engagementBar}
+
       <div className="mt-6">
         <BlockRenderer blocks={chapter.blocks} prefix={prefix} />
       </div>
 
-      {/* single: бар реакций (блоговый) + кредит + комментарии у главы; whole: всё после всех глав */}
+      {/* single: кредит + комментарии у главы; whole: всё после всех глав */}
       {mode === "single" && (
         <>
-          {engagementBar}
           <ChapterReviewerCredit credit={credit} />
           <CommentsSlot
             blogSlug={blog.slug}
@@ -117,7 +120,7 @@ export function BlogReaderView({
       blogId={blog.id}
       authorId={blog.author.id}
       isAuthed={isAuthed}
-      className={mode === "whole" ? "mt-5" : "mt-8"}
+      className="mt-5"
       initial={{
         score: engagement.score,
         myVote: engagement.myVote,
@@ -150,7 +153,8 @@ export function BlogReaderView({
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <nav aria-label="Хлебные крошки" className="flex flex-wrap items-center gap-1.5 text-[length:var(--type-small)] text-[var(--muted-foreground)]">
             <Link href="/" className="hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded-[var(--radius-sm)]">
-              Лента
+              {/* ui-feedback-6 П6: для автора «/» — каталог «Все мои блоги», крошка совпадает с ним */}
+              {viewer?.role === "author" ? "Все мои блоги" : "Лента"}
             </Link>
             <span aria-hidden="true">/</span>
             <Link href={`/u/${blog.author.slug}`} className="hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded-[var(--radius-sm)]">

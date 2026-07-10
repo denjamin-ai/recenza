@@ -21,7 +21,7 @@ export default async function AdminDashboardPage() {
         <KpiTile label="Заявки ревьюеров" value={counts.pendingApplications} href="/admin/recruit" tone={counts.pendingApplications > 0 ? "warning" : "neutral"} />
         <KpiTile label="Заблокированные" value={counts.blockedUsers} href="/admin/users" tone={counts.blockedUsers > 0 ? "danger" : "neutral"} />
         <KpiTile label="Пользователи" value={counts.users} href="/admin/users" />
-        <KpiTile label="Направления на доске" value={counts.boardCalls} href="/admin/recruit" />
+        <KpiTile label="Направления на доске" value={counts.boardCalls} href="/admin/board" />
       </div>
 
       <Card>

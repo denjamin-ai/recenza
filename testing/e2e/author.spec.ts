@@ -513,9 +513,9 @@ test.describe("Автор (author)", () => {
     const reader = new ReaderPage(page, USERS.author.handle);
 
     await test.step("главная-каталог автора: только свои блоги, чужого «Скрытого блога» нет", async () => {
-      // ui-feedback-4 П2: главная автора = каталог «Все блоги» с restrictAuthorId (табов больше нет).
+      // ui-feedback-4 П2 + ui-feedback-6 П6: главная автора = каталог «Все мои блоги» (restrictAuthorId).
       await reader.gotoFeed();
-      await expect(reader.homeHeading("Все блоги")).toBeVisible();
+      await expect(reader.homeHeading("Все мои блоги")).toBeVisible();
       await expect(page.getByText(BLOG.title).first()).toBeVisible();
       await expect(page.getByText(HIDDEN_BLOG.title)).toHaveCount(0);
     });
@@ -579,17 +579,21 @@ test.describe("Автор (author)", () => {
       expect(page.status()).toBe(307);
     });
 
-    await test.step("UI: в ридере своего блога бара «Реакции» нет; в меню нет «Закладок», есть «Сменить аватар»", async () => {
+    await test.step("UI: бара «Реакции» нет; в шапке нет «Ленты»; меню — без «Закладок»/«Сменить аватар», с «Все мои блоги»", async () => {
       const { page } = asAuthor;
       await page.goto(`/blog/${BLOG.slug}/${CHAPTERS.published.slug}`);
       await expect(page.locator('[aria-label="Реакции"]')).toHaveCount(0);
+      // ui-feedback-6 П6: у автора «Ленты» в шапке нет (навигация — «Все мои блоги» в меню аватара).
+      await expect(page.getByRole("banner").getByRole("link", { name: "Лента" })).toHaveCount(0);
 
       const reader = new ReaderPage(page, USERS.author.handle);
       await reader.userMenuButton.click();
       const menu = page.getByRole("menu", { name: "Меню пользователя" });
       await expect(menu).toBeVisible();
       await expect(menu.getByRole("menuitem", { name: "Закладки" })).toHaveCount(0);
-      await expect(menu.getByRole("menuitem", { name: "Сменить аватар" })).toBeVisible();
+      // ui-feedback-6 П2: «Сменить аватар» из меню убран (кнопка живёт на своей /u/-странице).
+      await expect(menu.getByRole("menuitem", { name: "Сменить аватар" })).toHaveCount(0);
+      await expect(menu.getByRole("menuitem", { name: "Все мои блоги" })).toBeVisible();
     });
   });
 

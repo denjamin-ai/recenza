@@ -2,21 +2,13 @@
 
 // Смена аватарки своего профиля (ui-feedback-5 П2): скрытый file-input → POST /api/uploads
 // (kind=avatar) → PATCH /api/profile/avatar → router.refresh() (в startTransition — CLAUDE gotcha).
-// Два варианта отображения: menuitem (меню аватара в шапке — доступно ВСЕМ ролям, в т.ч. читателю
-// без публичного профиля) и button (кнопка на своей странице /u/…).
+// Живёт кнопкой на своей странице /u/… (пункт меню шапки убран по ui-feedback-6 П2;
+// у читателя /u/-страницы нет — сменить аватар ему негде, backlog «настройки профиля»).
 
 import { startTransition, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function AvatarChanger({
-  variant,
-  className = "",
-  onDone,
-}: {
-  variant: "menuitem" | "button";
-  className?: string;
-  onDone?: () => void;
-}) {
+export function AvatarChanger({ className = "" }: { className?: string }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -49,7 +41,6 @@ export function AvatarChanger({
         return;
       }
       startTransition(() => router.refresh());
-      onDone?.();
     } catch {
       setError("Сеть недоступна. Повторите.");
     } finally {
@@ -58,9 +49,7 @@ export function AvatarChanger({
   }
 
   const cls =
-    variant === "menuitem"
-      ? "block w-full rounded-[var(--radius-md)] px-3 py-2 text-left text-[length:var(--type-small)] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-50"
-      : "inline-flex min-h-9 items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-1.5 text-[length:var(--type-small)] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--accent)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-50";
+    "inline-flex min-h-9 items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-1.5 text-[length:var(--type-small)] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--accent)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-50";
 
   return (
     <span className={className}>
@@ -75,7 +64,6 @@ export function AvatarChanger({
       />
       <button
         type="button"
-        role={variant === "menuitem" ? "menuitem" : undefined}
         disabled={busy}
         onClick={() => inputRef.current?.click()}
         className={cls}

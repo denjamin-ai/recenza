@@ -1,12 +1,12 @@
 "use client";
 
-// Меню аватара: профиль (автор/ревьюер) + закладки (только reader, ui-feedback-5 П4) +
-// смена аватарки (все роли, ui-feedback-5 П2) + вход в ролевой кабинет + выход.
+// Меню аватара: профиль (автор/ревьюер) + «Все мои блоги» (автор, ui-feedback-6 П6) +
+// закладки (только reader, ui-feedback-5 П4) + вход в ролевой кабинет + выход.
+// «Сменить аватар» убран по ui-feedback-6 П2 — смена аватарки осталась на своей /u/-странице.
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { AvatarChanger } from "@/components/profile/avatar-changer";
 import type { Role } from "@/types";
 
 type AvatarUser = {
@@ -106,8 +106,12 @@ export function AvatarMenu({ user }: { user: AvatarUser }) {
                 Мой профиль
               </Link>
             )}
-            {/* Смена аватарки — всем ролям (у читателя нет страницы профиля — меняет отсюда). */}
-            <AvatarChanger variant="menuitem" onDone={() => setOpen(false)} />
+            {/* Каталог своих блогов — автор («Лента» для него убрана из шапки, ui-feedback-6 П6). */}
+            {user.role === "author" && (
+              <Link role="menuitem" href="/" className={menuItem} onClick={() => setOpen(false)}>
+                Все мои блоги
+              </Link>
+            )}
             {/* Закладки — только читатель (ui-feedback-5 П4). */}
             {user.role === "reader" && (
               <Link role="menuitem" href="/bookmarks" className={menuItem} onClick={() => setOpen(false)}>

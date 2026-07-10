@@ -18,8 +18,9 @@ export class ReaderPage {
     await this.page.goto("/");
   }
 
-  /** Главная без табов (ui-feedback-4 П2): h1 «Все блоги» (гость/автор/ревьюер) или «Ваша лента» (reader). */
-  homeHeading(name: "Все блоги" | "Ваша лента"): Locator {
+  /** Главная без табов (ui-feedback-4 П2): h1 «Все блоги» (гость/ревьюер), «Все мои блоги» (автор,
+   *  ui-feedback-6 П6) или «Ваша лента» (reader). */
+  homeHeading(name: "Все блоги" | "Все мои блоги" | "Ваша лента"): Locator {
     return this.page.getByRole("heading", { level: 1, name });
   }
 

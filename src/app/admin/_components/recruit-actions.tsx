@@ -1,11 +1,12 @@
 "use client";
 
 // Клиентские действия экрана «Заявки ревьюеров» (Фаза 10): разбор recruit-запросов (approve→доска /
-// reject→причина), создание/удаление направлений доски, приём/отклонение заявок apply-to-review.
+// reject→причина), приём/отклонение заявок apply-to-review. Действия доски — board-actions.tsx
+// (страница «Доска ревьюеров», ui-feedback-6 П5).
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { adminMutate } from "@/app/admin/_components/client";
-import { btnDangerSoft, btnDangerStrong, btnPrimary, btnSecondary, btnText, inputCls } from "@/app/admin/_components/buttons";
+import { btnDangerSoft, btnDangerStrong, btnPrimary, btnText, inputCls } from "@/app/admin/_components/buttons";
 
 function useRun() {
   const router = useRouter();
@@ -99,57 +100,3 @@ export function ApplicationActions({ id, canPromote }: { id: string; canPromote:
   );
 }
 
-export function BoardCallCreate() {
-  const { run, pending, error } = useRun();
-  const [open, setOpen] = useState(false);
-  const [area, setArea] = useState("");
-  const [skills, setSkills] = useState("");
-  const [note, setNote] = useState("");
-
-  if (!open) {
-    return (
-      <button type="button" className={btnSecondary} onClick={() => setOpen(true)}>+ Добавить направление</button>
-    );
-  }
-  return (
-    <div className="space-y-2 rounded-[var(--radius-md)] border border-[var(--border-secondary)] p-3">
-      <input className={inputCls} value={area} onChange={(e) => setArea(e.target.value)} placeholder="Направление (напр. Frontend)" aria-label="Направление" />
-      <input className={inputCls} value={skills} onChange={(e) => setSkills(e.target.value)} placeholder="Навыки через запятую" aria-label="Навыки" />
-      <input className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Заметка (необяз.)" aria-label="Заметка" />
-      <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={pending || !area.trim()}
-          className={btnPrimary}
-          onClick={() =>
-            run(
-              () => adminMutate("/api/admin/board-calls", "POST", { area, skills: skills.split(",").map((s) => s.trim()).filter(Boolean), note: note || undefined }),
-              () => { setOpen(false); setArea(""); setSkills(""); setNote(""); },
-            )
-          }
-        >
-          Создать
-        </button>
-        <button type="button" className={btnText} onClick={() => setOpen(false)}>Отмена</button>
-      </div>
-      <Err error={error} />
-    </div>
-  );
-}
-
-export function BoardCallActions({ id, hot }: { id: string; hot: boolean }) {
-  const { run, pending, error } = useRun();
-  return (
-    <div>
-      <div className="flex gap-2">
-        <button type="button" disabled={pending} className="text-[0.7rem] text-[var(--muted-foreground)] underline-offset-2 hover:text-[var(--accent)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]" onClick={() => run(() => adminMutate(`/api/admin/board-calls/${id}`, "PATCH", { hot: !hot }))}>
-          {hot ? "снять «срочно»" : "пометить «срочно»"}
-        </button>
-        <button type="button" disabled={pending} className="text-[0.7rem] text-[var(--muted-foreground)] underline-offset-2 hover:text-[var(--danger)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]" onClick={() => run(() => adminMutate(`/api/admin/board-calls/${id}`, "DELETE"))}>
-          удалить
-        </button>
-      </div>
-      <Err error={error} />
-    </div>
-  );
-}
