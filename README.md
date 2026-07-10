@@ -22,7 +22,7 @@ TypeScript, Tailwind v4, Drizzle ORM/libsql, iron-session). Интерфейс �
 | Промты для сессий Claude Code | `docs/migration/PROMPT.md` |
 | Стенды, прод-runbook (откат, бэкапы, SSH) | `docs/migration/ENVIRONMENTS.md` |
 | История: 12 фаз миграции + журнал итераций | `docs/migration/PLAN.md` |
-| Тест-слой (118+ e2e) | `docs/migration/TESTING.md`, `testing/**` |
+| Тест-слой (127 e2e в 16 spec-файлах) | `docs/migration/TESTING.md`, `testing/**` |
 | Дизайн-токены и UX-эталон | `docs/migration/DESIGN-TOKENS.md`, `docs/prototype/**` |
 
 ## Быстрый старт (dev)

@@ -18,9 +18,14 @@ export class ReaderPage {
     await this.page.goto("/");
   }
 
-  /** Табы ленты — ссылки `?tab=`, не ARIA-табы. */
-  feedTab(name: "Лента" | "Каталог" | "Подписки"): Locator {
-    return this.page.getByRole("navigation", { name: "Разделы ленты" }).getByRole("link", { name });
+  /** Главная без табов (ui-feedback-4 П2): h1 «Все блоги» (гость/автор/ревьюер) или «Ваша лента» (reader). */
+  homeHeading(name: "Все блоги" | "Ваша лента"): Locator {
+    return this.page.getByRole("heading", { level: 1, name });
+  }
+
+  /** Карточка блога на главной: article с заголовком-названием блога. */
+  blogCard(title: string): Locator {
+    return this.page.locator("article").filter({ has: this.page.getByRole("heading", { name: title }) });
   }
 
   async gotoBlog(blogSlug: string): Promise<void> {

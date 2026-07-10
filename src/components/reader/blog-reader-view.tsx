@@ -1,6 +1,9 @@
 // Композиция ридера (RSC). Режимы: single (одна глава, h1=заголовок главы) и whole (весь блог,
 // h1=название блога, заголовки глав = h2). Контент рендерит общий BlockRenderer (идентичен ревью).
 // Правый рельс (SeriesNav) — на lg+; на узких экранах главы/ToC доступны через <details> сверху.
+// ui-feedback-4 П8 (по прототипу WholeBlogReader): в whole-режиме кредит ревьюеров и комментарии
+// НЕ рендерятся после каждой главы — после всех глав идёт ОДНА агрегированная карточка
+// «Блог ревьюили» и ОДИН merged-блок комментариев (реакции остаются per-chapter).
 
 import Link from "next/link";
 import { BlockRenderer } from "@/components/blocks/block-renderer";
@@ -12,6 +15,8 @@ import { SkillChips } from "@/components/reader/skill-chips";
 import { EngagementBar } from "@/components/reader/engagement-bar";
 import { ChapterReviewerCredit } from "@/components/reader/chapter-reviewer-credit";
 import { CommentsSlot } from "@/components/reader/comments-slot";
+import { BlogCommentsSlot } from "@/components/reader/blog-comments-slot";
+import { BlogReviewerCredit } from "@/components/reader/blog-reviewer-credit";
 import { FragmentCommentButton } from "@/components/reader/fragment-comment-button";
 import { commentGate, type CommentViewer } from "@/lib/queries/comments";
 import type { ReadableBlog, ReaderSection } from "@/lib/queries/types";
@@ -73,16 +78,20 @@ function ChapterBody({
         }}
       />
 
-      <ChapterReviewerCredit credit={credit} />
-
-      <CommentsSlot
-        blogSlug={blog.slug}
-        chapterSlug={chapter.slug}
-        revision={chapter.revisionNumber}
-        blogAuthorId={blog.author.id}
-        sectionId={mode === "whole" ? `comments-${chapter.slug}` : "comments"}
-        viewer={viewer}
-      />
+      {/* single: кредит + комментарии у главы; whole: единые блоки после всех глав (П8) */}
+      {mode === "single" && (
+        <>
+          <ChapterReviewerCredit credit={credit} />
+          <CommentsSlot
+            blogSlug={blog.slug}
+            chapterSlug={chapter.slug}
+            revision={chapter.revisionNumber}
+            blogAuthorId={blog.author.id}
+            sectionId="comments"
+            viewer={viewer}
+          />
+        </>
+      )}
     </article>
   );
 }
@@ -180,6 +189,22 @@ export function BlogReaderView({
                 viewer={viewer}
               />
             ))}
+
+            {mode === "whole" && (
+              <>
+                <BlogReviewerCredit sections={sections} />
+                <BlogCommentsSlot
+                  blogSlug={blog.slug}
+                  chapters={sections.map((s) => ({
+                    slug: s.chapter.slug,
+                    title: s.chapter.title,
+                    revision: s.chapter.revisionNumber,
+                  }))}
+                  blogAuthorId={blog.author.id}
+                  viewer={viewer}
+                />
+              </>
+            )}
           </div>
 
           {/* Правый рельс — на lg+ */}

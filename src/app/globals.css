@@ -33,10 +33,12 @@
   --success-bg: #dcfce7;
   --success-border: #bbf7d0;
   --warning: #854d0e;
+  --warning-solid: #b45309; /* solid-заливка кнопок подтверждения (force-approve); пара — --warning-foreground */
   --warning-foreground: #ffffff;
   --warning-bg: #fef9c3;
   --warning-border: #fde68a;
   --danger: #991b1b;
+  --danger-foreground: #ffffff; /* текст на сплошной --danger (btnDangerStrong) */
   --danger-bg: #fee2e2;
   --danger-border: #fecaca;
   --info: #1e40af;
@@ -48,6 +50,13 @@
   --pin-ring: #d97706;
   --pin-bg: #fef3c7;
   --pin-border: #fcd34d;
+
+  /* Золото пожертвований (donate-модалка по прототипу donation-ui.jsx). Прототипный
+     solid #b8860b не проходит AA с белым текстом — затемнён до #9a6f08 (≥4.5:1). */
+  --gold: #9a6f08;
+  --gold-bg: color-mix(in srgb, #d4a017 16%, transparent);
+  --gold-solid: #9a6f08;
+  --gold-solid-foreground: #ffffff;
 
   /* Код */
   --code-bg: #f0f0f0;
@@ -88,6 +97,7 @@
   --radius-sm: 0.25rem;
   --radius-md: 0.375rem;
   --radius-lg: 0.5rem;
+  --radius-xl: 1rem; /* rounded-2xl прототипа: donate-модалка, слайд карусели */
   --radius-pill: 9999px;
 
   /* Тени — только фокус-кольцо (поверхности разделяются границами, не тенями) */
@@ -124,9 +134,11 @@ html[data-theme="dark"] {
   --success-bg: rgb(20 83 45 / 0.3);
   --success-border: rgb(20 83 45 / 0.5);
   --warning: #facc15;
+  /* --warning-solid/--warning-foreground наследуются (#b45309/#fff — контраст пары не зависит от темы) */
   --warning-bg: rgb(113 63 18 / 0.3);
   --warning-border: rgb(113 63 18 / 0.5);
   --danger: #f87171;
+  --danger-foreground: #1a1a1a; /* dark --danger светлый → тёмный текст на нём */
   --danger-bg: rgb(127 29 29 / 0.3);
   --danger-border: rgb(127 29 29 / 0.5);
   --info: #60a5fa;
@@ -137,6 +149,10 @@ html[data-theme="dark"] {
   --pin-ring: #f59e0b;
   --pin-bg: rgb(120 53 15 / 0.3);
   --pin-border: rgb(180 83 9 / 0.55);
+
+  --gold: #d9a92d;
+  --gold-bg: rgb(212 160 23 / 0.16);
+  /* --gold-solid/--gold-solid-foreground наследуются: контраст пары не зависит от темы */
 }
 
 /* ============================================================
@@ -225,11 +241,16 @@ html[data-theme="dark"] {
    Промо-карусель ленты (по прототипу donation-ui.jsx): заливки слайда на токенах через
    color-mix; тон задаёт ОДНУ переменную --promo-ink (accent/warning/neutral), остальное — производные.
    ============================================================ */
-/* --promo-ink-contrast — текст поверх заливки --promo-ink; во всех темах все три ink-цвета
-   контрастны к --accent-foreground (light: тёмные ink → белый; dark: светлые ink → чёрный). */
-.promo-ink-accent  { --promo-ink: var(--accent); --promo-ink-contrast: var(--accent-foreground); }
-.promo-ink-warning { --promo-ink: var(--warning); --promo-ink-contrast: var(--accent-foreground); }
-.promo-ink-neutral { --promo-ink: var(--muted-foreground); --promo-ink-contrast: var(--accent-foreground); }
+/* CTA слайда: текст ВСЕГДА белый (требование владельца, ui-feedback-4) → --promo-cta-bg
+   в light = ink (тёмные цвета, AA с белым ≥4.5), в dark ink светлеет — под кнопку
+   подставляются затемнённые фиксированные значения (light-темовые ink). */
+.promo-ink-accent  { --promo-ink: var(--accent); --promo-cta-bg: var(--accent); }
+.promo-ink-warning { --promo-ink: var(--warning); --promo-cta-bg: var(--warning); }
+.promo-ink-neutral { --promo-ink: var(--muted-foreground); --promo-cta-bg: var(--muted-foreground); }
+html[data-theme="dark"] .promo-ink-accent  { --promo-cta-bg: #0f766e; }
+html[data-theme="dark"] .promo-ink-warning { --promo-cta-bg: #854d0e; }
+html[data-theme="dark"] .promo-ink-neutral { --promo-cta-bg: #4b5563; }
+.promo-ink-accent, .promo-ink-warning, .promo-ink-neutral { --promo-cta-foreground: #ffffff; }
 
 .promo-slide {
   border: 1px solid color-mix(in srgb, var(--promo-ink) 26%, var(--border));
@@ -248,6 +269,19 @@ html[data-theme="dark"] {
     var(--bg-elevated) 54%
   );
 }
+
+/* ============================================================
+   Плейсхолдер обложки (CoverPlaceholder прототипа): детерминированные тёмные градиенты
+   (accent + нейтрали), одинаковые в обеих темах; класс выбирается хэшем от slug.
+   Инициал поверх — приглушённо-белый (градиенты всегда тёмные).
+   ============================================================ */
+.cover-ph { color: rgb(255 255 255 / 0.82); }
+.cover-ph-0 { background-image: linear-gradient(135deg, #0f766e 0%, #334155 100%); }
+.cover-ph-1 { background-image: linear-gradient(135deg, #1e293b 0%, #0f766e 100%); }
+.cover-ph-2 { background-image: linear-gradient(135deg, #334155 0%, #111827 100%); }
+.cover-ph-3 { background-image: linear-gradient(135deg, #0f766e 0%, #064e3b 100%); }
+.cover-ph-4 { background-image: linear-gradient(135deg, #111827 0%, #4b5563 100%); }
+.cover-ph-5 { background-image: linear-gradient(135deg, #115e59 0%, #1e293b 100%); }
 
 /* ============================================================
    Движение — только transform/opacity. Stagger через --index.

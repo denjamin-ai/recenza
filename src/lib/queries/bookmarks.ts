@@ -20,6 +20,7 @@ export async function getBookmarkedBlogs(userId: string): Promise<BlogCardView[]
       rating: blogs.rating,
       bookmarkCount: blogs.bookmarkCount,
       lastActivityAt: blogs.lastActivityAt,
+      publishedAt: blogs.publishedAt,
       authorId: users.id,
       authorHandle: users.handle,
       authorSlug: users.slug,
@@ -44,6 +45,7 @@ export async function getBookmarkedBlogs(userId: string): Promise<BlogCardView[]
     rating: r.rating,
     bookmarkCount: r.bookmarkCount,
     lastActivityAt: r.lastActivityAt,
+    publishedAt: r.publishedAt,
     author: {
       id: r.authorId,
       handle: r.authorHandle,

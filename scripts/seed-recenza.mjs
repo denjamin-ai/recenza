@@ -1,11 +1,13 @@
-// Идемпотentный additive-сид «О Recenza» (ui-feedback-3, П13): автор «Recenza» + приветственный
-// блог из 5 published-глав (функционал и миссия платформы). НЕ seedAll: ничего не удаляет,
-// существующие данные не трогает. Паттерн — scripts/migrate.mjs: plain JS, prod-зависимости
-// (drizzle-orm + @libsql/client + ulid + bcryptjs; deploy.yml докладывает их в артефакт),
-// схема TS не импортируется — минимальные inline-определения нужных таблиц (snake_case как в schema.ts).
-// Ревизии вставляются сразу status="published" (как seed-core §5) — служебный контент, минуя ревью.
-// Пароль автора — случайный и не сохраняется: задать при необходимости может админ
-// (PATCH /api/admin/users/recenza c { password }).
+// Идемпотentный additive-сид служебного контента. Секции независимы, каждая — no-op при повторе:
+//   1) «О Recenza» (ui-feedback-3, П13): автор «Recenza» + приветственный блог из 5 published-глав.
+//   2) recruit-баннер карусели (ui-feedback-4, П7): тексты прототипа «Ищем ревьюеров» /
+//      «Стать ревьюером» — UPDATE только пока title равен старому сидовому (правки админа не трогаем).
+// НЕ seedAll: ничего не удаляет, существующие данные не трогает. Паттерн — scripts/migrate.mjs:
+// plain JS, prod-зависимости (drizzle-orm + @libsql/client + ulid + bcryptjs; deploy.yml докладывает
+// их в артефакт), схема TS не импортируется — минимальные inline-определения нужных таблиц
+// (snake_case как в schema.ts). Ревизии вставляются сразу status="published" (как seed-core §5) —
+// служебный контент, минуя ревью. Пароль автора — случайный и не сохраняется: задать при
+// необходимости может админ (PATCH /api/admin/users/recenza c { password }).
 //
 // Запуск: локально `./node_modules/.bin/dotenv -e .env.local -- node scripts/seed-recenza.mjs`;
 // на проде: cd /srv/recenza/current && set -a; . /srv/recenza/shared/env; set +a; node scripts/seed-recenza.mjs
@@ -60,6 +62,14 @@ const chapterRevisions = sqliteTable("chapter_revisions", {
   summary: text("summary"),
   blocks: text("blocks"),
   publishedAt: integer("published_at"),
+});
+
+const promoBanners = sqliteTable("promo_banners", {
+  id: text("id").primaryKey(),
+  eyebrow: text("eyebrow"),
+  title: text("title").notNull(),
+  cta: text("cta"),
+  icon: text("icon"),
 });
 
 // ── Контент: блоки канонической формы validate.ts/normalize.ts (p/h2/quote/list/callout) ──
@@ -166,72 +176,101 @@ console.log(`[seed-recenza] БД: ${url.startsWith("file:") ? url : "Turso"}`);
 
 const now = Math.floor(Date.now() / 1000);
 
-const existingBlog = (await db.select({ id: blogs.id }).from(blogs).where(eq(blogs.slug, "o-recenza")).limit(1))[0];
-if (existingBlog) {
-  console.log("[seed-recenza] блог «О Recenza» уже существует — выходим (no-op).");
-  process.exit(0);
-}
+// ── Секция 1: блог «О Recenza» (идемпотентно: существует → no-op) ──
 
-await db.transaction(async (tx) => {
-  let authorId;
-  const existingUser = (
-    await tx.select({ id: users.id, role: users.role }).from(users).where(eq(users.handle, "recenza")).limit(1)
-  )[0];
-  if (existingUser) {
-    if (existingUser.role !== "author") {
-      // binding-инвариант: блог может вести только author — не вешаем контент на чужую роль.
-      throw new Error(`пользователь recenza уже существует с ролью "${existingUser.role}" (нужен author) — сид остановлен.`);
-    }
-    authorId = existingUser.id;
-    console.log("[seed-recenza] пользователь recenza уже существует — переиспользуем.");
-  } else {
-    authorId = ulid();
-    await tx.insert(users).values({
-      id: authorId,
-      handle: "recenza",
-      role: "author",
-      passwordHash: bcrypt.hashSync(randomBytes(24).toString("base64url"), 10),
-      displayName: "Recenza",
-      bio: "Официальный блог платформы: как устроена Recenza и зачем мы её делаем.",
-      slug: "recenza",
-      createdAt: now,
-    });
-    console.log("[seed-recenza] создан автор recenza (пароль случайный; задаётся админом при необходимости).");
+async function seedAboutBlog() {
+  const existingBlog = (await db.select({ id: blogs.id }).from(blogs).where(eq(blogs.slug, "o-recenza")).limit(1))[0];
+  if (existingBlog) {
+    console.log("[seed-recenza] блог «О Recenza» уже существует — секция пропущена (no-op).");
+    return;
   }
 
-  const blogId = ulid();
-  await tx.insert(blogs).values({
-    id: blogId,
-    slug: "o-recenza",
-    title: "О Recenza",
-    authorId,
-    tags: JSON.stringify(["Recenza", "о платформе", "руководство"]),
-    complexity: "simple",
-    summary: "Что такое Recenza, зачем статьям редакционное ревью и что умеет каждая роль — от читателя до ревьюера.",
-    publishedAt: now,
-    lastActivityAt: now,
+  await db.transaction(async (tx) => {
+    let authorId;
+    const existingUser = (
+      await tx.select({ id: users.id, role: users.role }).from(users).where(eq(users.handle, "recenza")).limit(1)
+    )[0];
+    if (existingUser) {
+      if (existingUser.role !== "author") {
+        // binding-инвариант: блог может вести только author — не вешаем контент на чужую роль.
+        throw new Error(`пользователь recenza уже существует с ролью "${existingUser.role}" (нужен author) — сид остановлен.`);
+      }
+      authorId = existingUser.id;
+      console.log("[seed-recenza] пользователь recenza уже существует — переиспользуем.");
+    } else {
+      authorId = ulid();
+      await tx.insert(users).values({
+        id: authorId,
+        handle: "recenza",
+        role: "author",
+        passwordHash: bcrypt.hashSync(randomBytes(24).toString("base64url"), 10),
+        displayName: "Recenza",
+        bio: "Официальный блог платформы: как устроена Recenza и зачем мы её делаем.",
+        slug: "recenza",
+        createdAt: now,
+      });
+      console.log("[seed-recenza] создан автор recenza (пароль случайный; задаётся админом при необходимости).");
+    }
+
+    const blogId = ulid();
+    await tx.insert(blogs).values({
+      id: blogId,
+      slug: "o-recenza",
+      title: "О Recenza",
+      authorId,
+      tags: JSON.stringify(["Recenza", "о платформе", "руководство"]),
+      complexity: "simple",
+      summary: "Что такое Recenza, зачем статьям редакционное ревью и что умеет каждая роль — от читателя до ревьюера.",
+      publishedAt: now,
+      lastActivityAt: now,
+    });
+
+    for (const [i, ch] of CHAPTERS.entries()) {
+      const chapterId = ulid();
+      await tx.insert(chapters).values({
+        id: chapterId,
+        blogId,
+        slug: ch.slug,
+        title: ch.title,
+        order: i + 1,
+      });
+      await tx.insert(chapterRevisions).values({
+        id: ulid(),
+        chapterId,
+        number: 1,
+        status: "published",
+        summary: ch.summary,
+        blocks: JSON.stringify(ch.blocks),
+        publishedAt: now,
+      });
+    }
   });
 
-  for (const [i, ch] of CHAPTERS.entries()) {
-    const chapterId = ulid();
-    await tx.insert(chapters).values({
-      id: chapterId,
-      blogId,
-      slug: ch.slug,
-      title: ch.title,
-      order: i + 1,
-    });
-    await tx.insert(chapterRevisions).values({
-      id: ulid(),
-      chapterId,
-      number: 1,
-      status: "published",
-      summary: ch.summary,
-      blocks: JSON.stringify(ch.blocks),
-      publishedAt: now,
-    });
-  }
-});
+  console.log(`[seed-recenza] готово: блог «О Recenza» (/blog/o-recenza), глав: ${CHAPTERS.length}.`);
+}
 
-console.log(`[seed-recenza] готово: блог «О Recenza» (/blog/o-recenza), глав: ${CHAPTERS.length}.`);
+// ── Секция 2: recruit-баннер карусели → тексты прототипа (ui-feedback-4, П7).
+//    Идемпотентно и не затирает ручные правки админа: UPDATE только если title
+//    в точности равен старому сидовому; иначе (нет строки / уже изменён) — no-op. ──
+
+async function updateRecruitBanner() {
+  const row = (await db.select({ id: promoBanners.id, title: promoBanners.title }).from(promoBanners).where(eq(promoBanners.id, "pb_recruit")).limit(1))[0];
+  if (!row) {
+    console.log("[seed-recenza] баннер pb_recruit не найден — секция пропущена (no-op).");
+    return;
+  }
+  if (row.title !== "Станьте ревьюером Recenza") {
+    console.log("[seed-recenza] баннер pb_recruit уже изменён (вероятно, админом) — секция пропущена (no-op).");
+    return;
+  }
+  await db
+    .update(promoBanners)
+    .set({ eyebrow: "Ищем ревьюеров", title: "Рецензируйте статьи по своим навыкам", cta: "Стать ревьюером", icon: "pen" })
+    .where(eq(promoBanners.id, "pb_recruit"));
+  console.log("[seed-recenza] баннер pb_recruit обновлён до текстов прототипа («Ищем ревьюеров» / «Стать ревьюером»).");
+}
+
+await seedAboutBlog();
+await updateRecruitBanner();
+
 process.exit(0); // libsql держит соединение (гоча seed-скриптов)

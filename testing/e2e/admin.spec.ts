@@ -22,7 +22,7 @@ import { AdminPage } from "./pages/admin.page";
 import { ReaderPage } from "./pages/reader.page";
 import { apiLoginUser, newApiContext, uniqueXff } from "./helpers/auth";
 import { reseed } from "./helpers/db";
-import { BANNERS, BASE_URL, BLOG, CHAPTERS, HIDDEN_BLOG, PASSWORD, USERS } from "./helpers/seed";
+import { BANNER_TEXTS, BANNERS, BASE_URL, BLOG, CHAPTERS, HIDDEN_BLOG, PASSWORD, USERS } from "./helpers/seed";
 import { throttleMutation } from "./helpers/throttle";
 
 test.describe.configure({ mode: "serial" });
@@ -691,7 +691,7 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
       const edge = await adminApi.patch(`/api/admin/banners/${BANNERS.recruit}`, { data: { title: long(90) } });
       expect(edge.ok()).toBeTruthy();
       const restore = await adminApi.patch(`/api/admin/banners/${BANNERS.recruit}`, {
-        data: { title: "Станьте ревьюером Recenza" },
+        data: { title: BANNER_TEXTS.recruit.title },
       });
       expect(restore.ok()).toBeTruthy();
     });

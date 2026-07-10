@@ -23,6 +23,7 @@ export interface BlogCardView {
   rating: number;
   bookmarkCount: number;
   lastActivityAt: number | null;
+  publishedAt: number | null;
   author: AuthorView;
   chapterCount: number;
 }

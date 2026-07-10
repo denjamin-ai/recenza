@@ -92,6 +92,12 @@ export function CommentItem({
 
   return (
     <li id={`comment-${comment.id}`} className="scroll-mt-24">
+      {/* blog-режим (merged-секция «Весь блог»): eyebrow с названием главы у top-level комментов */}
+      {comment.chapterTitle && comment.parentId == null && (
+        <p className="mb-1 text-[0.66rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+          {comment.chapterTitle}
+        </p>
+      )}
       <div className="flex items-start gap-2.5">
         <Avatar name={comment.author?.displayName} handle={comment.author?.handle ?? "?"} size={28} />
         <div className="min-w-0 flex-1">

@@ -5,16 +5,10 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { adminMutate } from "@/app/admin/_components/client";
+import { btnPrimary, btnSecondary as btnGhost, btnText, inputCls } from "@/app/admin/_components/buttons";
 import { UploadField } from "@/components/upload-field";
 import { DONATION_TYPES, type DonationType } from "@/types";
 import type { AdminDonationData } from "@/lib/queries/admin";
-
-const inputCls =
-  "h-9 w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-secondary)] px-2.5 text-[length:var(--type-small)] text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]";
-const btnPrimary =
-  "min-h-9 rounded-[var(--radius-md)] bg-[var(--accent)] px-3 py-1.5 text-[length:var(--type-small)] text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-60";
-const btnGhost =
-  "min-h-9 rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-1.5 text-[length:var(--type-small)] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-60";
 
 type Method = AdminDonationData["methods"][number];
 
@@ -63,7 +57,7 @@ function MethodForm({ initial, onSubmit, onCancel, pending }: { initial: Draft; 
       </label>
       <div className="flex gap-2">
         <button type="button" disabled={pending || !d.name.trim()} className={btnPrimary} onClick={() => onSubmit(d)}>Сохранить</button>
-        <button type="button" className={btnGhost} onClick={onCancel}>Отмена</button>
+        <button type="button" className={btnText} onClick={onCancel}>Отмена</button>
       </div>
     </div>
   );
