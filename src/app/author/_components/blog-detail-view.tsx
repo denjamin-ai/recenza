@@ -2,10 +2,13 @@
 
 // Деталь блога автора (Фаза 6): шапка (пин / открыть как читатель / +глава) + фильтр-чипы статусов +
 // список глав со статусом, ревизией, командой ревьюеров и переупорядочиванием (кнопки ↑/↓, a11y).
+// ui-feedback-3: inline-rename заголовка (dblclick — паттерн прототипа author-portal) + danger-зона
+// удаления блога-черновика (DELETE /api/author/blogs/[id], гейт «только draft» перепроверяет сервер).
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import type { AuthorBlogDetail, AuthorChapterRow } from "@/lib/queries/author";
 import type { RevisionStatus } from "@/types";
 
@@ -56,6 +59,59 @@ export function BlogDetailView({ detail }: { detail: AuthorBlogDetail }) {
   const [pinned, setPinned] = useState(detail.isPinned);
   const [pending, start] = useTransition();
   const [busy, setBusy] = useState(false);
+  const [title, setTitle] = useState(detail.title);
+  const [titleDraft, setTitleDraft] = useState(detail.title);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  // blur после Enter/Escape не должен коммитить второй раз.
+  const titleCommittedRef = useRef(false);
+
+  const allDraft = order.every((c) => c.status === "draft");
+
+  function commitTitle() {
+    if (titleCommittedRef.current) return;
+    titleCommittedRef.current = true;
+    setEditingTitle(false);
+    const next = titleDraft.trim();
+    if (!next || next === title) {
+      setTitleDraft(title);
+      return;
+    }
+    start(async () => {
+      const res = await fetch(`/api/author/blogs/${detail.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: next }),
+      });
+      if (res.ok) {
+        setTitle(next);
+        setTitleDraft(next);
+        router.refresh();
+      } else {
+        setTitleDraft(title);
+      }
+    });
+  }
+
+  function cancelTitle() {
+    titleCommittedRef.current = true;
+    setEditingTitle(false);
+    setTitleDraft(title);
+  }
+
+  function deleteBlog() {
+    setDeleteError(null);
+    start(async () => {
+      const res = await fetch(`/api/author/blogs/${detail.id}`, { method: "DELETE" });
+      if (res.ok) {
+        router.push("/author");
+        return;
+      }
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      setDeleteError(data.error ?? "Не удалось удалить блог.");
+    });
+  }
 
   const counts = useMemo(() => {
     const c = { all: order.length, draft: 0, "under-review": 0, "changes-requested": 0, published: 0 };
@@ -117,16 +173,32 @@ export function BlogDetailView({ detail }: { detail: AuthorBlogDetail }) {
 
   return (
     <div className="mx-auto w-full max-w-[var(--max-content)] px-6 py-10">
-      <Link
-        href="/author"
-        className="inline-block rounded-[var(--radius-sm)] text-[length:var(--type-small)] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-      >
-        ← К списку блогов
-      </Link>
+      <BackLink href="/author">К списку блогов</BackLink>
 
       <header className="mt-3 flex flex-col gap-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <h1>{detail.title}</h1>
+          {editingTitle ? (
+            <input
+              autoFocus
+              value={titleDraft}
+              maxLength={64}
+              aria-label="Название блога"
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onFocus={() => {
+                titleCommittedRef.current = false;
+              }}
+              onBlur={commitTitle}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitTitle();
+                if (e.key === "Escape") cancelTitle();
+              }}
+              className="min-w-0 flex-1 border-b-2 border-[var(--accent)] bg-transparent font-display text-[length:var(--type-h1)] font-[var(--weight-h1)] leading-tight text-[var(--foreground)] focus-visible:outline-none"
+            />
+          ) : (
+            <h1 title="Двойной клик — переименовать" onDoubleClick={() => setEditingTitle(true)} className="cursor-text">
+              {title}
+            </h1>
+          )}
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -272,6 +344,67 @@ export function BlogDetailView({ detail }: { detail: AuthorBlogDetail }) {
           );
         })}
       </ul>
+
+      {/* Danger-зона: удаление доступно только блогу-черновику; сервер перепроверяет гейт (409). */}
+      <section className="mt-10 rounded-[var(--radius-lg)] border border-[var(--danger-border)] p-4">
+        <h2 className="text-[length:var(--type-h4)] text-[var(--danger)]">Удаление блога</h2>
+        <p className="mt-1 text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+          {allDraft
+            ? "Блог и все его главы будут удалены безвозвратно."
+            : "Удалить можно только блог-черновик: все главы должны быть в статусе «Черновик»."}
+        </p>
+        {deleteError && (
+          <p role="alert" className="mt-2 rounded-[var(--radius-sm)] bg-[var(--danger-bg)] px-3 py-2 text-[length:var(--type-small)] text-[var(--danger)]">
+            {deleteError}
+          </p>
+        )}
+        <button
+          type="button"
+          disabled={pending || !allDraft}
+          onClick={() => setConfirmDelete(true)}
+          className="mt-3 min-h-9 rounded-[var(--radius-sm)] border border-[var(--danger-border)] bg-[var(--danger-bg)] px-3 py-2 text-[length:var(--type-small)] text-[var(--danger)] transition-opacity hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--danger)]"
+        >
+          Удалить блог
+        </button>
+      </section>
+
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-[var(--overlay)] px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Подтверждение удаления блога"
+          onKeyDown={(e) => e.key === "Escape" && setConfirmDelete(false)}
+        >
+          <div className="w-full max-w-sm rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-elevated)] p-5">
+            <h2 className="text-[length:var(--type-h4)]">Удалить «{title}»?</h2>
+            <p className="mt-2 text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+              Все главы и черновики будут удалены безвозвратно.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setConfirmDelete(false)}
+                className="min-h-9 rounded-[var(--radius-sm)] border border-[var(--border)] px-3 py-2 text-[length:var(--type-small)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  setConfirmDelete(false);
+                  deleteBlog();
+                }}
+                className="min-h-9 rounded-[var(--radius-sm)] border border-[var(--danger-border)] bg-[var(--danger-bg)] px-3 py-2 text-[length:var(--type-small)] text-[var(--danger)] transition-opacity hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--danger)]"
+              >
+                Удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

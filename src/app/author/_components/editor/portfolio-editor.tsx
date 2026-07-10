@@ -4,7 +4,7 @@
 // PUT /api/author/portfolio публикует сразу. Переиспользует BlockListEditor.
 
 import { useState } from "react";
-import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import type { Block } from "@/types";
 import { BlockListEditor } from "./block-list-editor";
 
@@ -42,13 +42,8 @@ export function PortfolioEditor({
 
   return (
     <div className="min-h-screen">
-      <div className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--bg)] px-6 py-3">
-        <Link
-          href="/author"
-          className="rounded-[var(--radius-sm)] text-[length:var(--type-small)] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          ← Кабинет
-        </Link>
+      <div className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--background)] px-6 py-3">
+        <BackLink href="/author">Кабинет</BackLink>
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1.5 text-[length:var(--type-small)] text-[var(--muted-foreground)]">
             <span aria-hidden="true" className={`h-2 w-2 rounded-full ${dirty ? "bg-[var(--warning)]" : "bg-[var(--success)]"}`} />

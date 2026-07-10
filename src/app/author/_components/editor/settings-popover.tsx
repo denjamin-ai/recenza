@@ -1,7 +1,7 @@
 "use client";
 
-// Настройки блога (slug / теги / сложность / обложка / описание). PATCH /api/author/blogs/[blogId].
-// При смене slug меняется URL главы — навигируем на новый путь.
+// Настройки блога (название / slug / теги / сложность / обложка / описание).
+// PATCH /api/author/blogs/[blogId]. При смене slug меняется URL главы — навигируем на новый путь.
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -29,10 +29,11 @@ export function SettingsPopover({
   blogId: string;
   blogSlug: string;
   chapterSlug: string;
-  initial: { slug: string; tags: string[]; complexity: Complexity; coverUrl: string | null; summary: string | null };
+  initial: { title: string; slug: string; tags: string[]; complexity: Complexity; coverUrl: string | null; summary: string | null };
   onClose: () => void;
 }) {
   const router = useRouter();
+  const [title, setTitle] = useState(initial.title);
   const [slug, setSlug] = useState(initial.slug);
   const [tags, setTags] = useState<string[]>(initial.tags);
   const [complexity, setComplexity] = useState<Complexity>(initial.complexity);
@@ -47,7 +48,7 @@ export function SettingsPopover({
     const res = await fetch(`/api/author/blogs/${blogId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ slug, tags, complexity, coverUrl: coverUrl || null, summary: summary || null }),
+      body: JSON.stringify({ title: title.trim(), slug, tags, complexity, coverUrl: coverUrl || null, summary: summary || null }),
     });
     const data = (await res.json().catch(() => ({}))) as { slug?: string; error?: string };
     setSaving(false);
@@ -87,10 +88,22 @@ export function SettingsPopover({
 
         <div className="mt-4 flex flex-col gap-4">
           <label className="flex flex-col gap-1">
+            <span className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">Название блога</span>
+            <input
+              autoFocus
+              value={title}
+              maxLength={64}
+              onChange={(e) => setTitle(e.target.value)}
+              className={fieldCls}
+              aria-label="Название блога"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1">
             <span className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">Адрес (slug)</span>
             <span className="flex items-center gap-1">
               <span className="font-mono text-[length:var(--type-small)] text-[var(--muted-foreground)]">/blog/</span>
-              <input autoFocus value={slug} onChange={(e) => setSlug(e.target.value)} className={fieldCls} aria-label="slug" />
+              <input value={slug} onChange={(e) => setSlug(e.target.value)} className={fieldCls} aria-label="slug" />
             </span>
           </label>
 

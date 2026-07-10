@@ -16,6 +16,15 @@ export class EditorPage {
     return this.page.getByRole("textbox", { name: "Заголовок главы" });
   }
 
+  /** Заполнение заголовка с ретраем: fill в окне до гидрации может «домержить» SSR-текст
+   *  в значение (флак полного прогона) — перезаполняем, пока значение не станет чистым. */
+  async fillTitle(value: string): Promise<void> {
+    await expect(async () => {
+      await this.titleInput.fill(value);
+      await expect(this.titleInput).toHaveValue(value, { timeout: 1_500 });
+    }).toPass({ timeout: 20_000 });
+  }
+
   /** Блок по accessible name типа («Параграф», «Заголовок 2», …). Заголовки — INPUT, прочее — TEXTAREA. */
   blockInput(typeName: string, nth = 0): Locator {
     return this.page.getByRole("textbox", { name: typeName }).nth(nth);
@@ -35,9 +44,10 @@ export class EditorPage {
     await expect(this.saveIndicator("сохранено")).toBeVisible();
   }
 
-  /** «+ Блок» → меню типов (11 пунктов). */
+  /** «+ Блок» → сгруппированное меню (12 типов в 4 категориях; ui-feedback-3).
+   *  name матчится подстрокой accessible name «title hint» («Параграф», «Заголовок 2», …). */
   async addBlockViaMenu(typeName: string): Promise<void> {
-    await this.page.getByRole("button", { name: "Добавить блок" }).click();
+    await this.page.getByRole("button", { name: "Добавить блок" }).first().click();
     await this.page.getByRole("menuitem", { name: typeName }).click();
   }
 
@@ -101,14 +111,15 @@ export class EditorPage {
     return this.submitSheet.getByRole("searchbox", { name: "Поиск ревьюеров" });
   }
 
-  /** Чекбокс ревьюера — name вида «Имя ★ 4.6»; disabled при занятости «загружен». */
+  /** Чекбокс ревьюера — accessible name = displayName (aria-label); disabled при «загружен». */
   reviewerCheckbox(nameRe: RegExp): Locator {
     return this.submitSheet.getByRole("checkbox", { name: nameRe });
   }
 
+  /** Toggle ведущего в строке ревьюера: «вести» (не выбран) / «ведущий» (выбран); ui-feedback-3. */
   async makePrimary(nameRe: RegExp): Promise<void> {
     const row = this.submitSheet.locator("li", { has: this.page.getByRole("checkbox", { name: nameRe }) });
-    await row.getByRole("button", { name: /Сделать ведущим|ВЕДУЩИЙ/ }).click();
+    await row.getByRole("button", { name: /^вести$|^ведущий$/ }).click();
   }
 
   /** Футер: «Закройте все пункты» → «Готово к отправке». */

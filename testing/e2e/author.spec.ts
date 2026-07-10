@@ -164,7 +164,7 @@ test.describe("Автор (author)", () => {
 
     await test.step("заголовок главы → индикатор «не сохранено» (доказательство гидрации)", async () => {
       await editor.goto(sandbox.blogSlug, sandbox.chapterSlug);
-      await editor.titleInput.fill("Черновик для теста E2E");
+      await editor.fillTitle("Черновик для теста E2E");
       await expect(editor.saveIndicator("не сохранено")).toBeVisible();
       await expect(editor.saveButton).toBeEnabled();
     });
@@ -182,9 +182,14 @@ test.describe("Автор (author)", () => {
       await editor.blockInput("Заголовок 2").fill("Раздел один");
     });
 
-    await test.step("«Сохранить» → «сохранено»; после перезагрузки контент на месте", async () => {
+    await test.step("сохранение → «сохранено»; после перезагрузки контент на месте", async () => {
       await throttleMutation(USERS.author.handle);
-      await editor.save();
+      // ui-feedback-3: структурные правки автосейвятся (дебаунс 1.6с) — ручной клик нужен, только
+      // если правки ещё не улетели; идемпотентный ретрай против гонки с автосейвом.
+      await expect(async () => {
+        if (await editor.saveButton.isEnabled()) await editor.saveButton.click({ timeout: 1_000 });
+        await expect(editor.saveIndicator("сохранено")).toBeVisible({ timeout: 4_000 });
+      }).toPass({ timeout: 20_000 });
       await page.reload();
       await expect(editor.titleInput).toHaveValue("Черновик для теста E2E");
       await expect(editor.blockInput("Параграф")).toHaveValue("Первый абзац содержательного текста.");
@@ -207,7 +212,7 @@ test.describe("Автор (author)", () => {
 
     await test.step("гидрация: правка заголовка включает «не сохранено»", async () => {
       await editor.goto(sandbox.blogSlug, sandbox.chapterSlug);
-      await editor.titleInput.fill("Черновик шорткатов E2E");
+      await editor.fillTitle("Черновик шорткатов E2E");
       await expect(editor.saveIndicator("не сохранено")).toBeVisible();
     });
 
@@ -249,7 +254,8 @@ test.describe("Автор (author)", () => {
       await expect(editor.readyFooter).toHaveCount(0);
       await expect(editor.submitSheet.getByText("Закройте все пункты")).toBeVisible();
       await expect(submitBtn).toBeDisabled();
-      // Подбор без навыков не работает (вкладка «По навыкам» — дефолтная).
+      // Дефолтная вкладка — «Все» (ui-feedback-3): подсказка про навыки живёт на «По навыкам».
+      await editor.reviewersFilterTab("По навыкам").click();
       await expect(
         editor.submitSheet.getByText("Добавьте навыки статьи — по ним подбираются ревьюеры."),
       ).toBeVisible();
@@ -545,5 +551,56 @@ test.describe("Автор (author)", () => {
       const location = res.headers()["location"] ?? "";
       expect(new URL(location, BASE_URL).pathname).toBe("/");
     });
+  });
+
+  // ── TC-AUTHOR-26 — автосейв структурных правок + «Просмотр» (ui-feedback-3, П10) ─
+
+  test("TC-AUTHOR-26 @critical: «+ Блок» автосейвится без «Сохранить»; «Просмотр» сохраняет и открывает превью", async ({
+    asAuthor,
+    api,
+  }) => {
+    const { page } = asAuthor;
+    const editor = new EditorPage(page);
+    const ctx = await api("author");
+    const sandbox = await createSandboxBlog(ctx, "Автосейв E2E");
+
+    await test.step("добавление блока → «сохранено» БЕЗ клика по «Сохранить»; после reload блок на месте", async () => {
+      await editor.goto(sandbox.blogSlug, sandbox.chapterSlug);
+      // Гидрация: правка заголовка включает «не сохранено».
+      await editor.fillTitle("Автосейв главы E2E");
+      await expect(editor.saveIndicator("не сохранено")).toBeVisible();
+      await throttleMutation(USERS.author.handle);
+      await editor.addBlockViaMenu("Параграф");
+      // Структурная правка планирует дебаунс-автосейв (~1.6с) — ждём индикатор без ручного save.
+      await expect(editor.saveIndicator("сохранено")).toBeVisible({ timeout: 10_000 });
+      await page.reload();
+      await expect(editor.titleInput).toHaveValue("Автосейв главы E2E");
+      await expect(editor.blockInput("Параграф")).toBeVisible();
+    });
+
+    await test.step("правка текста + «Просмотр» → сохранение и переход на превью со свежим контентом", async () => {
+      await editor.blockInput("Параграф").fill("Абзац, который должен доехать до превью.");
+      await expect(editor.saveIndicator("не сохранено")).toBeVisible();
+      await throttleMutation(USERS.author.handle);
+      await page.getByRole("button", { name: "Просмотр" }).click();
+      await page.waitForURL("**/preview");
+      await expect(page.getByText("Абзац, который должен доехать до превью.")).toBeVisible();
+    });
+  });
+
+  // ── TC-AUTHOR-27 — «Руководство» для автора (ui-feedback-3, П9) ──────────────
+
+  test("TC-AUTHOR-27 @regression: кнопка «Руководство» показывает «Гид автора»", async ({ asAuthor }) => {
+    const { page } = asAuthor;
+    await asAuthor.goto("/");
+    const dialog = page.getByRole("dialog", { name: "Гид автора" });
+    await expect(async () => {
+      await page.getByRole("banner").getByRole("button", { name: "Руководство" }).click();
+      await expect(dialog).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
+    await expect(dialog.getByText("Тип пользователя · автор")).toBeVisible();
+    await expect(dialog.getByRole("link", { name: /Кабинет автора/ })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
   });
 });

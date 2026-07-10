@@ -1,9 +1,11 @@
 "use client";
 
 // Правая шторка «Отправить на ревью»: навыки (обяз.) + сложность + ПИКЕР С ПОДБОРОМ (Фаза 9) +
-// выбор ведущего + заметка + чек-лист готовности (гейт). Подбор: вкладки «По навыкам / Все», поиск,
-// match%/«Топ» пересчитываются ВЖИВУЮ при правке навыков (чистый rankReviewers), full не выбирается,
-// пустое состояние «нет совпадений» → запрос ревьюеров у админа (recruit_requests).
+// выбор ведущего + заметка + чек-лист готовности (гейт). Подбор: вкладки «По навыкам / Все»
+// (дефолт — «Все», решение владельца ui-feedback-3; сортировка по «Топ» держит совпадающих сверху),
+// поиск, match%/«Топ» пересчитываются ВЖИВУЮ при правке навыков (чистый rankReviewers), full не
+// выбирается; строки — по прототипу editor.jsx (аватар, звёзды, занятость, match%, балл «Топ»).
+// Пустое состояние «нет совпадений» (вкладка «По навыкам») → запрос ревьюеров у админа.
 // Сервер остаётся источником правды: /submit перепроверяет гейт; match% для flag-гейта — на сервере.
 
 import { useMemo, useState } from "react";
@@ -21,6 +23,28 @@ const AVAIL_META: Record<Availability, { label: string; dot: string }> = {
 };
 
 type Tab = "matched" | "all";
+
+// Дефолтная вкладка пикера: «Все» — автор сразу видит весь пул (совпадающие всё равно сверху по «Топ»).
+const DEFAULT_TAB: Tab = "all";
+
+/** Мини-звёзды рейтинга (агрегат): цвет — не единственный сигнификатор, число в title. */
+function Stars({ rating }: { rating: number | null }) {
+  if (rating == null) return null;
+  const filled = Math.round(rating);
+  return (
+    <span
+      aria-label={`Рейтинг ${rating.toFixed(1)} из 5`}
+      title={`Рейтинг ${rating.toFixed(1)}`}
+      className="text-[0.65rem] leading-none tracking-[0.1em]"
+    >
+      {Array.from({ length: 5 }, (_, i) => (
+        <span key={i} aria-hidden="true" className={i < filled ? "text-[var(--warning)]" : "text-[var(--border)]"}>
+          ★
+        </span>
+      ))}
+    </span>
+  );
+}
 
 export function SubmitSheet({
   chapterId,
@@ -51,7 +75,7 @@ export function SubmitSheet({
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("matched");
+  const [tab, setTab] = useState<Tab>(DEFAULT_TAB);
   const [query, setQuery] = useState("");
   const [recruit, setRecruit] = useState<"idle" | "sending" | "sent" | "error">("idle");
 
@@ -208,11 +232,13 @@ export function SubmitSheet({
 
           {/* Ревьюеры — подбор */}
           <section>
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <h3 className="text-[length:var(--type-small)] font-medium text-[var(--muted-foreground)]">
-                Ревьюеры ({picked.length}/{tier.max})
-              </h3>
-              <div role="tablist" aria-label="Фильтр ревьюеров" className="flex gap-1">
+            <h3 className="mb-2 text-[length:var(--type-small)] font-medium text-[var(--muted-foreground)]">
+              Ревьюеры ({picked.length}/{tier.max})
+            </h3>
+
+            {/* Сегмент-контрол + поиск в одну строку (прототип editor.jsx:101-108). */}
+            <div className="mb-2 flex items-center gap-2">
+              <div role="tablist" aria-label="Фильтр ревьюеров" className="inline-flex shrink-0 items-center gap-0.5 rounded-[var(--radius-md)] bg-[var(--muted)] p-0.5">
                 {([["matched", "По навыкам"], ["all", "Все"]] as const).map(([key, label]) => (
                   <button
                     key={key}
@@ -222,24 +248,23 @@ export function SubmitSheet({
                     aria-selected={tab === key}
                     aria-controls="reviewer-tabpanel"
                     onClick={() => setTab(key)}
-                    className={`rounded-[var(--radius-pill)] px-2.5 py-1 text-[length:var(--type-small)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
-                      tab === key ? "bg-[var(--accent)] text-[var(--accent-foreground)]" : "border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
+                    className={`rounded-[var(--radius-sm)] px-2.5 py-1 text-[length:var(--type-small)] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                      tab === key ? "bg-[var(--bg-elevated)] text-[var(--foreground)]" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
                     }`}
                   >
                     {label}
                   </button>
                 ))}
               </div>
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="навык или имя…"
+                aria-label="Поиск ревьюеров"
+                className="w-full min-w-0 flex-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1.5 text-[length:var(--type-small)] text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              />
             </div>
-
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Поиск по имени или компетенции…"
-              aria-label="Поиск ревьюеров"
-              className="mb-2 w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-1.5 text-[length:var(--type-small)] text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-            />
 
             <div id="reviewer-tabpanel" role="tabpanel" aria-labelledby={`reviewer-tab-${tab}`}>
             {noMatches ? (
@@ -276,43 +301,94 @@ export function SubmitSheet({
             ) : visible.length === 0 ? (
               <p className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">Ничего не найдено.</p>
             ) : (
-              <ul className="flex flex-col gap-1.5">
+              <ul className="flex max-h-[300px] flex-col gap-1.5 overflow-y-auto">
                 {visible.map((r) => {
                   const isPicked = picked.includes(r.handle);
+                  const isLead = primary === r.handle;
                   const disabled = r.availability === "full" && !isPicked;
                   return (
                     <li
                       key={r.handle}
-                      className={`rounded-[var(--radius-sm)] border p-2.5 ${isPicked ? "border-[var(--accent)]" : "border-[var(--border)]"} ${disabled ? "opacity-50" : ""}`}
+                      className={`rounded-[var(--radius-sm)] border p-2 ${
+                        isPicked
+                          ? "border-[color-mix(in_srgb,var(--accent)_45%,var(--border))] bg-[color-mix(in_srgb,var(--accent)_5%,transparent)]"
+                          : "border-[var(--border)] bg-[var(--bg-elevated)]"
+                      } ${disabled ? "opacity-50" : ""}`}
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <label className="flex min-w-0 items-center gap-2">
+                      <div className="flex items-center gap-2">
+                        {/* label-обёртка: клик по аватару/имени тоже переключает выбор (хит-таргет ≥36px). */}
+                        <label
+                          className={`flex min-h-9 min-w-0 flex-1 items-center gap-2 ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}
+                          title={disabled ? "Загружен" : isPicked ? "Убрать" : "Выбрать"}
+                        >
                           <input
                             type="checkbox"
                             checked={isPicked}
                             disabled={disabled}
                             onChange={() => togglePick(r.handle)}
-                            className="accent-[var(--accent)]"
+                            aria-label={r.displayName}
+                            className="shrink-0 accent-[var(--accent)]"
                           />
-                          <span className="truncate text-[length:var(--type-small)]">{r.displayName}</span>
-                          {r.rating != null && (
-                            <span className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">★ {r.rating.toFixed(1)}</span>
-                          )}
-                        </label>
-                        <span className="flex shrink-0 items-center gap-2">
-                          {r.matchPct > 0 && (
-                            <span className="rounded-[var(--radius-pill)] bg-[var(--accent-bg)] px-1.5 py-0.5 text-[0.7rem] font-medium text-[var(--accent)]">
-                              {r.matchPct}%
-                            </span>
-                          )}
-                          <span className="flex items-center gap-1 text-[length:var(--type-small)] text-[var(--muted-foreground)]">
-                            <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${AVAIL_META[r.availability].dot}`} />
-                            {AVAIL_META[r.availability].label}
+                          <span
+                            aria-hidden="true"
+                            className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--muted)] font-display text-[0.7rem] font-semibold text-[var(--muted-foreground)] ${
+                              isLead ? "border-2 border-[var(--accent)]" : "border border-[var(--border)]"
+                            }`}
+                          >
+                            {r.displayName.slice(0, 1).toUpperCase()}
                           </span>
-                        </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-1.5">
+                              <span className="truncate text-[length:var(--type-small)] font-medium leading-tight" title={r.displayName}>
+                                {r.displayName}
+                              </span>
+                              {isLead && (
+                                <span className="shrink-0 text-[0.6rem] font-semibold uppercase tracking-wider text-[var(--accent)]">
+                                  ведущий
+                                </span>
+                              )}
+                            </span>
+                            <span className="mt-0.5 flex flex-wrap items-center gap-2">
+                              <Stars rating={r.rating} />
+                              <span className="flex items-center gap-1 text-[0.7rem] tabular-nums text-[var(--muted-foreground)]">
+                                <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${AVAIL_META[r.availability].dot}`} />
+                                {AVAIL_META[r.availability].label}
+                              </span>
+                              {r.matchPct > 0 && (
+                                <span className="rounded-[var(--radius-pill)] bg-[var(--accent-bg)] px-1.5 py-0.5 text-[0.7rem] font-medium tabular-nums text-[var(--accent)]">
+                                  {r.matchPct}%
+                                </span>
+                              )}
+                            </span>
+                          </span>
+                        </label>
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          <span
+                            title="Балл «Топ»: навыки 50% + рейтинг 30% + объём 20%"
+                            className={`font-display text-[15px] font-bold leading-none tabular-nums ${
+                              r.top >= 70 ? "text-[var(--accent)]" : "text-[var(--foreground)]"
+                            }`}
+                          >
+                            {r.top}
+                          </span>
+                          {isPicked && (
+                            <button
+                              type="button"
+                              onClick={() => setPrimary(r.handle)}
+                              aria-pressed={isLead}
+                              className={`rounded-[var(--radius-pill)] px-1.5 py-0.5 text-[0.65rem] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                                isLead
+                                  ? "border border-[var(--accent)] text-[var(--accent)]"
+                                  : "border border-[var(--border)] text-[var(--muted-foreground)] hover:border-[var(--accent)] hover:text-[var(--foreground)]"
+                              }`}
+                            >
+                              {isLead ? "ведущий" : "вести"}
+                            </button>
+                          )}
+                        </div>
                       </div>
                       {r.competencies.length > 0 && (
-                        <div className="mt-1.5 flex flex-wrap gap-1">
+                        <div className="mt-1.5 flex flex-wrap gap-1 pl-9">
                           {r.competencies.slice(0, 6).map((comp) => {
                             const hit = r.matched.includes(comp);
                             return (
@@ -328,18 +404,6 @@ export function SubmitSheet({
                             );
                           })}
                         </div>
-                      )}
-                      {isPicked && (
-                        <button
-                          type="button"
-                          onClick={() => setPrimary(r.handle)}
-                          aria-pressed={primary === r.handle}
-                          className={`mt-1.5 rounded-[var(--radius-pill)] px-2 py-0.5 text-[0.7rem] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
-                            primary === r.handle ? "bg-[var(--accent)] text-[var(--accent-foreground)]" : "border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                          }`}
-                        >
-                          {primary === r.handle ? "ВЕДУЩИЙ" : "Сделать ведущим"}
-                        </button>
                       )}
                     </li>
                   );

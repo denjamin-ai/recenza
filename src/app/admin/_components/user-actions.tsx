@@ -1,7 +1,8 @@
 "use client";
 
 // Клиентские действия модерации пользователя (Фаза 10): баны, ограничение комментариев, ёмкость
-// ревью, скрытие/показ его блогов. Каждое действие → admin-API + router.refresh() в startTransition.
+// ревью, смена пароля, скрытие/показ его блогов. Каждое действие → admin-API + router.refresh()
+// в startTransition.
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -25,8 +26,10 @@ export function UserModeration(props: {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [password, setPassword] = useState("");
+  const [passwordDone, setPasswordDone] = useState(false);
 
-  function run(action: () => Promise<{ ok: boolean; error?: string }>) {
+  function run(action: () => Promise<{ ok: boolean; error?: string }>, after?: () => void) {
     setError(null);
     startTransition(async () => {
       const res = await action();
@@ -34,6 +37,7 @@ export function UserModeration(props: {
         setError(res.error ?? "Не удалось.");
         return;
       }
+      after?.();
       router.refresh();
     });
   }
@@ -96,6 +100,48 @@ export function UserModeration(props: {
           </button>
         </div>
       )}
+
+      <div>
+        <p className="mb-2 text-[length:var(--type-small)] font-medium text-[var(--foreground)]">Сменить пароль</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              setPasswordDone(false);
+            }}
+            placeholder="Новый пароль (мин. 8 символов)"
+            aria-label="Новый пароль"
+            autoComplete="new-password"
+            className="h-9 w-64 max-w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-secondary)] px-2.5 text-[length:var(--type-small)] text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          />
+          <button
+            type="button"
+            disabled={pending || password.length < 8}
+            onClick={() =>
+              run(
+                () => patchUser({ password }),
+                () => {
+                  setPassword("");
+                  setPasswordDone(true);
+                },
+              )
+            }
+            className="min-h-9 rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-2 text-[length:var(--type-small)] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:opacity-60"
+          >
+            Задать пароль
+          </button>
+          {passwordDone && (
+            <span role="status" className="text-[length:var(--type-small)] text-[var(--success)]">
+              Пароль обновлён
+            </span>
+          )}
+        </div>
+        <p className="mt-1 text-[0.7rem] text-[var(--muted-foreground)]">
+          Активные сессии пользователя не завершаются.
+        </p>
+      </div>
 
       {props.blogs.length > 0 && (
         <div>

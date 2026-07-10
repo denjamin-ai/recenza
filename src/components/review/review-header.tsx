@@ -3,6 +3,7 @@
 "use client";
 
 import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import type { ReviewSession } from "@/lib/queries/review";
 import { authorReviewHref } from "@/lib/review-links";
 import type { RevisionStatus } from "@/types";
@@ -40,13 +41,9 @@ export function ReviewHeader({
   return (
     <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--background)]/95 backdrop-blur">
       <div className="flex min-w-0 items-center gap-2 px-3 py-2 sm:px-5">
-        <Link
-          href={backHref}
-          className="inline-flex min-h-9 shrink-0 items-center gap-1 px-1 text-[length:var(--type-small)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          <span aria-hidden="true">←</span>
+        <BackLink href={backHref} className="shrink-0" ariaLabel={pov === "author" ? "К блогу" : "К списку"}>
           <span className="hidden sm:inline">{pov === "author" ? "К блогу" : "К списку"}</span>
-        </Link>
+        </BackLink>
 
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <div className="min-w-0">

@@ -22,7 +22,7 @@ import { AdminPage } from "./pages/admin.page";
 import { ReaderPage } from "./pages/reader.page";
 import { apiLoginUser, newApiContext, uniqueXff } from "./helpers/auth";
 import { reseed } from "./helpers/db";
-import { BASE_URL, BLOG, CHAPTERS, HIDDEN_BLOG, PASSWORD, USERS } from "./helpers/seed";
+import { BANNERS, BASE_URL, BLOG, CHAPTERS, HIDDEN_BLOG, PASSWORD, USERS } from "./helpers/seed";
 import { throttleMutation } from "./helpers/throttle";
 
 test.describe.configure({ mode: "serial" });
@@ -609,6 +609,104 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
       const res = await guestApi.post("/api/admin/banners", { data: bannerBody });
       expect(res.status()).toBe(401);
       expect(((await res.json()) as { error: string }).error).toBe("Требуется вход.");
+    });
+  });
+
+  // ── TC-ADMIN-24 — смена пароля пользователю (ui-feedback-3, П7) ─────────────
+
+  test("TC-ADMIN-24 @critical: смена пароля reader — UI «Задать пароль», старый → 401, новый → 200, негативы и гейтинг", async (
+    { asAdmin, api },
+    testInfo,
+  ) => {
+    const newPassword = "new-password-e2e";
+
+    await test.step("UI: карточка /admin/users/reader → «Задать пароль» → статус «Пароль обновлён»", async () => {
+      await asAdmin.goto(`/admin/users/${USERS.reader.handle}`);
+      const input = asAdmin.page.getByRole("textbox", { name: "Новый пароль" });
+      // Клик до гидрации может потеряться — идемпотентный ретрай.
+      await expect(async () => {
+        await input.fill(newPassword);
+        await asAdmin.page.getByRole("button", { name: "Задать пароль" }).click();
+        await expect(asAdmin.page.getByRole("status").filter({ hasText: "Пароль обновлён" })).toBeVisible({
+          timeout: 3_000,
+        });
+      }).toPass({ timeout: 20_000 });
+    });
+
+    await test.step("вход: старый пароль → 401, новый → 200 (уникальный XFF — изоляция login-лимита)", async () => {
+      const guest = await newApiContext(undefined, { "x-forwarded-for": uniqueXff(testInfo) });
+      const bad = await guest.post("/api/auth/user", { data: { handle: USERS.reader.handle, password: PASSWORD } });
+      expect(bad.status()).toBe(401);
+      const good = await guest.post("/api/auth/user", { data: { handle: USERS.reader.handle, password: newPassword } });
+      expect(good.ok()).toBeTruthy();
+      await guest.dispose();
+    });
+
+    await test.step("негативы: 7 символов → 400, не-строка → 400, несуществующий handle → 404, reader → 403", async () => {
+      const adminApi = await api("admin");
+      const short = await adminApi.patch(`/api/admin/users/${USERS.reader.handle}`, { data: { password: "1234567" } });
+      expect(short.status()).toBe(400);
+      const notString = await adminApi.patch(`/api/admin/users/${USERS.reader.handle}`, { data: { password: 12345678 } });
+      expect(notString.status()).toBe(400);
+      const missing = await adminApi.patch("/api/admin/users/no_such_user_e2e", { data: { password: "valid-pass-123" } });
+      expect(missing.status()).toBe(404);
+      const readerApi = await api("reader");
+      const forbidden = await readerApi.patch(`/api/admin/users/${USERS.reader.handle}`, {
+        data: { password: "valid-pass-123" },
+      });
+      expect(forbidden.status()).toBe(403);
+    });
+
+    await test.step("возвращаем seed-пароль reader (изоляция в пределах файла; afterAll reseed-ит)", async () => {
+      const adminApi = await api("admin");
+      const res = await adminApi.patch(`/api/admin/users/${USERS.reader.handle}`, { data: { password: PASSWORD } });
+      expect(res.ok()).toBeTruthy();
+    });
+  });
+
+  // ── TC-ADMIN-25 — лимиты текстов баннеров (ui-feedback-3, П3) ───────────────
+
+  test("TC-ADMIN-25 @regression: лимиты баннеров — превышение → 400 (POST и PATCH), граница → ok, maxLength в форме", async ({
+    asAdmin,
+    api,
+  }) => {
+    const adminApi = await api("admin");
+    const long = (n: number) => "х".repeat(n);
+
+    await test.step("POST: title 91 / eyebrow 41 / cta 31 → 400 с русским сообщением", async () => {
+      const t = await adminApi.post("/api/admin/banners", { data: { title: long(91), action: "donate" } });
+      expect(t.status()).toBe(400);
+      expect(((await t.json()) as { error: string }).error).toContain("до 90");
+      const e = await adminApi.post("/api/admin/banners", { data: { title: "ок", eyebrow: long(41), action: "donate" } });
+      expect(e.status()).toBe(400);
+      expect(((await e.json()) as { error: string }).error).toContain("до 40");
+      const c = await adminApi.post("/api/admin/banners", { data: { title: "ок", cta: long(31), action: "donate" } });
+      expect(c.status()).toBe(400);
+      expect(((await c.json()) as { error: string }).error).toContain("до 30");
+    });
+
+    await test.step("PATCH pb_recruit: 91 → 400; ровно 90 → ok; откат исходного title", async () => {
+      const over = await adminApi.patch(`/api/admin/banners/${BANNERS.recruit}`, { data: { title: long(91) } });
+      expect(over.status()).toBe(400);
+      const edge = await adminApi.patch(`/api/admin/banners/${BANNERS.recruit}`, { data: { title: long(90) } });
+      expect(edge.ok()).toBeTruthy();
+      const restore = await adminApi.patch(`/api/admin/banners/${BANNERS.recruit}`, {
+        data: { title: "Станьте ревьюером Recenza" },
+      });
+      expect(restore.ok()).toBeTruthy();
+    });
+
+    await test.step("UI: инпуты формы несут maxLength (счётчик {len}/{max})", async () => {
+      await asAdmin.goto("/admin/banners");
+      // exact — «Заголовок» иначе матчится подстрокой и в «Надзаголовок».
+      const titleField = asAdmin.page.getByRole("textbox", { name: "Заголовок", exact: true });
+      await expect(async () => {
+        await asAdmin.page.getByRole("button", { name: "+ Новый баннер" }).click();
+        await expect(titleField).toBeVisible({ timeout: 2_000 });
+      }).toPass({ timeout: 20_000 });
+      await expect(titleField).toHaveAttribute("maxlength", "90");
+      await expect(asAdmin.page.getByRole("textbox", { name: "Надзаголовок" })).toHaveAttribute("maxlength", "40");
+      await expect(asAdmin.page.getByRole("textbox", { name: "Текст кнопки" })).toHaveAttribute("maxlength", "30");
     });
   });
 });
