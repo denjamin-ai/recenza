@@ -15,8 +15,8 @@ export async function SiteNav() {
 
   return (
     <header className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
-      <nav className="mx-auto flex h-16 w-full max-w-[var(--max-article)] items-center justify-between gap-4 px-6">
-        <div className="flex items-center gap-6">
+      <nav className="mx-auto flex h-16 w-full max-w-[var(--max-article)] items-center justify-between gap-2 px-4 sm:gap-4 sm:px-6">
+        <div className="flex items-center gap-3 sm:gap-6">
           <span className="flex items-center gap-2">
             <Link
               href="/"
@@ -26,15 +26,16 @@ export async function SiteNav() {
             </Link>
             <AlphaBadge />
           </span>
+          {/* На <sm скрыта: логотип ведёт туда же, а таб «Лента» есть сразу под шапкой. */}
           <Link
             href="/"
-            className="text-[length:var(--type-small)] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-elevated)] rounded-[var(--radius-sm)]"
+            className="hidden text-[length:var(--type-small)] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-elevated)] rounded-[var(--radius-sm)] sm:block"
           >
             Лента
           </Link>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
           <GuideButton role={user?.role ?? null} />
           <ThemeToggle />
           {user ? (
