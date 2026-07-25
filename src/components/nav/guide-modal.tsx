@@ -3,18 +3,22 @@
 // «Руководство» — гид по возможностям аккаунта (порт GuideModal прототипа, ui-feedback-3).
 // ⚠️ Фаза 13: тексты приведены к новой модели — публикация СВОБОДНА (не «когда все одобрили»),
 // ревьюер комментирует чужие блоги (запрещена только глава, которую он рецензировал), базовые
-// возможности читателя есть у всех. Показываем гид по «главной» возможности аккаунта.
+// возможности читателя есть у всех.
+// ⚠️ Фаза 15 (З-27 + 15.3): гид строится по ВОЗМОЖНОСТЯМ, а не по «главной роли» — аккаунт с
+// обеими возможностями видел раньше только авторский раздел, хотя ревьюерский к нему тоже
+// относится. Тексты про приглашения переписаны под Ф14 (заявка → очередь → claim), у читателя
+// добавлен раздел про ревью и бейджи.
 // Вёрстка на токенах DS (без теней/raw-цветов); мобильный bottom-sheet; Esc/оверлей закрывают.
 // Админ шапку сайта не видит — admin-варианта нет намеренно.
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { IconBookOpen, IconCheck, IconEdit } from "@/components/icons";
-import { capabilitiesOf, type CapabilityHolder } from "@/lib/roles";
+import { capabilitiesLabel, capabilitiesOf, type CapabilityHolder } from "@/lib/roles";
 
-type GuideRole = "reader" | "author" | "reviewer";
+type GuideSectionKey = "reader" | "author" | "reviewer";
 
-interface GuideContent {
+interface GuideSection {
   title: string;
   intro: string;
   icon: React.ReactNode;
@@ -22,9 +26,9 @@ interface GuideContent {
   cta: { label: string; href: string };
 }
 
-const GUIDE_CONTENT: Record<GuideRole, GuideContent> = {
+const GUIDE_CONTENT: Record<GuideSectionKey, GuideSection> = {
   reader: {
-    title: "Гид читателя",
+    title: "Что может любой аккаунт",
     intro: "Базовые возможности есть у любого аккаунта Recenza.",
     icon: <IconBookOpen className="h-5 w-5" />,
     capabilities: [
@@ -32,6 +36,9 @@ const GUIDE_CONTENT: Record<GuideRole, GuideContent> = {
       { glyph: "❑", title: "Закладки", text: "Сохраняйте блоги в личную коллекцию — она доступна из меню аватара." },
       { glyph: "✎", title: "Комментарии", text: "Ветки до двух уровней с привязкой к фрагменту статьи. 15 минут на правку своего комментария." },
       { glyph: "@", title: "Подписки", text: "Подпишитесь на автора — уведомление о новой главе придёт в колокольчик." },
+      // З-27: раздела про ревью и бейджи в гиде читателя не было вовсе.
+      { glyph: "✓", title: "Бейдж ревью", text: "«Проверено на Recenza» — независимое ревью, «Проверено приглашённым экспертом» — ревьюер, которого привёл автор. Бейдж привязан к версии главы: если она изменилась, видно, какую версию проверяли." },
+      { glyph: "⚑", title: "Жалоба модератору", text: "На блог или комментарий можно пожаловаться — жалобу видит только редакция." },
     ],
     cta: { label: "Доска «Ищем ревьюеров»", href: "/board" },
   },
@@ -42,7 +49,8 @@ const GUIDE_CONTENT: Record<GuideRole, GuideContent> = {
     capabilities: [
       { glyph: "▢", title: "Редактор блоков", text: "Writing-first документ: 12 типов блоков, markdown-шорткаты, слэш-меню, формулы и схемы." },
       { glyph: "✓", title: "Публикация — когда хотите", text: "Ревьюеры для публикации не нужны: глава выходит по вашей кнопке. Публикацию можно отложить по расписанию." },
-      { glyph: "↑", title: "Ревью — по желанию", text: "Укажите навыки статьи и пригласите подходящих ревьюеров. Ревью начнётся после их согласия и не блокирует выход главы." },
+      // Ф14: автор больше НИКОГО не приглашает — он оставляет заявку, ревьюер берёт её сам.
+      { glyph: "↑", title: "Ревью — по желанию", text: "Укажите навыки статьи и оставьте заявку — ревьюер возьмёт её из очереди сам, по своим компетенциям. Заявку можно оставить и на уже опубликованную главу; ревью не блокирует выход." },
       { glyph: "◷", title: "Версии", text: "Правка опубликованной главы создаёт новую версию поверх: читатель видит текущую, пока вы не опубликуете новую." },
     ],
     cta: { label: "Кабинет автора", href: "/author" },
@@ -52,7 +60,8 @@ const GUIDE_CONTENT: Record<GuideRole, GuideContent> = {
     intro: "У вас отдельное рабочее место для проверки чужих статей — кабинет ревьюера.",
     icon: <IconCheck className="h-5 w-5" />,
     capabilities: [
-      { glyph: "≡", title: "Приглашения", text: "Авторы приглашают вас по совпадению навыков. Ревью начинается только после вашего согласия." },
+      // Ф14: приглашений больше нет — есть очередь заявок, отсортированная по вашим компетенциям.
+      { glyph: "≡", title: "Очередь заявок", text: "Заявки авторов сортируются по совпадению с вашими компетенциями. Вы берёте работу сами — в пределах своей ёмкости." },
       { glyph: "❝", title: "Треды замечаний", text: "Комментируйте фрагменты и предлагайте правки — автор применяет их одним действием." },
       { glyph: "✓", title: "Вердикт", text: "«Одобрить» или «Нужны правки» по каждой ревизии; для обсуждения есть чат сессии." },
       { glyph: "⌘", title: "Без конфликта интересов", text: "В чужих блогах вы обычный читатель, но главу, которую рецензировали, публично не комментируете. Профиль показывает, что вы отрецензировали." },
@@ -65,16 +74,15 @@ export function GuideButton({ user }: { user: CapabilityHolder | null }) {
   const [open, setOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
 
-  // Гид по «главной» возможности: автор → авторский, иначе ревьюер → ревьюерский, иначе читательский.
+  // Ф15: разделы по ВОЗМОЖНОСТЯМ. Базовый уровень есть у всех, поэтому «reader» — всегда;
+  // аккаунт с обеими возможностями видит оба кабинетных раздела (раньше — только авторский).
   const caps = capabilitiesOf(user);
-  const guideRole: GuideRole = caps.includes("author")
-    ? "author"
-    : caps.includes("reviewer")
-      ? "reviewer"
-      : "reader";
-  const content = GUIDE_CONTENT[guideRole];
-  // Гостю показываем гид читателя, но CTA ведёт на вход.
-  const cta = user == null ? { label: "Войти", href: "/login" } : content.cta;
+  const sectionKeys: GuideSectionKey[] = ["reader", ...caps];
+  const sections = sectionKeys.map((k) => GUIDE_CONTENT[k]);
+  const lead = sections[sections.length - 1];
+  const title = caps.length > 0 ? "Ваши возможности" : "Гид читателя";
+  // CTA ведёт в кабинет последней возможности; гостю — на вход, читателю — на доску.
+  const cta = user == null ? { label: "Войти", href: "/login" } : lead.cta;
 
   useEffect(() => {
     if (!open) return;
@@ -132,14 +140,15 @@ export function GuideButton({ user }: { user: CapabilityHolder | null }) {
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background)] text-[var(--accent)]">
-                    {content.icon}
+                    {lead.icon}
                   </div>
                   <div>
                     <p className="text-[0.7rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-                      Тип пользователя · {guideRole === "author" ? "автор" : guideRole === "reviewer" ? "ревьюер" : "читатель"}
+                      {/* Ф15: возможности, а не «тип пользователя» — их может быть несколько сразу */}
+                      Возможности · {capabilitiesLabel(user).toLowerCase()}
                     </p>
                     <h2 id="guide-title" className="mt-0.5 font-display text-xl font-extrabold tracking-tight sm:text-2xl">
-                      {content.title}
+                      {title}
                     </h2>
                   </div>
                 </div>
@@ -153,27 +162,36 @@ export function GuideButton({ user }: { user: CapabilityHolder | null }) {
                 </button>
               </div>
               <p className="mt-3 max-w-lg text-[length:var(--type-small)] leading-relaxed text-[var(--muted-foreground)]">
-                {content.intro}
+                {lead.intro}
               </p>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
-              <ul className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 sm:gap-y-5">
-                {content.capabilities.map((c) => (
-                  <li key={c.title} className="flex gap-3">
-                    <span
-                      aria-hidden="true"
-                      className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--muted)] text-sm font-semibold text-[var(--accent)]"
-                    >
-                      {c.glyph}
-                    </span>
-                    <div>
-                      <p className="text-[length:var(--type-small)] font-semibold leading-snug">{c.title}</p>
-                      <p className="mt-0.5 text-[length:var(--type-small)] leading-relaxed text-[var(--muted-foreground)]">{c.text}</p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
+              {sections.map((section) => (
+                <section key={section.title}>
+                  {sections.length > 1 && (
+                    <h3 className="mb-3 text-[0.7rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+                      {section.title}
+                    </h3>
+                  )}
+                  <ul className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 sm:gap-y-5">
+                    {section.capabilities.map((c) => (
+                      <li key={c.title} className="flex gap-3">
+                        <span
+                          aria-hidden="true"
+                          className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--muted)] text-sm font-semibold text-[var(--accent)]"
+                        >
+                          {c.glyph}
+                        </span>
+                        <div>
+                          <p className="text-[length:var(--type-small)] font-semibold leading-snug">{c.title}</p>
+                          <p className="mt-0.5 text-[length:var(--type-small)] leading-relaxed text-[var(--muted-foreground)]">{c.text}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
             </div>
 
             <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-[var(--border)] bg-[var(--bg-secondary)] px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:flex-row sm:items-center sm:justify-end sm:px-7 sm:pb-4">

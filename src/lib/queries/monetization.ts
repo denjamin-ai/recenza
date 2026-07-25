@@ -17,6 +17,8 @@ export interface FeedBanner {
   icon: string | null;
   action: BannerAction | null;
   target: string | null;
+  /** Ф15 (З-59): обложка слайда. Колонка была в схеме и в API, но не выбиралась и не рисовалась. */
+  coverUrl: string | null;
 }
 
 export async function getVisibleBanners(): Promise<FeedBanner[]> {
@@ -30,6 +32,7 @@ export async function getVisibleBanners(): Promise<FeedBanner[]> {
       icon: promoBanners.icon,
       action: promoBanners.action,
       target: promoBanners.target,
+      coverUrl: promoBanners.coverUrl,
     })
     .from(promoBanners)
     .where(eq(promoBanners.visible, true))

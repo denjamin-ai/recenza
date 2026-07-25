@@ -10,6 +10,7 @@ import { formatRelativeTime } from "@/lib/format";
 import { Avatar } from "@/components/review/review-primitives";
 import { CommentVote } from "./comment-vote";
 import { CommentComposer } from "./comment-composer";
+import { ReportButton } from "./report-dialog";
 import type { CommentView } from "@/lib/queries/comments";
 
 function scrollToBlock(blockId: string) {
@@ -238,6 +239,14 @@ export function CommentItem({
                 <button type="button" onClick={remove} disabled={busy} className={actionBtn}>
                   Удалить
                 </button>
+              )}
+              {/* Ф15 (З-51): до неё пожаловаться было физически нечем — роута не существовало.
+                  Гостю кнопки нет (роут ответил бы 401), на свой комментарий жаловаться нечего. */}
+              {isAuthed && !isOwner && !comment.isDeleted && (
+                <ReportButton
+                  target={{ targetType: "comment", targetId: comment.id, excerpt: comment.text }}
+                  className={actionBtn}
+                />
               )}
             </div>
           )}

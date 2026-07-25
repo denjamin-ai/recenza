@@ -342,7 +342,14 @@ export function ReviewScreen({
         onPublish={() => setPublishOpen(true)}
       />
 
-      {teamOpen && <TeamSheet reviewers={reviewers} onClose={() => setTeamOpen(false)} />}
+      {teamOpen && (
+        <TeamSheet
+          reviewers={reviewers}
+          onClose={() => setTeamOpen(false)}
+          chapterId={chapter.id}
+          viewerHandle={viewerHandle}
+        />
+      )}
 
       {publishOpen && (
         <PublishModal

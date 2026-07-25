@@ -7,12 +7,21 @@ import { useRouter } from "next/navigation";
 import { adminMutate } from "@/app/admin/_components/client";
 import { ActionBtn } from "@/app/admin/_components/buttons";
 
-export function ReportActions({ reportId, canDeleteComment }: { reportId: string; canDeleteComment: boolean }) {
+export function ReportActions({
+  reportId,
+  canDeleteComment,
+  canHideBlog = false,
+}: {
+  reportId: string;
+  canDeleteComment: boolean;
+  /** Ф15: жалоба на блог — скрыть его и закрыть жалобу ОДНОЙ транзакцией. */
+  canHideBlog?: boolean;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  function run(action: "resolve" | "delete_comment") {
+  function run(action: "resolve" | "delete_comment" | "hide_blog") {
     setError(null);
     startTransition(async () => {
       const res = await adminMutate(`/api/admin/reports/${reportId}`, "PATCH", { action });
@@ -47,6 +56,15 @@ export function ReportActions({ reportId, canDeleteComment }: { reportId: string
             onClick={() => run("delete_comment")}
             title="Удалить комментарий и закрыть"
             hint="Удалить только этот комментарий, автор продолжит писать."
+          />
+        )}
+        {canHideBlog && (
+          <ActionBtn
+            tone="danger-strong"
+            disabled={pending}
+            onClick={() => run("hide_blog")}
+            title="Скрыть блог и закрыть"
+            hint="Блог исчезнет со всех публичных поверхностей; аккаунт автора не трогаем."
           />
         )}
       </div>

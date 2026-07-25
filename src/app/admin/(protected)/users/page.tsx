@@ -1,19 +1,43 @@
 // Пользователи (Фаза 10): плотная таблица со sticky-заголовком, поиск (?q=), возможности/статус-pill.
 // Модерация (баны/ёмкость/выдача возможностей) — на детальной странице /admin/users/[handle].
+//
+// Ф15 (З-58): к поиску добавлены фильтры по возможности и статусу + сортировка, и всё это уехало
+// в SQL — раньше `getAdminUsers()` тянул ВСЕХ, а `?q=` фильтровался в JS уже на странице.
+// Ф15 (15.5): форма создания раскрывается предзаполненной из анкеты по инвайт-ссылке — `introducedBy`
+// больше не набирается руками, а от него зависит уровень бейджа.
 import Link from "next/link";
-import { getAdminUsers } from "@/lib/queries/admin";
+import { getAdminUsers, type AdminUserFilter } from "@/lib/queries/admin";
 import { ScreenHead, CapabilityPills, Pill } from "@/app/admin/_components/primitives";
 import { UserCreate } from "@/app/admin/_components/user-create";
+import { UserFilters } from "@/app/admin/_components/user-filters";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminUsersPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  const { q } = await searchParams;
-  const term = (q ?? "").trim().toLowerCase();
-  const all = await getAdminUsers();
-  const users = term
-    ? all.filter((u) => u.handle.toLowerCase().includes(term) || u.displayName.toLowerCase().includes(term))
-    : all;
+type Search = Promise<{
+  q?: string;
+  cap?: string;
+  status?: string;
+  sort?: string;
+  new?: string;
+  handle?: string;
+  name?: string;
+  introducedBy?: string;
+}>;
+
+const CAPS = ["author", "reviewer", "none"] as const;
+const STATUSES = ["active", "blocked", "muted"] as const;
+const SORTS = ["new", "name", "load"] as const;
+
+export default async function AdminUsersPage({ searchParams }: { searchParams: Search }) {
+  const sp = await searchParams;
+  const filter: AdminUserFilter = {
+    q: sp.q?.trim() || undefined,
+    cap: CAPS.find((c) => c === sp.cap),
+    status: STATUSES.find((s) => s === sp.status),
+    sort: SORTS.find((s) => s === sp.sort),
+  };
+  const users = await getAdminUsers(filter);
+  const filtered = !!(filter.q || filter.cap || filter.status);
 
   return (
     <div>
@@ -23,12 +47,28 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
         description="Возможности, баны и ограничение комментирования. Возможности «автор» и «ревьюер» выдаёт и отзывает администратор в карточке пользователя."
       />
 
-      <UserCreate />
+      <UserCreate
+        initialOpen={sp.new === "1"}
+        initial={{
+          handle: sp.handle ?? "",
+          displayName: sp.name ?? "",
+          introducedBy: sp.introducedBy ?? "",
+        }}
+      />
 
-      {term && (
+      <UserFilters
+        q={filter.q ?? ""}
+        cap={filter.cap ?? ""}
+        status={filter.status ?? ""}
+        sort={filter.sort ?? "new"}
+      />
+
+      {filtered && (
         <p className="mb-3 text-[length:var(--type-small)] text-[var(--muted-foreground)]">
-          Поиск: <span className="text-[var(--foreground)]">{q}</span> · найдено {users.length}{" "}
-          <Link href="/admin/users" className="text-[var(--accent)] hover:underline">сбросить</Link>
+          Найдено {users.length}{" "}
+          <Link href="/admin/users" className="text-[var(--accent)] hover:underline">
+            сбросить
+          </Link>
         </p>
       )}
 
@@ -53,6 +93,11 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
                     {u.displayName}
                   </Link>
                   <span className="ml-1 text-[var(--muted-foreground)]">@{u.handle}</span>
+                  {u.introducedBy && (
+                    <span className="ml-1 text-[0.7rem] text-[var(--muted-foreground)]">
+                      · привёл @{u.introducedBy}
+                    </span>
+                  )}
                 </td>
                 <td className="px-3 py-2"><CapabilityPills user={u} /></td>
                 <td className="px-3 py-2">

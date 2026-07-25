@@ -10,6 +10,7 @@ export {
   VERDICTS,
   THREAD_STATUSES,
   REPORT_STATUSES,
+  REPORT_TARGET_TYPES,
   COMPLEXITIES,
   INVITATION_STATUSES,
   RECRUIT_STATUSES,
@@ -31,6 +32,8 @@ export type ReviewStatus = (typeof schema.REVIEW_STATUSES)[number];
 export type Verdict = (typeof schema.VERDICTS)[number];
 export type ThreadStatus = (typeof schema.THREAD_STATUSES)[number];
 export type ReportStatus = (typeof schema.REPORT_STATUSES)[number];
+/** Ф15: цель жалобы — комментарий, блог или ревью-сессия главы (приватная жалоба на ревьюера). */
+export type ReportTargetType = (typeof schema.REPORT_TARGET_TYPES)[number];
 export type Complexity = (typeof schema.COMPLEXITIES)[number];
 /** @deprecated Фаза 14: приглашений ревьюерам больше нет — ревьюер сам берёт заявку из очереди. */
 export type InvitationStatus = (typeof schema.INVITATION_STATUSES)[number];

@@ -720,15 +720,22 @@ test.describe("Автор (author)", () => {
 
   // ── TC-AUTHOR-27 — «Руководство» для автора (ui-feedback-3, П9) ──────────────
 
-  test("TC-AUTHOR-27 @regression: кнопка «Руководство» показывает «Гид автора»", async ({ asAuthor }) => {
+  test("TC-AUTHOR-27 @regression: кнопка «Руководство» показывает разделы по возможностям аккаунта", async ({ asAuthor }) => {
     const { page } = asAuthor;
     await asAuthor.goto("/");
-    const dialog = page.getByRole("dialog", { name: "Гид автора" });
+    // ⚠️ Ф15: гид строится по ВОЗМОЖНОСТЯМ, а не по «главной роли» — заголовок стал общим,
+    // а разделов может быть несколько (базовый + кабинетные).
+    const dialog = page.getByRole("dialog", { name: "Ваши возможности" });
     await expect(async () => {
-      await page.getByRole("banner").getByRole("button", { name: "Руководство" }).click();
+      // `name` матчится подстрокой, поэтому скоупим на видимую кнопку: у открытой модалки
+      // внутри <header> есть оверлей «Закрыть руководство», который иначе тоже совпадёт.
+      await page.getByRole("banner").getByRole("button", { name: "Руководство", exact: true }).click();
       await expect(dialog).toBeVisible({ timeout: 2_000 });
     }).toPass({ timeout: 20_000 });
-    await expect(dialog.getByText("Тип пользователя · автор")).toBeVisible();
+    await expect(dialog.getByText("Возможности · автор")).toBeVisible();
+    await expect(dialog.getByRole("heading", { name: "Гид автора" })).toBeVisible();
+    // Ф14: текст про приглашение ревьюеров стал ложью — теперь автор оставляет ЗАЯВКУ.
+    await expect(dialog.getByText(/оставьте заявку/i)).toBeVisible();
     await expect(dialog.getByRole("link", { name: /Кабинет автора/ })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();

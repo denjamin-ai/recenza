@@ -44,7 +44,6 @@ export default async function AdminBoardPage() {
                   <span className="flex items-center gap-2">
                     <span className="font-medium text-[var(--foreground)]">{c.area}</span>
                     {c.hot && <Pill tone="danger">срочно</Pill>}
-                    <span className="text-[0.7rem] text-[var(--muted-foreground)]">в ожидании: {c.waiting}</span>
                   </span>
                   <BoardCallActions id={c.id} hot={c.hot} />
                 </div>

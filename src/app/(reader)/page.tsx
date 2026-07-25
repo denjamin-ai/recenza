@@ -1,20 +1,28 @@
 // Главная (ui-feedback-4 П2, прототип public/feed.jsx): БЕЗ табов/поиска/фильтров, карточки БЛОГОВ.
-// Вошедший пользователь → «Ваша лента» (hero + секции «Подписки»/«Свежее»);
-// гость (и любой пользователь по ?view=all) → каталог «Все блоги».
+//
+// ⚠️ Фаза 15 сменила смысл главной: это ВИТРИНА, а не каталог. На неё попадают только блоги с
+// независимым бейджем («Проверено на Recenza»); уровень `invited` — прозрачность, а не пропуск
+// (З-19/З-24). Пока проверенных меньше порога, подборку ведёт редакция («Выбор редакции»,
+// `blogs.featured_at`) — страховка R-2. Если нет ни проверенных, ни закреплённых, показываем
+// пустое состояние со ссылкой на каталог: отката на «показать всё подряд» НЕТ (решение владельца).
+// Каталог «Все блоги» никуда не делся — он живёт на `/?view=all` с сортировкой и пагинацией (З-25).
 //
 // ⚠️ Фаза 13: ролевой изоляции автора БОЛЬШЕ НЕТ. `restrictAuthorId` снят (З-07) — автор читает
-// чужие блоги наравне со всеми, поэтому и заголовок каталога всегда «Все блоги» (пункт из 15.3
-// вынужденно поднят сюда: «Все мои блоги» над чужими блогами было бы ложью). Свои блоги автора
+// чужие блоги наравне со всеми, поэтому и заголовок каталога всегда «Все блоги». Свои блоги автора
 // живут в его кабинете /author.
 
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { getFollowedAuthorIds, getVisibleBlogs } from "@/lib/queries/feed";
+import { getCatalog, getShowcase, type ShowcaseView } from "@/lib/queries/showcase";
 import { PromoCarouselSlot } from "@/components/reader/promo-carousel-slot";
 import { BlogIndexCard } from "@/components/reader/blog-index-card";
+import { CatalogPagination } from "@/components/reader/catalog-pagination";
+import { CatalogSortNav } from "@/components/reader/catalog-sort-nav";
 import { siteUrl } from "@/lib/seo";
 import { plural } from "@/lib/plural";
+import { SHOWCASE_PAGE_SIZE, parseCatalogParams, paginate, type CatalogSort } from "@/lib/showcase";
 import type { BlogCardView } from "@/lib/queries/types";
 import type { PublicUser } from "@/types";
 
@@ -24,49 +32,147 @@ export const metadata: Metadata = {
   // absolute: шаблон "%s | Recenza" задублировал бы бренд на главной
   title: { absolute: "Recenza — девблоги с редакционным ревью" },
   description:
-    "Многоглавные девблоги, прошедшие редакционное ревью: каталог блогов, подписки и подбор ревьюеров.",
+    "Девблоги, прошедшие редакционное ревью: подборка проверенных блогов, каталог и подписки.",
   alternates: { canonical: siteUrl() },
 };
 
-type Search = Promise<{ view?: string }>;
+type Search = Promise<{ view?: string; sort?: string; page?: string }>;
 
 export default async function HomePage({ searchParams }: { searchParams: Search }) {
-  const { view } = await searchParams;
+  const sp = await searchParams;
   const user = await getCurrentUser();
-  const blogs = await getVisibleBlogs();
 
-  if (user && view !== "all") return <ReaderHome user={user} blogs={blogs} />;
-  return <Catalog blogs={blogs} />;
+  if (sp.view === "all") {
+    const { sort, page } = parseCatalogParams(sp);
+    const catalog = await getCatalog(sort, page);
+    return <Catalog catalog={catalog} sort={sort} />;
+  }
+
+  if (user) return <ReaderHome user={user} />;
+
+  const showcase = await getShowcase();
+  return <Showcase showcase={showcase} page={parseCatalogParams(sp).page} />;
 }
 
-/** Каталог — гость и любой пользователь по «Все блоги →» (прототип ArticleIndexScreen). */
-function Catalog({ blogs }: { blogs: BlogCardView[] }) {
+/** Каталог «Все блоги» — всё опубликованное; escape hatch с витрины (прототип ArticleIndexScreen). */
+function Catalog({
+  catalog,
+  sort,
+}: {
+  catalog: Awaited<ReturnType<typeof getCatalog>>;
+  sort: CatalogSort;
+}) {
   return (
     <div className="mx-auto w-full max-w-[var(--max-content)] px-6 py-10">
       <h1 className="mb-3">Все блоги</h1>
       <p className="mb-6 text-[var(--muted-foreground)]">
-        {blogs.length} {plural(blogs.length, "публикация", "публикации", "публикаций")}
+        {catalog.total} {plural(catalog.total, "публикация", "публикации", "публикаций")}
       </p>
 
       <PromoCarouselSlot />
 
-      {blogs.length === 0 ? (
+      {catalog.total === 0 ? (
         <div className="rounded-[var(--radius-lg)] border border-dashed border-[var(--border)] py-16 text-center">
           <p className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">Пока нет опубликованных блогов.</p>
         </div>
       ) : (
-        <BlogGrid blogs={blogs} />
+        <>
+          <CatalogSortNav active={sort} />
+          <BlogGrid blogs={catalog.items} />
+          <CatalogPagination page={catalog.page} pageCount={catalog.pageCount} sort={sort} />
+        </>
       )}
     </div>
   );
 }
 
-/** «Ваша лента» читателя (прототип HomeScreen/ReaderFeed): hero + «Подписки» + «Свежее». */
-async function ReaderHome({ user, blogs }: { user: PublicUser; blogs: BlogCardView[] }) {
-  const followedIds = new Set(await getFollowedAuthorIds(user.id));
-  const followed = blogs.filter((b) => followedIds.has(b.author.id));
-  const others = blogs.filter((b) => !followedIds.has(b.author.id));
-  const hasFollows = followedIds.size > 0;
+/** Витрина гостя: проверенные блоги либо подборка редакции, пока порог не набран. */
+function Showcase({ showcase, page }: { showcase: ShowcaseView; page: number }) {
+  const { mode, featured, blogs } = showcase;
+  const editorialLed = mode === "editorial" && featured.length > 0;
+  const rest = paginate(blogs, page);
+
+  return (
+    <div className="mx-auto w-full max-w-[var(--max-content)] px-6 py-10">
+      <h1 className="mb-3">{editorialLed ? "Выбор редакции" : "Проверенные блоги"}</h1>
+      <p className="mb-6 max-w-2xl text-[length:var(--type-small)] leading-relaxed text-[var(--muted-foreground)]">
+        {editorialLed
+          ? "Блогов, прошедших независимое ревью, пока немного — подборку ведёт редакция."
+          : "Блоги, главы которых прошли независимое ревью на Recenza."}{" "}
+        <Link
+          href="/?view=all"
+          className="rounded-[var(--radius-sm)] font-medium text-[var(--accent)] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        >
+          Все блоги →
+        </Link>
+      </p>
+
+      <PromoCarouselSlot />
+
+      {featured.length > 0 && (
+        <section className="py-6">
+          {!editorialLed && (
+            <h2 className="mb-4 text-[0.8rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+              Выбор редакции
+            </h2>
+          )}
+          <BlogGrid blogs={featured} />
+        </section>
+      )}
+
+      {rest.total > 0 && (
+        <section className={`py-6 ${featured.length > 0 ? "border-t border-[var(--border)]" : ""}`}>
+          {featured.length > 0 && (
+            <h2 className="mb-4 text-[0.8rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+              Проверенные блоги
+            </h2>
+          )}
+          <BlogGrid blogs={rest.items} />
+          <CatalogPagination page={rest.page} pageCount={rest.pageCount} />
+        </section>
+      )}
+
+      {featured.length === 0 && rest.total === 0 && <ShowcaseEmpty />}
+    </div>
+  );
+}
+
+/**
+ * Пустая витрина — легальное состояние (решение владельца): платформа честно говорит, что
+ * проверенных блогов пока нет, и уводит в каталог. Никакого молчаливого отката на «всё подряд».
+ */
+function ShowcaseEmpty() {
+  return (
+    <div className="rounded-[var(--radius-lg)] border border-dashed border-[var(--border)] px-6 py-16 text-center">
+      <p className="mb-2 font-[family-name:var(--font-display)] text-[length:var(--type-h3)]">
+        Здесь появятся проверенные блоги
+      </p>
+      <p className="mx-auto mb-5 max-w-md text-[length:var(--type-small)] leading-relaxed text-[var(--muted-foreground)]">
+        На витрину попадают блоги, главы которых прошли независимое ревью. Пока таких нет — загляните
+        в каталог: там всё опубликованное.
+      </p>
+      <Link
+        href="/?view=all"
+        className="inline-flex min-h-[44px] items-center rounded-[var(--radius-sm)] border border-[var(--border)] px-4 font-medium text-[var(--accent)] transition-colors hover:border-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+      >
+        Все блоги →
+      </Link>
+    </div>
+  );
+}
+
+/** «Ваша лента» читателя (прототип HomeScreen/ReaderFeed): hero + «Подписки» + витрина. */
+async function ReaderHome({ user }: { user: PublicUser }) {
+  const followedIds = await getFollowedAuthorIds(user.id);
+  const followedSet = new Set(followedIds);
+  // ⚠️ «Подписки» витринной политикой НЕ фильтруются: подписка — явный выбор читателя, и прятать
+  // от него блог автора, на которого он подписан, только потому что у блога нет бейджа, нельзя.
+  const followed = (await getVisibleBlogs()).filter((b) => followedSet.has(b.author.id));
+  const showcase = await getShowcase({ excludeAuthorIds: followedIds });
+  const hasFollows = followedIds.length > 0;
+  // Витрина в ленте — без пагинации: у читателя есть «Все блоги →», а бесконечная выдача
+  // на личной странице ему не нужна (жёсткий срез `others.slice(0, 4)` из ui-feedback-4 снят, З-25).
+  const discover = [...showcase.featured, ...showcase.blogs].slice(0, SHOWCASE_PAGE_SIZE);
 
   return (
     <div className="mx-auto w-full max-w-[var(--max-content)] px-6 py-10">
@@ -117,13 +223,19 @@ async function ReaderHome({ user, blogs }: { user: PublicUser; blogs: BlogCardVi
         </section>
       )}
 
-      {others.length > 0 && (
+      {discover.length > 0 && (
         <section className={`py-6 ${followed.length > 0 ? "border-t border-[var(--border)]" : ""}`}>
           <h2 className="mb-4 text-[0.8rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-            {hasFollows ? "Ещё интересное" : "Свежее"}
+            {showcase.mode === "editorial" ? "Выбор редакции" : "Проверенные блоги"}
           </h2>
-          <BlogGrid blogs={others.slice(0, 4)} />
+          <BlogGrid blogs={discover} />
         </section>
+      )}
+
+      {discover.length === 0 && hasFollows && (
+        <p className="border-t border-[var(--border)] py-6 text-center text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+          Проверенных блогов за пределами ваших подписок пока нет.
+        </p>
       )}
     </div>
   );

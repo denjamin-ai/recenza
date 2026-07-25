@@ -19,6 +19,9 @@ export function notificationLabel(item: NotificationLike): string {
     case "review_revision_submitted":
       return chapterTitle ? `Автор сдал новую версию: ${chapterTitle}` : "Автор сдал новую версию";
     // ── заявки на ревью (Фаза 14) ──
+    // Ф15: ручное назначение админом — ревьюер эту работу не выбирал, подпись обязана это объяснить.
+    case "review_request_assigned":
+      return chapterTitle ? `Редакция назначила вас на ревью: ${chapterTitle}` : "Редакция назначила вас на ревью";
     case "review_request_claimed":
       return chapterTitle ? `Ревьюер взял заявку: ${chapterTitle}` : "Ревьюер взял вашу заявку на ревью";
     case "review_request_returned":
@@ -39,6 +42,15 @@ export function notificationLabel(item: NotificationLike): string {
     // админ видел «Уведомление» без смысла. Тип не удаляем, а даём ему подпись.
     case "reviewer_application_filed":
       return "Новая заявка в ревьюеры с доски";
+    // ⚠️ Ф15: тип существовал с Фазы 10, но эмитился только сидом и падал в default «Уведомление».
+    // С появлением POST /api/reports он живой — подпись обязательна (ср. З-30 выше).
+    case "report_filed": {
+      const target = typeof item.payload.targetType === "string" ? item.payload.targetType : null;
+      if (target === "blog") return "Жалоба на блог";
+      if (target === "review") return "Жалоба на ревью";
+      if (target === "comment") return "Жалоба на комментарий";
+      return "Новая жалоба модератору";
+    }
     case "recruit_requested":
       return "Запрос на подбор ревьюеров";
     case "review_changes_requested":
@@ -78,6 +90,8 @@ export function notificationTone(type: string): NotificationTone {
   switch (type) {
     case "review_changes_requested":
     case "review_ready":
+    // Ф15: назначение админом — тоже «требует действия» от ревьюера.
+    case "review_request_assigned":
     case "review_request_claimed":
     case "review_badge_granted":
       return "accent";

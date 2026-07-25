@@ -125,9 +125,12 @@ blogs
   id, slug(uniq), title, author_id→users, cover_url, tags(JSON[]),
   complexity(simple|medium|complex), summary,
   published_at, last_activity_at, view_count, rating, bookmark_count, hidden,
-  verified_at, verified_tier(invited|independent)   -- Ф14: денормализованный бейдж блога
+  verified_at, verified_tier(invited|independent),  -- Ф14: денормализованный бейдж блога
   -- ⚠️ Историчен: агрегат по ВСЕМ проверенным ревизиям, правка главы его НЕ гасит
   --    (решение владельца; точная правда — на уровне ревизии). Пересчёт — recomputeBlogVerified().
+  featured_at                       -- Ф15: «Выбор редакции» — ручное закрепление на витрине
+  -- Витрину открывает только verified_tier='independent'; featured_at — страховка от пустой
+  -- главной, пока проверенных меньше SHOWCASE_MIN_VERIFIED (дату ставит сервер, не клиент).
 
 chapters
   id, blog_id→blogs(CASCADE), slug, title, "order", skills(JSON[])
@@ -190,8 +193,13 @@ notifications                -- polling; is_admin_recipient + recipient_id=NULL 
 portfolios                   -- «Об авторе», один на автора, публикуется БЕЗ ревью
   id, author_id→users(uniq), blocks(JSONB), is_visible, updated_at
 
-reports                      -- жалобы
-  id, reporter_id→users, target_type, target_id, reason, status(open|resolved), created_at
+reports                      -- жалобы (Ф15: цикл замкнут — до неё жалобу нельзя было создать)
+  id, reporter_id→users,
+  target_type(comment|blog|review),  -- Ф15: типизирован; раньше свободная строка (З-61)
+  target_id,                          -- полиморфная ссылка: комментарий | блог | ГЛАВА (для ревью)
+  reason, note,                       -- reason из каталога src/lib/reports.ts; note — модератору
+  about_handle→users.handle|NULL,     -- Ф15: «о ком» — только у target_type='review'
+  status(open|resolved), created_at, resolved_at
 
 primary_change_requests      -- LEGACY (Ф14: роль «ведущего» упразднена; таблица не читается)
   id, chapter_id→chapters, from_handle, to_handle, status, created_at
@@ -295,7 +303,7 @@ bash .claude/playwright-tester/reset-test-db.sh
 - публичные комментарии: к текущей и к **старой** ревизии, нить читатель→автор→читатель,
   один в пределах окна правки (≤15 мин) и один за его пределами;
 - портфолио «Об авторе» (видимое и скрытое состояния покрыть кейсами);
-- одна жалоба (`reports`) и одна заявка на смену ведущего (`primary_change_requests`);
+- жалобы (`reports`) — по одной на каждый тип цели: комментарий, блог и приватная жалоба на ревью;
 - **engagement-слой:** подписка читателя на автора (`follows`), закладка (`bookmarks`),
   голоса за главу и за комментарий (`chapter_votes`, `comment_votes`) — чтобы счётчики/состояния
   кнопок были ненулевыми и тесты toggle имели «уже включённое» состояние;

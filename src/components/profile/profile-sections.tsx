@@ -114,7 +114,9 @@ export function ProfileSections({
                 {isOwner ? "Закреплённый блог" : "Рекомендует автор"}
               </h3>
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                <BlogCard blog={pinned} />
+                {/* Ф15: в профиле автора непроверенный блог виден с пометкой — на витрину он
+                    не попадает, но канал самопродвижения у автора остаётся. */}
+                <BlogCard blog={pinned} markUnverified />
               </div>
             </div>
           )}
@@ -127,7 +129,7 @@ export function ProfileSections({
               )}
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                 {rest.map((b) => (
-                  <BlogCard key={b.id} blog={b} />
+                  <BlogCard key={b.id} blog={b} markUnverified />
                 ))}
               </div>
             </>

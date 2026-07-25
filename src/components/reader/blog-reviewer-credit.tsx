@@ -18,12 +18,14 @@ export interface BlogCredit {
  * Ф14: уровень блога = сильнейший уровень среди проверенных глав (independent > invited).
  * Как и `blogs.verified_*`, это ИСТОРИЧЕСКИЙ факт «блог проходил ревью» — точная правда о
  * конкретной версии живёт в бейдже у заголовка главы.
+ * ⚠️ Правило одно на все поверхности (карточка кредита, оглавление блога) — локальных копий
+ * не заводить: разошедшийся агрегат означал бы разные бейджи у одного блога на разных экранах.
  */
-export function aggregateBlogTier(sections: ReaderSection[]): VerifiedTier | null {
+export function aggregateBlogTier(chapters: { verifiedTier: VerifiedTier | null }[]): VerifiedTier | null {
   let tier: VerifiedTier | null = null;
-  for (const s of sections) {
-    if (s.chapter.verifiedTier === "independent") return "independent";
-    if (s.chapter.verifiedTier === "invited") tier = "invited";
+  for (const c of chapters) {
+    if (c.verifiedTier === "independent") return "independent";
+    if (c.verifiedTier === "invited") tier = "invited";
   }
   return tier;
 }
@@ -65,7 +67,7 @@ function Chip({ chip }: { chip: ReviewerChip }) {
 export function BlogReviewerCredit({ sections }: { sections: ReaderSection[] }) {
   const credit = aggregateBlogCredit(sections);
   if (credit.current.length === 0 && credit.past.length === 0) return null;
-  const tier = aggregateBlogTier(sections);
+  const tier = aggregateBlogTier(sections.map((s) => s.chapter));
 
   return (
     <section

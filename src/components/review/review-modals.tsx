@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { ReviewReviewer } from "@/lib/queries/review";
 import { Avatar } from "./review-primitives";
+import { ReportButton } from "@/components/reader/report-dialog";
 
 function useEscape(onClose: () => void) {
   useEffect(() => {
@@ -146,9 +147,17 @@ const VERDICT_BADGE: Record<string, { label: string; cls: string }> = {
 export function TeamSheet({
   reviewers,
   onClose,
+  chapterId,
+  viewerHandle,
 }: {
   reviewers: ReviewReviewer[];
   onClose: () => void;
+  /**
+   * Ф15: приватная жалоба на ревью (замена снесённому в Ф14 рейтингу). Точка входа — состав
+   * ревью: жаловаться можно только на участника ЭТОЙ сессии, и это проверяется на сервере.
+   */
+  chapterId?: string;
+  viewerHandle?: string | null;
 }) {
   useEscape(onClose);
   return (
@@ -198,6 +207,16 @@ export function TeamSheet({
                   </span>
                 ) : (
                   <span className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">ждём</span>
+                )}
+                {chapterId && viewerHandle && viewerHandle !== r.handle && (
+                  <ReportButton
+                    target={{
+                      targetType: "review",
+                      targetId: chapterId,
+                      aboutHandle: r.handle,
+                      excerpt: r.displayName,
+                    }}
+                  />
                 )}
               </li>
             );

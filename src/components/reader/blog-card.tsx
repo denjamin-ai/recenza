@@ -2,9 +2,22 @@
 
 import Link from "next/link";
 import { CoverImage } from "@/components/reader/cover-image";
+import { VerifiedChip } from "@/components/reader/verified-badge";
 import type { BlogCardView } from "@/lib/queries/types";
 
-export function BlogCard({ blog }: { blog: BlogCardView }) {
+export function BlogCard({
+  blog,
+  markUnverified = false,
+}: {
+  blog: BlogCardView;
+  /**
+   * Ф15: показывать статус ревью (чип бейджа либо пометку «Без ревью»). Включает ТОЛЬКО профиль
+   * автора — по решению владельца непроверенный блог там виден с пометкой. Флаг обязателен,
+   * потому что `/bookmarks` строит карточки запросом БЕЗ verified-колонок: без явного включения
+   * все закладки молча получили бы «Без ревью».
+   */
+  markUnverified?: boolean;
+}) {
   const tags = blog.tags.slice(0, 3);
   return (
     <article className="group flex flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-elevated)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[var(--accent)] motion-reduce:transition-none motion-reduce:hover:translate-y-0">
@@ -38,6 +51,14 @@ export function BlogCard({ blog }: { blog: BlogCardView }) {
         >
           <h3 className="text-[length:var(--type-h4)] transition-colors group-hover:text-[var(--accent)]">{blog.title}</h3>
         </Link>
+        {markUnverified &&
+          (blog.verifiedTier ? (
+            <VerifiedChip tier={blog.verifiedTier} size="sm" />
+          ) : (
+            <span className="inline-flex w-fit items-center rounded-[var(--radius-pill)] border border-dashed border-[var(--border)] px-2 py-0.5 text-[0.7rem] text-[var(--muted-foreground)]">
+              Без ревью
+            </span>
+          ))}
         {blog.summary && (
           <p className="line-clamp-2 text-[length:var(--type-small)] text-[var(--muted-foreground)]">
             {blog.summary}

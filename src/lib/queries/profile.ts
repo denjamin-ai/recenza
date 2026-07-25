@@ -23,8 +23,6 @@ export interface ProfileUser {
   isReviewer: boolean;
   links: LinkItem[];
   competencies: string[];
-  reviewerRating: number | null;
-  reviewerRatingsN: number | null;
   createdAt: number;
 }
 
@@ -73,8 +71,6 @@ export const getProfileBySlug = cache(async (slug: string): Promise<ProfileView 
         isReviewer: users.isReviewer,
         links: users.links,
         competencies: users.competencies,
-        reviewerRating: users.reviewerRating,
-        reviewerRatingsN: users.reviewerRatingsN,
         createdAt: users.createdAt,
         pinnedBlogId: users.pinnedBlogId,
         isBlocked: users.isBlocked,
@@ -101,8 +97,6 @@ export const getProfileBySlug = cache(async (slug: string): Promise<ProfileView 
     isReviewer: row.isReviewer,
     links: parseJson<LinkItem[]>(row.links, []),
     competencies: parseJson<string[]>(row.competencies, []),
-    reviewerRating: row.reviewerRating,
-    reviewerRatingsN: row.reviewerRatingsN,
     createdAt: row.createdAt,
   };
 

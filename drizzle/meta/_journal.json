@@ -64,6 +64,13 @@
       "when": 1784991900932,
       "tag": "0008_flowery_the_stranger",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1785007193990,
+      "tag": "0009_spotty_vanisher",
+      "breakpoints": true
     }
   ]
 }

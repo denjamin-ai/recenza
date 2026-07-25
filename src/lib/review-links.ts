@@ -14,6 +14,7 @@ export const REVIEW_NOTIFY = {
   revisionSubmitted: "review_revision_submitted", // ревьюеру: автор сдал новую версию
   // ── заявки на ревью (Фаза 14) ──
   requestClaimed: "review_request_claimed", // автору: ревьюер взял заявку
+  requestAssigned: "review_request_assigned", // ревьюеру: админ назначил его на заявку (Ф15)
   requestReturned: "review_request_returned", // автору+ревьюеру: заявка вернулась в очередь по SLA
   requestEscalated: "review_request_escalated", // админу: заявку никто не взял в срок
   requestExpired: "review_request_expired", // автору: заявка не нашла ревьюера и закрыта
@@ -34,6 +35,16 @@ export const ADMIN_NOTIFY = {
   recruitRejected: "recruit_rejected", // автору: запрос на подбор отклонён (+ payload.reason)
   applicationAccepted: "application_accepted", // заявителю: принят в ревьюеры (роль выдана)
   applicationDeclined: "application_declined", // заявителю: заявка отклонена
+} as const;
+
+/**
+ * Уведомления модерации (Фаза 15). ⚠️ `report_filed` существовал и до неё, но эмитился ТОЛЬКО
+ * сидом и не имел подписи в `notificationLabel` — админ увидел бы «Уведомление» без смысла
+ * (тот же дефект, что З-30 у `reviewer_application_filed`). Теперь тип живой: его шлёт
+ * `POST /api/reports`, гасит разбор жалобы, а подпись лежит в `notification-text.ts`.
+ */
+export const MODERATION_NOTIFY = {
+  reportFiled: "report_filed", // админу: поступила жалоба (+ payload.reportId/targetType)
 } as const;
 
 /** Кабинет ревьюера (входящие приглашения, активные ревью). */

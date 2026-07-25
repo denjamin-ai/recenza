@@ -1,7 +1,11 @@
 "use client";
 
-// Колокол уведомлений: поллинг GET /api/notifications (+ на фокус окна), бейдж непрочитанных,
-// попап со списком и read-state. Рендерится только залогиненным (SiteNav). a11y как в AvatarMenu.
+// Колокол уведомлений: поллинг ленты (+ на фокус окна), бейдж непрочитанных, попап со списком
+// и read-state. a11y как в AvatarMenu.
+//
+// Ф15: источник ленты параметризован. Пользовательская шапка (SiteNav) оставляет умолчания
+// (`/api/notifications`), админ-портал передаёт свои роуты — у админ-сессии нет `userId`, и общий
+// роут ответил бы ей 401. Двойника компонента не заводим: разошлись бы a11y и e2e-локаторы.
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -34,7 +38,13 @@ function hrefOf(item: Item): string | null {
   return null;
 }
 
-export function NotificationBell() {
+export function NotificationBell({
+  feedUrl = "/api/notifications",
+  readUrl = "/api/notifications/read",
+}: {
+  feedUrl?: string;
+  readUrl?: string;
+} = {}) {
   const router = useRouter();
   const [items, setItems] = useState<Item[]>([]);
   const [unread, setUnread] = useState(0);
@@ -46,7 +56,7 @@ export function NotificationBell() {
     let alive = true;
     async function load() {
       try {
-        const res = await fetch("/api/notifications", { cache: "no-store" });
+        const res = await fetch(feedUrl, { cache: "no-store" });
         if (!res.ok) return;
         const data = (await res.json()) as { unread: number; items: Item[] };
         if (!alive) return;
@@ -65,7 +75,7 @@ export function NotificationBell() {
       window.clearInterval(timer);
       window.removeEventListener("focus", onFocus);
     };
-  }, []);
+  }, [feedUrl]);
 
   useEffect(() => {
     if (!open) return;
@@ -91,7 +101,7 @@ export function NotificationBell() {
     setItems((prev) => prev.map((i) => (id == null || i.id === id ? { ...i, isRead: true } : i)));
     setUnread((prev) => (id == null ? 0 : Math.max(0, prev - 1)));
     try {
-      await fetch("/api/notifications/read", {
+      await fetch(readUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(id ? { id } : {}),

@@ -1,8 +1,10 @@
-// Оболочка публичных/пользовательских страниц: skip-link + шапка сайта (SiteNav) + main.
-// Подвал с тэглайном убран (ui-feedback-6 П4). Рендерится в layout'ах групп (reader)/author/
-// reviewer. В админ-портале НЕ используется — там своя fullscreen-обвязка без шапки (README §11.8).
+// Оболочка публичных/пользовательских страниц: skip-link + шапка сайта (SiteNav) + main + подвал.
+// ⚠️ Подвал с ТЭГЛАЙНОМ был убран в ui-feedback-6 П4 и не возвращается; Ф15 (З-28) добавляет
+// служебный минимум: о платформе · как стать ревьюером · RSS. Рендерится в layout'ах групп
+// (reader)/author/reviewer. В админ-портале НЕ используется — там своя fullscreen-обвязка (README §11.8).
 
 import { SiteNav } from "@/components/nav/site-nav";
+import { SiteFooter } from "@/components/nav/site-footer";
 
 export function AppFrame({ children }: { children: React.ReactNode }) {
   return (
@@ -19,6 +21,8 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
       <main id="main" tabIndex={-1} className="w-full flex-1 focus:outline-none">
         {children}
       </main>
+
+      <SiteFooter />
     </>
   );
 }

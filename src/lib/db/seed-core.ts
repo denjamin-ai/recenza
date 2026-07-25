@@ -144,6 +144,19 @@ const duoBlocks: Block[] = [
   { id: "blk_duo_p_2", type: "p", text: "Ревью запрашиваю по желанию, публикую когда готово." },
 ];
 
+/**
+ * Ф15: короткие блоки для витринных блогов. Содержимое неважно — важны СТРУКТУРА (несколько
+ * опубликованных глав для навигации «предыдущая/следующая» и оглавления) и БЕЙДЖИ обоих уровней.
+ * ⚠️ Заголовок блока намеренно НЕ повторяет название главы: иначе на странице оказываются два h2
+ * с одинаковым текстом, и локаторы по имени становятся неоднозначными.
+ */
+function simpleBlocks(prefix: string, heading: string, text: string): Block[] {
+  return [
+    { id: `blk_${prefix}_h2`, type: "h2", text: heading },
+    { id: `blk_${prefix}_p`, type: "p", text },
+  ];
+}
+
 const portfolioBlocks: Block[] = [
   { id: "blk_pf_h2_1", type: "h2", text: "Об авторе" },
   { id: "blk_pf_p_1", type: "p", text: "Пишу про асинхронность и внутренности JavaScript-движков." },
@@ -333,7 +346,65 @@ export async function seedAll(db: Db): Promise<void> {
       verifiedTier: "independent",
     },
     {
+      // Ф15: витринный блог с НЕСКОЛЬКИМИ опубликованными главами — единственный, на котором
+      // проверяются переходы «предыдущая/следующая глава» и оглавление блога (у blog_async
+      // опубликована ровно одна глава).
+      id: "blog_guide",
+      slug: "review-craft",
+      title: "Ремесло ревью",
+      authorId: "usr_author",
+      tags: stringifyJson(["Ревью", "Практика"]),
+      complexity: "simple",
+      summary: "Три коротких главы о том, как читать чужой код.",
+      publishedAt: ago(40 * DAY),
+      lastActivityAt: ago(5 * DAY),
+      viewCount: 320,
+      rating: 4.2,
+      bookmarkCount: 0,
+      verifiedAt: ago(6 * DAY),
+      verifiedTier: "independent",
+    },
+    {
+      // Ф15: третий блог с независимым бейджем — с ним проверенных становится РОВНО 3, то есть
+      // порог SHOWCASE_MIN_VERIFIED набран и главная работает в режиме «Проверенные блоги».
+      id: "blog_ops",
+      slug: "ops-notes",
+      title: "Заметки об эксплуатации",
+      authorId: "usr_author",
+      tags: stringifyJson(["Ops"]),
+      complexity: "medium",
+      summary: "Короткий блог о дежурствах и инцидентах.",
+      publishedAt: ago(30 * DAY),
+      lastActivityAt: ago(9 * DAY),
+      viewCount: 140,
+      rating: 4,
+      bookmarkCount: 0,
+      verifiedAt: ago(9 * DAY),
+      verifiedTier: "independent",
+    },
+    {
+      // Ф15: бейдж уровня `invited` (ревью приведённого автором эксперта). Ключевой негатив
+      // витрины: на главную такой блог НЕ попадает (З-19), но по прямой ссылке и в профиле
+      // автора он полноценен. До Ф15 уровня `invited` в сиде не было вовсе.
+      id: "blog_invited",
+      slug: "guest-review",
+      title: "Разбор от приглашённого эксперта",
+      authorId: "usr_author",
+      tags: stringifyJson(["Гостевое"]),
+      complexity: "simple",
+      summary: "Главу проверил эксперт, которого привёл сам автор.",
+      publishedAt: ago(25 * DAY),
+      lastActivityAt: ago(11 * DAY),
+      viewCount: 80,
+      rating: 3.9,
+      bookmarkCount: 0,
+      verifiedAt: ago(11 * DAY),
+      verifiedTier: "invited",
+    },
+    {
       // Ф13: блог аккаунта с ОБЕИМИ возможностями — чтобы его профиль показывал и «Блоги», и «Ревью».
+      // Ф15: он же — «Выбор редакции» (закреплён админом): закрепление НЕ требует бейджа, и это
+      // важно проверить — витрину наполняет редакция, когда проверенных мало.
       id: "blog_duo",
       slug: "duo-notes",
       title: "Заметки универсала",
@@ -346,6 +417,7 @@ export async function seedAll(db: Db): Promise<void> {
       viewCount: 42,
       rating: 0,
       bookmarkCount: 0,
+      featuredAt: ago(3 * DAY),
     },
     {
       id: "blog_ghost",
@@ -404,6 +476,47 @@ export async function seedAll(db: Db): Promise<void> {
       title: "Как я совмещаю",
       order: 1,
       skills: stringifyJson(["Тестирование"]),
+    },
+    // Ф15: три главы витринного блога — на них стоят пейджер и оглавление.
+    {
+      id: "chp_guide_1",
+      blogId: "blog_guide",
+      slug: "why-review",
+      title: "Зачем нужно ревью",
+      order: 1,
+      skills: stringifyJson(["Ревью"]),
+    },
+    {
+      id: "chp_guide_2",
+      blogId: "blog_guide",
+      slug: "how-to-read",
+      title: "Как читать чужой код",
+      order: 2,
+      skills: stringifyJson(["Ревью", "Практика"]),
+    },
+    {
+      id: "chp_guide_3",
+      blogId: "blog_guide",
+      slug: "feedback",
+      title: "Как давать обратную связь",
+      order: 3,
+      skills: stringifyJson(["Коммуникация"]),
+    },
+    {
+      id: "chp_ops",
+      blogId: "blog_ops",
+      slug: "oncall",
+      title: "Дежурство без выгорания",
+      order: 1,
+      skills: stringifyJson(["Ops"]),
+    },
+    {
+      id: "chp_invited",
+      blogId: "blog_invited",
+      slug: "expert-take",
+      title: "Взгляд эксперта",
+      order: 1,
+      skills: stringifyJson(["Гостевое"]),
     },
     {
       id: "chp_ghost",
@@ -511,6 +624,80 @@ export async function seedAll(db: Db): Promise<void> {
       reviewStatus: "requested",
       reviewClosedAt: null,
     },
+    // ── Ф15: витринные блоги ──
+    // Три опубликованные главы одного блога: только на них проверяются переходы между главами
+    // и оглавление (у blog_async опубликована ровно одна глава).
+    {
+      id: "rev_guide_1",
+      chapterId: "chp_guide_1",
+      number: 1,
+      status: "published",
+      reviewStatus: "reviewed",
+      title: "Зачем нужно ревью",
+      skills: stringifyJson(["Ревью"]),
+      summary: "Первая глава витринного блога.",
+      blocks: stringifyJson(simpleBlocks("gd1", "Коротко о смысле", "Ревью — это не барьер, а сертификат.")),
+      publishedAt: ago(40 * DAY),
+      reviewClosedAt: ago(6 * DAY),
+      verifiedAt: ago(6 * DAY),
+      verifiedTier: "independent",
+    },
+    {
+      id: "rev_guide_2",
+      chapterId: "chp_guide_2",
+      number: 1,
+      status: "published",
+      reviewStatus: "none",
+      title: "Как читать чужой код",
+      skills: stringifyJson(["Ревью", "Практика"]),
+      summary: "Вторая глава — середина блога.",
+      blocks: stringifyJson(simpleBlocks("gd2", "С чего начинать", "Начинайте с интерфейсов, а не со строк.")),
+      publishedAt: ago(20 * DAY),
+    },
+    {
+      id: "rev_guide_3",
+      chapterId: "chp_guide_3",
+      number: 1,
+      status: "published",
+      reviewStatus: "none",
+      title: "Как давать обратную связь",
+      skills: stringifyJson(["Коммуникация"]),
+      summary: "Последняя глава — у неё нет «следующей».",
+      blocks: stringifyJson(simpleBlocks("gd3", "Правило одного вопроса", "Замечание без предложения — просто жалоба.")),
+      publishedAt: ago(5 * DAY),
+    },
+    {
+      id: "rev_ops_1",
+      chapterId: "chp_ops",
+      number: 1,
+      status: "published",
+      reviewStatus: "reviewed",
+      title: "Дежурство без выгорания",
+      skills: stringifyJson(["Ops"]),
+      summary: "Третий блог с независимым бейджем — им набирается порог витрины.",
+      blocks: stringifyJson(simpleBlocks("ops", "Тишина как метрика", "Тишина ночью важнее героизма днём.")),
+      publishedAt: ago(30 * DAY),
+      reviewClosedAt: ago(9 * DAY),
+      verifiedAt: ago(9 * DAY),
+      verifiedTier: "independent",
+    },
+    {
+      // Бейдж уровня `invited`: кредит у max_review, которого привёл сам автор (`introduced_by`).
+      // Такой блог на главную НЕ попадает (З-19) — ключевой негатив витрины.
+      id: "rev_invited_1",
+      chapterId: "chp_invited",
+      number: 1,
+      status: "published",
+      reviewStatus: "reviewed",
+      title: "Взгляд эксперта",
+      skills: stringifyJson(["Гостевое"]),
+      summary: "Проверено приглашённым экспертом.",
+      blocks: stringifyJson(simpleBlocks("inv", "Что увидел эксперт", "Мнение приглашённого рецензента.")),
+      publishedAt: ago(25 * DAY),
+      reviewClosedAt: ago(11 * DAY),
+      verifiedAt: ago(11 * DAY),
+      verifiedTier: "invited",
+    },
     {
       id: "rev_ghost_1",
       chapterId: "chp_ghost",
@@ -552,6 +739,11 @@ export async function seedAll(db: Db): Promise<void> {
     { chapterId: "chp_published", revisionNumber: 1, handle: "duo" },
     { chapterId: "chp_published", revisionNumber: 2, handle: "reviewer" },
     { chapterId: "chp_published", revisionNumber: 2, handle: "max_review" },
+    // Ф15: кредит витринных блогов. У `chp_invited` кредитован ТОЛЬКО max_review, которого привёл
+    // автор (`users.introduced_by = "author"`), — ровно поэтому уровень бейджа `invited`.
+    { chapterId: "chp_guide_1", revisionNumber: 1, handle: "reviewer" },
+    { chapterId: "chp_ops", revisionNumber: 1, handle: "sergey_review" },
+    { chapterId: "chp_invited", revisionNumber: 1, handle: "max_review" },
   ]);
 
   // ── 8. ТРЕДЫ (open/resolved + suggestion для apply-and-close) ──
@@ -766,7 +958,33 @@ export async function seedAll(db: Db): Promise<void> {
 
   // ── 19. ЖАЛОБЫ (admin-facing) ──
   await db.insert(reports).values([
+    // ⚠️ `reason` здесь — СВОБОДНАЯ строка доФ15-формата: она специально оставлена такой, чтобы
+    // `reasonLabel()` доказывал fallback на сырое значение (в БД прода такие строки есть).
     { id: "rpt_1", reporterId: "usr_reader", targetType: "comment", targetId: "cmt_deleted", reason: "Спам в комментариях", status: "open", createdAt: ago(1 * DAY) },
+    // Ф15: две новые цели жалоб — до неё админ-экран умел показывать контекст только для
+    // комментария, а другие типы печатались сырой строкой и оставались без контекста (З-61).
+    {
+      id: "rpt_blog",
+      reporterId: "usr_reader",
+      targetType: "blog",
+      targetId: "blog_duo",
+      reason: "offtopic",
+      note: "Блог не про то, что заявлено в описании.",
+      status: "open",
+      createdAt: ago(2 * HOUR),
+    },
+    {
+      // Приватная жалоба автора на ревьюера — замена снесённому в Ф14 рейтингу.
+      id: "rpt_review",
+      reporterId: "usr_author",
+      targetType: "review",
+      targetId: "chp_under_review",
+      aboutHandle: "lena_review",
+      reason: "abuse",
+      note: "Замечания по существу, но тон недопустимый.",
+      status: "open",
+      createdAt: ago(3 * HOUR),
+    },
   ]);
 
   // ── 21. СНЯТЫЕ РЕВЬЮЕРЫ (лог админа) ──

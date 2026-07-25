@@ -6,8 +6,13 @@ import { formatRelativeTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
+/** Момент рендера в Unix seconds (react-hooks/purity запрещает Date.now() в теле компонента). */
+function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
 export default async function AdminDashboardPage() {
-  const { counts, attention } = await getAdminDashboard();
+  const { counts, attention } = await getAdminDashboard(nowSeconds());
 
   return (
     <div>
@@ -17,6 +22,11 @@ export default async function AdminDashboardPage() {
         <KpiTile label="Открытые жалобы" value={counts.openReports} href="/admin/reports" tone={counts.openReports > 0 ? "warning" : "neutral"} />
         <KpiTile label="Главы на ревью" value={counts.reviewQueue} href="/admin/review" />
         <KpiTile label="Заявки без ревьюера" value={counts.staleRequests} href="/admin/review" tone={counts.staleRequests > 0 ? "warning" : "neutral"} />
+        {/* Ф15: очередь заявок, просрочки SLA и выданные бейджи — то, чем платформа живёт после Ф14. */}
+        <KpiTile label="Заявки в очереди" value={counts.openRequests} href="/admin/review" />
+        <KpiTile label="Просроченные SLA" value={counts.overdueRequests} href="/admin/review" tone={counts.overdueRequests > 0 ? "danger" : "neutral"} />
+        <KpiTile label="Бейджи за 30 дней" value={counts.recentBadges} href="/admin/featured" />
+        <KpiTile label="В подборке" value={counts.featuredBlogs} href="/admin/featured" tone={counts.featuredBlogs === 0 ? "warning" : "neutral"} />
         <KpiTile label="Запросы подбора" value={counts.pendingRecruit} href="/admin/recruit" tone={counts.pendingRecruit > 0 ? "warning" : "neutral"} />
         <KpiTile label="Заявки ревьюеров" value={counts.pendingApplications} href="/admin/recruit" tone={counts.pendingApplications > 0 ? "warning" : "neutral"} />
         <KpiTile label="Заблокированные" value={counts.blockedUsers} href="/admin/users" tone={counts.blockedUsers > 0 ? "danger" : "neutral"} />

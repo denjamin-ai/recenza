@@ -7,27 +7,35 @@
 import { test, expect } from "./fixtures";
 import { loginViaUi } from "./helpers/auth";
 import { throttleMutation } from "./helpers/throttle";
-import { BANNER_TEXTS, BASE_URL, BLOG, CHAPTERS, COMMENTS, HIDDEN_BLOG, USERS } from "./helpers/seed";
+import { BANNER_TEXTS, BASE_URL, BLOG, CHAPTERS, COMMENTS, HIDDEN_BLOG, USERS, VERIFIED_BLOGS } from "./helpers/seed";
 import { ReaderPage } from "./pages/reader.page";
 import { CommentsPage } from "./pages/comments.page";
 
 test.describe("Гость (аноним)", () => {
   // ── TC-GUEST-01 (SMK-01) ────────────────────────────────────────────────────
 
-  test("TC-GUEST-01 @smoke: главная гостю — каталог «Все блоги» без табов, карусель «Промо» и модалка «Поддержать проект»", async ({
+  test("TC-GUEST-01 @smoke: главная гостю — витрина проверенных блогов, карусель «Промо» и модалка «Поддержать проект»", async ({
     asGuest,
   }) => {
     const { page } = asGuest;
     const reader = new ReaderPage(page);
 
-    await test.step("главная отдаётся гостю: «Войти» в шапке, h1 «Все блоги», карточка блога, табов нет", async () => {
+    await test.step("главная отдаётся гостю: «Войти» в шапке, h1 витрины, карточка блога, табов нет", async () => {
       await reader.gotoFeed();
       await expect(page.getByRole("banner").getByRole("link", { name: "Войти" })).toBeVisible();
-      // ui-feedback-4 П2: главная = каталог карточек БЛОГОВ, без табов «Лента/Каталог/Подписки» и поиска.
-      await expect(reader.homeHeading("Все блоги")).toBeVisible();
+      // ui-feedback-4 П2: карточки БЛОГОВ, без табов «Лента/Каталог/Подписки» и поиска.
+      // ⚠️ Ф15: главная перестала быть каталогом — это ВИТРИНА проверенных блогов; каталог
+      // «Все блоги» переехал на `/?view=all` (подробности отбора — flows/featured.spec.ts).
+      await expect(reader.homeHeading("Проверенные блоги")).toBeVisible();
       await expect(reader.blogCard(BLOG.title)).toBeVisible();
       await expect(page.getByRole("navigation", { name: "Разделы ленты" })).toHaveCount(0);
       await expect(page.getByRole("searchbox")).toHaveCount(0);
+    });
+
+    await test.step("Ф15: подвал со служебными ссылками (З-28)", async () => {
+      const footer = page.getByRole("contentinfo");
+      await expect(footer.getByRole("link", { name: "О платформе" })).toBeVisible();
+      await expect(footer.getByRole("link", { name: "Как стать ревьюером" })).toBeVisible();
     });
 
     await test.step("карусель «Промо»: фиксируем слайд точкой «Баннер 3» (donate-баннер)", async () => {
@@ -80,18 +88,28 @@ test.describe("Гость (аноним)", () => {
   }) => {
     const { page } = asGuest;
 
-    await test.step("страница блога: data-driven BlogReaderScreen, title — от контента (авторендер первой published-главы)", async () => {
+    await test.step("страница блога — ОГЛАВЛЕНИЕ (Ф15, З-26): data-driven, title от блога", async () => {
       await page.goto(`/blog/${BLOG.slug}`);
-      // Роут /blog/[slug] рендерит data-driven ридер, а не легаси single-article: title берётся из
-      // контента (первая published-глава «Цикл событий»), блоки размечены [data-block-id].
-      await expect(page).toHaveTitle(new RegExp(CHAPTERS.published.title));
-      await expect(page.locator("[data-block-id]").first()).toBeVisible();
+      // ⚠️ Ф15: роут /blog/[slug] больше не редиректит на первую главу — он отдаёт оглавление.
+      // Анти-регрессия прототипа (README §3) сохранена: страница data-driven, разные блоги дают
+      // разный контент, а `title` берётся из блога, а не из захардкоженной статьи.
+      await expect(page).toHaveTitle(new RegExp(BLOG.title));
+      await expect(page.getByRole("heading", { level: 1, name: BLOG.title })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Оглавление" })).toBeVisible();
+      await expect(page.getByRole("link", { name: /Читать с начала/ })).toBeVisible();
+
+      const other = VERIFIED_BLOGS.guide;
+      await page.goto(`/blog/${other.slug}`);
+      await expect(page).toHaveTitle(new RegExp(other.title));
+      await expect(page.getByRole("heading", { level: 1, name: other.title })).toBeVisible();
     });
 
-    await test.step("гостю доступна только published-глава (draft/under-review/changes-requested скрыты)", async () => {
+    await test.step("в оглавлении только published-главы (draft/under-review/changes-requested скрыты)", async () => {
+      await page.goto(`/blog/${BLOG.slug}`);
       await expect(page.getByText(CHAPTERS.underReview.title)).toHaveCount(0);
       await expect(page.getByText(CHAPTERS.changesRequested.title)).toHaveCount(0);
       await expect(page.getByText(CHAPTERS.draft.title)).toHaveCount(0);
+      await expect(page.getByRole("link", { name: new RegExp(CHAPTERS.published.title) })).toBeVisible();
     });
 
     await test.step("прямой URL главы event-loop: title от контента, блоки отрендерены", async () => {
@@ -298,7 +316,11 @@ test.describe("Гость (аноним)", () => {
       ).toBeVisible();
       // ui-feedback-5 П5 (прототип reviewer-board.jsx): метрики hero + секция направлений.
       await expect(page.getByText("открытых направлений")).toBeVisible();
-      await expect(page.getByText("глав ждут ревью")).toBeVisible();
+      // ⚠️ Ф15 (З-57): метрика «N глав ждут ревью» снята — `board_calls.waiting` всегда был нулём
+      // и публично врал; «1–5 звёзд» тоже убрана (рейтинг удалён в Ф14). Вместо них — срок SLA.
+      await expect(page.getByText("глав ждут ревью")).toHaveCount(0);
+      await expect(page.getByText("звёзд — оценка авторов")).toHaveCount(0);
+      await expect(page.getByText("и заявка уходит в редакцию")).toBeVisible();
       await expect(page.getByRole("heading", { name: "Открытые направления" })).toBeVisible();
       await expect(page.getByText("Список ведёт редакция")).toBeVisible();
       await expect(page.getByRole("heading", { name: "Frontend" })).toBeVisible(); // bc_frontend
@@ -394,10 +416,13 @@ test.describe("Гость (аноним)", () => {
     await test.step("открытие: гостю показывается гид читателя с CTA «Войти»", async () => {
       // Клик до гидрации может потеряться — идемпотентный ретрай.
       await expect(async () => {
-        await page.getByRole("banner").getByRole("button", { name: "Руководство" }).click();
+        // exact: иначе на ретрае совпадёт ещё и оверлей «Закрыть руководство» открытой модалки.
+        await page.getByRole("banner").getByRole("button", { name: "Руководство", exact: true }).click();
         await expect(dialog).toBeVisible({ timeout: 2_000 });
       }).toPass({ timeout: 20_000 });
-      await expect(dialog.getByText("Тип пользователя · читатель")).toBeVisible();
+      // Ф15: гид строится по ВОЗМОЖНОСТЯМ, а не по «типу пользователя» (их может быть несколько).
+      await expect(dialog.getByText("Возможности · читатель")).toBeVisible();
+      await expect(dialog.getByText("Бейдж ревью")).toBeVisible(); // З-27: раздела про бейджи не было
       await expect(dialog.getByRole("link", { name: /Войти/ })).toBeVisible();
     });
 

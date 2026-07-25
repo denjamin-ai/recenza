@@ -2,7 +2,7 @@
 // делает layout, эти функции данные не авторизуют. Мутации — в src/app/api/admin/**.
 // JSON-поля читаем через parseJson; наружу passwordHash не отдаём (выбираем явные колонки).
 
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, like as like_, lte, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   blogs,
@@ -23,14 +23,17 @@ import {
 import { parseJson } from "@/lib/db/json";
 import { DONATIONS_ENABLED_KEY, getAppFlag } from "@/lib/queries/settings";
 import { isReviewOpen } from "@/lib/review-status";
+import { REPORT_TARGET_LABEL } from "@/lib/reports";
 import type {
   ApplicationStatus,
   BannerAction,
   DonationType,
   RecruitStatus,
   ReportStatus,
+  ReportTargetType,
   ReviewStatus,
   RevisionStatus,
+  VerifiedTier,
 } from "@/types";
 
 // ───────────────────────────── Сводка (dashboard) ─────────────────────────────
@@ -50,6 +53,14 @@ export interface AdminDashboard {
     reviewQueue: number; // главы с открытой ревью-сессией
     /** Ф14: заявки, которые никто не взял в срок SLA (пришли на смену «Смене ведущего»). */
     staleRequests: number;
+    /** Ф15: заявки, ждущие ревьюера прямо сейчас. */
+    openRequests: number;
+    /** Ф15: живые заявки с истёкшим сроком SLA (ждут вмешательства). */
+    overdueRequests: number;
+    /** Ф15: бейджи, выданные за последние 30 дней. */
+    recentBadges: number;
+    /** Ф15: сколько блогов закреплено в «Выборе редакции». */
+    featuredBlogs: number;
     pendingRecruit: number;
     pendingApplications: number;
     blockedUsers: number;
@@ -61,13 +72,33 @@ export interface AdminDashboard {
   attention: AttentionItem[];
 }
 
-export async function getAdminDashboard(): Promise<AdminDashboard> {
-  const [blockedUsers, allUsers, calls, reviewItems, openReportRows, recruitRows, appRows, staleRows] =
-    await Promise.all([
+export async function getAdminDashboard(now: number): Promise<AdminDashboard> {
+  const [
+    blockedUsers,
+    allUsers,
+    calls,
+    reviewSessions,
+    openReportRows,
+    recruitRows,
+    appRows,
+    staleRows,
+    openRequests,
+    overdueRequests,
+    recentBadges,
+    featuredBlogs,
+  ] = await Promise.all([
       db.$count(users, eq(users.isBlocked, true)),
       db.$count(users),
       db.$count(boardCalls),
-      getAdminReviewQueue(),
+      // ⚠️ Ф15: раньше здесь звался полный `getAdminReviewQueue()` — скан ВСЕХ ревизий с двумя
+      // join'ами ради одного числа на плитке. Точный список по-прежнему строит `/admin/review`.
+      db.$count(
+        chapterRevisions,
+        and(
+          inArray(chapterRevisions.reviewStatus, ["requested", "in-review", "changes-requested"]),
+          isNull(chapterRevisions.reviewClosedAt),
+        ),
+      ),
       db
         .select({ id: reports.id, targetType: reports.targetType, createdAt: reports.createdAt })
         .from(reports)
@@ -86,12 +117,20 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
         .select({ id: reviewRequests.id, createdAt: reviewRequests.createdAt, channel: reviewRequests.channel })
         .from(reviewRequests)
         .where(and(eq(reviewRequests.status, "open"), eq(reviewRequests.channel, "editorial"))),
+      // Ф15: плитки «Заявки в очереди», «Просроченные SLA» и «Бейджи за 30 дней».
+      db.$count(reviewRequests, eq(reviewRequests.status, "open")),
+      db.$count(
+        reviewRequests,
+        and(inArray(reviewRequests.status, ["open", "claimed"]), lte(reviewRequests.dueAt, now)),
+      ),
+      db.$count(chapterRevisions, gte(chapterRevisions.verifiedAt, now - 30 * 24 * 60 * 60)),
+      db.$count(blogs, isNotNull(blogs.featuredAt)),
     ]);
 
   const attention: AttentionItem[] = [
     ...openReportRows.map((r) => ({
       kind: "report" as const,
-      label: `Жалоба на ${r.targetType === "comment" ? "комментарий" : r.targetType}`,
+      label: `Жалоба на ${REPORT_TARGET_LABEL[r.targetType]}`,
       href: `/admin/reports/${r.id}`,
       createdAt: r.createdAt,
     })),
@@ -118,8 +157,12 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
   return {
     counts: {
       openReports: openReportRows.length,
-      reviewQueue: reviewItems.length,
+      reviewQueue: reviewSessions,
       staleRequests: staleRows.length,
+      openRequests,
+      overdueRequests,
+      recentBadges,
+      featuredBlogs,
       pendingRecruit: recruitRows.length,
       pendingApplications: appRows.length,
       blockedUsers,
@@ -145,9 +188,42 @@ export interface AdminUserRow {
   reviewLoad: number;
   reviewCapacity: number;
   createdAt: number;
+  /** Ф15: кто привёл аккаунт (Ф14) — от этого зависит УРОВЕНЬ бейджа, поэтому видно в списке. */
+  introducedBy: string | null;
 }
 
-export async function getAdminUsers(): Promise<AdminUserRow[]> {
+/** Ф15 (З-58): раньше был только `?q=`, и тот фильтровался в JS поверх выборки всех пользователей. */
+export interface AdminUserFilter {
+  q?: string;
+  /** `none` — аккаунт без возможностей (чистый читатель). */
+  cap?: "author" | "reviewer" | "none";
+  status?: "active" | "blocked" | "muted";
+  sort?: "new" | "name" | "load";
+}
+
+export async function getAdminUsers(filter: AdminUserFilter = {}): Promise<AdminUserRow[]> {
+  const where: SQL[] = [];
+
+  const q = filter.q?.trim().toLowerCase();
+  if (q) {
+    // handle хранится в нижнем регистре, displayName — как ввели: сравниваем через lower().
+    const like = `%${q}%`;
+    where.push(or(like_(users.handle, like), like_(sql`lower(${users.displayName})`, like))!);
+  }
+  if (filter.cap === "author") where.push(eq(users.canAuthor, true));
+  if (filter.cap === "reviewer") where.push(eq(users.isReviewer, true));
+  if (filter.cap === "none") where.push(and(eq(users.canAuthor, false), eq(users.isReviewer, false))!);
+  if (filter.status === "blocked") where.push(eq(users.isBlocked, true));
+  if (filter.status === "active") where.push(eq(users.isBlocked, false));
+  if (filter.status === "muted") where.push(eq(users.commentingBlocked, true));
+
+  const order =
+    filter.sort === "name"
+      ? [users.displayName]
+      : filter.sort === "load"
+        ? [desc(users.reviewLoad), users.displayName]
+        : [desc(users.createdAt)];
+
   return db
     .select({
       id: users.id,
@@ -161,9 +237,28 @@ export async function getAdminUsers(): Promise<AdminUserRow[]> {
       reviewLoad: users.reviewLoad,
       reviewCapacity: users.reviewCapacity,
       createdAt: users.createdAt,
+      introducedBy: users.introducedBy,
     })
     .from(users)
-    .orderBy(desc(users.createdAt));
+    .where(where.length > 0 ? and(...where) : undefined)
+    .orderBy(...order);
+}
+
+/** Кандидаты для ручного назначения на заявку (Ф15). Компетенции нужны, чтобы показать совпадение. */
+export async function getAssignableReviewers(): Promise<
+  { handle: string; displayName: string; load: number; capacity: number; competencies: string[] }[]
+> {
+  const rows = await db
+    .select({
+      handle: users.handle,
+      displayName: users.displayName,
+      load: users.reviewLoad,
+      capacity: users.reviewCapacity,
+      competencies: users.competencies,
+    })
+    .from(users)
+    .where(and(eq(users.isReviewer, true), eq(users.isBlocked, false)));
+  return rows.map((r) => ({ ...r, competencies: parseJson<string[]>(r.competencies, []) }));
 }
 
 export interface AdminUserDetail extends AdminUserRow {
@@ -189,6 +284,7 @@ export async function getAdminUserDetail(handle: string): Promise<AdminUserDetai
         competencies: users.competencies,
         bio: users.bio,
         createdAt: users.createdAt,
+        introducedBy: users.introducedBy,
       })
       .from(users)
       .where(eq(users.handle, handle))
@@ -216,27 +312,37 @@ export async function getAdminUserDetail(handle: string): Promise<AdminUserDetai
 
 export interface AdminReportRow {
   id: string;
-  targetType: string;
+  /** Ф15 (З-61): типизирована. Раньше — свободная строка, которая печаталась в UI «как есть». */
+  targetType: ReportTargetType;
   targetId: string;
   reason: string;
+  note: string | null;
+  /** Ф15: «о ком» — только у жалоб на ревью (приватная жалоба на участника сессии). */
+  aboutHandle: string | null;
   status: ReportStatus;
   createdAt: number;
+  resolvedAt: number | null;
   reporterHandle: string | null;
   reporterName: string | null;
 }
 
+const REPORT_ROW_COLUMNS = {
+  id: reports.id,
+  targetType: reports.targetType,
+  targetId: reports.targetId,
+  reason: reports.reason,
+  note: reports.note,
+  aboutHandle: reports.aboutHandle,
+  status: reports.status,
+  createdAt: reports.createdAt,
+  resolvedAt: reports.resolvedAt,
+  reporterHandle: users.handle,
+  reporterName: users.displayName,
+} as const;
+
 export async function getAdminReports(status?: ReportStatus): Promise<AdminReportRow[]> {
   const rows = await db
-    .select({
-      id: reports.id,
-      targetType: reports.targetType,
-      targetId: reports.targetId,
-      reason: reports.reason,
-      status: reports.status,
-      createdAt: reports.createdAt,
-      reporterHandle: users.handle,
-      reporterName: users.displayName,
-    })
+    .select(REPORT_ROW_COLUMNS)
     .from(reports)
     .leftJoin(users, eq(users.id, reports.reporterId))
     .where(status ? eq(reports.status, status) : undefined)
@@ -244,32 +350,42 @@ export async function getAdminReports(status?: ReportStatus): Promise<AdminRepor
   return rows;
 }
 
+/**
+ * Контекст цели жалобы. Ф15: раньше карточка умела показывать только комментарий, а для любой
+ * другой цели детальная страница оставалась вообще без контекста (З-61).
+ */
+export type AdminReportTarget =
+  | {
+      kind: "comment";
+      id: string;
+      text: string;
+      deletedAt: number | null;
+      blogSlug: string;
+      chapterSlug: string;
+      revision: number;
+      authorName: string | null;
+    }
+  | { kind: "blog"; id: string; slug: string; title: string; authorName: string; hidden: boolean }
+  | {
+      kind: "review";
+      chapterId: string;
+      chapterTitle: string;
+      blogSlug: string;
+      chapterSlug: string;
+      authorName: string;
+      aboutName: string | null;
+    }
+  /** Цель удалена или тип неизвестен — жалобу всё равно нужно уметь закрыть. */
+  | { kind: "unknown" };
+
 export interface AdminReportDetail extends AdminReportRow {
-  // Для targetType='comment' — контекст: текст, статус удаления, координаты главы.
-  comment: {
-    id: string;
-    text: string;
-    deletedAt: number | null;
-    blogSlug: string;
-    chapterSlug: string;
-    revision: number;
-    authorName: string | null;
-  } | null;
+  target: AdminReportTarget;
 }
 
 export async function getAdminReportDetail(id: string): Promise<AdminReportDetail | null> {
   const base = (
     await db
-      .select({
-        id: reports.id,
-        targetType: reports.targetType,
-        targetId: reports.targetId,
-        reason: reports.reason,
-        status: reports.status,
-        createdAt: reports.createdAt,
-        reporterHandle: users.handle,
-        reporterName: users.displayName,
-      })
+      .select(REPORT_ROW_COLUMNS)
       .from(reports)
       .leftJoin(users, eq(users.id, reports.reporterId))
       .where(eq(reports.id, id))
@@ -277,8 +393,15 @@ export async function getAdminReportDetail(id: string): Promise<AdminReportDetai
   )[0];
   if (!base) return null;
 
-  let comment: AdminReportDetail["comment"] = null;
-  if (base.targetType === "comment") {
+  return { ...base, target: await resolveReportTarget(base.targetType, base.targetId, base.aboutHandle) };
+}
+
+async function resolveReportTarget(
+  targetType: ReportTargetType,
+  targetId: string,
+  aboutHandle: string | null,
+): Promise<AdminReportTarget> {
+  if (targetType === "comment") {
     const c = (
       await db
         .select({
@@ -292,12 +415,52 @@ export async function getAdminReportDetail(id: string): Promise<AdminReportDetai
         })
         .from(publicComments)
         .leftJoin(users, eq(users.id, publicComments.authorId))
-        .where(eq(publicComments.id, base.targetId))
+        .where(eq(publicComments.id, targetId))
         .limit(1)
     )[0];
-    comment = c ?? null;
+    return c ? { kind: "comment", ...c } : { kind: "unknown" };
   }
-  return { ...base, comment };
+
+  if (targetType === "blog") {
+    const b = (
+      await db
+        .select({
+          id: blogs.id,
+          slug: blogs.slug,
+          title: blogs.title,
+          hidden: blogs.hidden,
+          authorName: users.displayName,
+        })
+        .from(blogs)
+        .innerJoin(users, eq(users.id, blogs.authorId))
+        .where(eq(blogs.id, targetId))
+        .limit(1)
+    )[0];
+    return b ? { kind: "blog", ...b } : { kind: "unknown" };
+  }
+
+  const ch = (
+    await db
+      .select({
+        chapterId: chapters.id,
+        chapterTitle: chapters.title,
+        chapterSlug: chapters.slug,
+        blogSlug: blogs.slug,
+        authorName: users.displayName,
+      })
+      .from(chapters)
+      .innerJoin(blogs, eq(chapters.blogId, blogs.id))
+      .innerJoin(users, eq(users.id, blogs.authorId))
+      .where(eq(chapters.id, targetId))
+      .limit(1)
+  )[0];
+  if (!ch) return { kind: "unknown" };
+
+  const about = aboutHandle
+    ? (await db.select({ name: users.displayName }).from(users).where(eq(users.handle, aboutHandle)).limit(1))[0]
+    : undefined;
+
+  return { kind: "review", ...ch, aboutName: about?.name ?? aboutHandle };
 }
 
 // ───────────────────────────── Очередь ревью (Ф14: без «ведущего») ─────────────────────────────
@@ -429,7 +592,6 @@ export interface AdminBoardCall {
   id: string;
   area: string;
   skills: string[];
-  waiting: number;
   note: string | null;
   hot: boolean;
 }
@@ -459,7 +621,7 @@ export interface AdminRecruitData {
 export async function getAdminBoardCalls(): Promise<AdminBoardCall[]> {
   const callRows = await db.select().from(boardCalls);
   return callRows
-    .map((c) => ({ id: c.id, area: c.area, skills: parseJson<string[]>(c.skills, []), waiting: c.waiting, note: c.note, hot: c.hot }))
+    .map((c) => ({ id: c.id, area: c.area, skills: parseJson<string[]>(c.skills, []), note: c.note, hot: c.hot }))
     .sort((a, b) => Number(b.hot) - Number(a.hot) || a.area.localeCompare(b.area, "ru"));
 }
 
@@ -541,6 +703,54 @@ export async function getRemovedReviewers(): Promise<
   { id: string; blogSlug: string; chapterSlug: string; handle: string; byAdmin: string; reason: string | null; createdAt: number }[]
 > {
   return db.select().from(removedReviewers).orderBy(desc(removedReviewers.createdAt));
+}
+
+// ───────────────────────────── Выбор редакции (Ф15) ─────────────────────────────
+
+export interface AdminFeaturedRow {
+  id: string;
+  slug: string;
+  title: string;
+  authorName: string;
+  authorSlug: string;
+  publishedAt: number | null;
+  verifiedAt: number | null;
+  verifiedTier: VerifiedTier | null;
+  featuredAt: number | null;
+  hidden: boolean;
+}
+
+/**
+ * Блоги для экрана «Выбор редакции»: закреплённые сверху, затем проверенные, затем остальные.
+ * Скрытые (`hidden`) остаются в списке — админ должен видеть, что закреплённый блог скрыт.
+ */
+export async function getAdminFeatured(): Promise<AdminFeaturedRow[]> {
+  const rows = await db
+    .select({
+      id: blogs.id,
+      slug: blogs.slug,
+      title: blogs.title,
+      authorName: users.displayName,
+      authorSlug: users.slug,
+      publishedAt: blogs.publishedAt,
+      verifiedAt: blogs.verifiedAt,
+      verifiedTier: blogs.verifiedTier,
+      featuredAt: blogs.featuredAt,
+      hidden: blogs.hidden,
+    })
+    .from(blogs)
+    .innerJoin(users, eq(blogs.authorId, users.id));
+
+  const rank = (r: AdminFeaturedRow): number =>
+    r.featuredAt != null ? 2 : r.verifiedTier === "independent" ? 1 : 0;
+
+  return rows.sort(
+    (a, b) =>
+      rank(b) - rank(a) ||
+      (b.featuredAt ?? 0) - (a.featuredAt ?? 0) ||
+      (b.verifiedAt ?? 0) - (a.verifiedAt ?? 0) ||
+      (b.publishedAt ?? 0) - (a.publishedAt ?? 0),
+  );
 }
 
 // ───────────────────────────── Монетизация (read) ─────────────────────────────

@@ -18,7 +18,10 @@ import {
   IconHeart,
   IconListLines,
   IconSearch,
+  IconStar,
 } from "@/components/icons";
+import { adminCrumbs } from "@/app/admin/_components/crumbs";
+import { NotificationBell } from "@/components/nav/notification-bell";
 
 type NavItem = { href: string; label: string; Icon: (p: { className?: string }) => ReactNode };
 const GROUPS: { label: string | null; items: NavItem[] }[] = [
@@ -35,6 +38,8 @@ const GROUPS: { label: string | null; items: NavItem[] }[] = [
   {
     label: "Платформа",
     items: [
+      // Ф15: витрина главной — подборка редакции (страховка от пустой главной, R-2).
+      { href: "/admin/featured", label: "Выбор редакции", Icon: IconStar },
       // «Доска ревьюеров» — вакансии публичной доски /board (ui-feedback-6 П5).
       { href: "/admin/board", label: "Доска ревьюеров", Icon: IconListLines },
       { href: "/admin/banners", label: "Баннеры", Icon: IconImage },
@@ -43,7 +48,8 @@ const GROUPS: { label: string | null; items: NavItem[] }[] = [
   },
 ];
 
-const ALL_ITEMS = GROUPS.flatMap((g) => g.items);
+// Ф15 (З-62): для крошки нужна ещё и ГРУППА раздела, поэтому плоский список несёт её с собой.
+const ALL_ITEMS = GROUPS.flatMap((g) => g.items.map((i) => ({ ...i, group: g.label })));
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/admin/dashboard") return pathname === href || pathname === "/admin";
@@ -56,7 +62,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const [q, setQ] = useState("");
 
   const active = ALL_ITEMS.find((i) => isActive(pathname, i.href));
-  const title = active?.label ?? "Платформа";
+  const crumbs = adminCrumbs(
+    pathname,
+    active ? { group: active.group, section: active.label, href: active.href } : null,
+  );
 
   function search(e: React.FormEvent) {
     e.preventDefault();
@@ -130,21 +139,33 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--bg-elevated)] px-6 py-3">
-          <p className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">
-            Платформа <span aria-hidden="true">·</span>{" "}
-            <span className="text-[var(--foreground)]">{title}</span>
-          </p>
-          <form onSubmit={search} className="relative">
-            <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
-            <input
-              type="search"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Поиск пользователя…"
-              aria-label="Поиск пользователя по нику или имени"
-              className="h-9 w-56 max-w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-secondary)] pl-8 pr-3 text-[length:var(--type-small)] text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          <nav aria-label="Хлебные крошки" className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+            {crumbs.map((c, i) => (
+              <span key={c}>
+                {i > 0 && <span aria-hidden="true"> · </span>}
+                <span className={i === crumbs.length - 1 ? "text-[var(--foreground)]" : undefined}>{c}</span>
+              </span>
+            ))}
+          </nav>
+          <div className="flex items-center gap-2">
+            {/* Ф15 (З-52): у админа появился свой колокол — до этого его события писались,
+                фильтровались из общей ленты и гасились, но нигде не показывались. */}
+            <NotificationBell
+              feedUrl="/api/admin/notifications"
+              readUrl="/api/admin/notifications/read"
             />
-          </form>
+            <form onSubmit={search} className="relative">
+              <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
+              <input
+                type="search"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Поиск пользователя…"
+                aria-label="Поиск пользователя по нику или имени"
+                className="h-9 w-56 max-w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-secondary)] pl-8 pr-3 text-[length:var(--type-small)] text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              />
+            </form>
+          </div>
         </header>
 
         <main id="admin-main" tabIndex={-1} className="flex-1 p-6 focus:outline-none">
