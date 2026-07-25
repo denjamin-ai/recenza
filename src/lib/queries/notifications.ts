@@ -111,3 +111,37 @@ export async function getNotifications(userId: string): Promise<NotificationFeed
 
   return { unread: items.filter((i) => !i.isRead).length, items };
 }
+
+/**
+ * Лента админ-событий (Фаза 15). Отдельная функция, а не параметр к `getNotifications`, —
+ * чтобы физически нельзя было случайно отдать админу личные строки пользователей.
+ *
+ * ⚠️ У админ-сессии НЕТ `userId` (env-based аутентификация, инвариант SessionData), а admin-строки
+ * пишутся с `recipient_id IS NULL` + `is_admin_recipient = true`. Поэтому общий колокол их и не
+ * видел: `getNotifications` фильтрует ровно наоборот. До Ф15 единственной операцией над этими
+ * строками было гашение — админ своих событий не видел вовсе (З-52).
+ */
+export async function getAdminNotifications(): Promise<NotificationFeed> {
+  const rows = await db
+    .select({
+      id: notifications.id,
+      type: notifications.type,
+      payload: notifications.payload,
+      isRead: notifications.isRead,
+      createdAt: notifications.createdAt,
+    })
+    .from(notifications)
+    .where(eq(notifications.isAdminRecipient, true))
+    .orderBy(desc(notifications.createdAt))
+    .limit(LIMIT);
+
+  const items: NotificationView[] = rows.map((r) => ({
+    id: r.id,
+    type: r.type,
+    payload: parseJson<NotificationPayload>(r.payload, {}),
+    isRead: r.isRead,
+    createdAt: r.createdAt,
+  }));
+
+  return { unread: items.filter((i) => !i.isRead).length, items };
+}

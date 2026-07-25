@@ -21,6 +21,7 @@ import {
   IconStar,
 } from "@/components/icons";
 import { adminCrumbs } from "@/app/admin/_components/crumbs";
+import { NotificationBell } from "@/components/nav/notification-bell";
 
 type NavItem = { href: string; label: string; Icon: (p: { className?: string }) => ReactNode };
 const GROUPS: { label: string | null; items: NavItem[] }[] = [
@@ -146,17 +147,25 @@ export function AdminShell({ children }: { children: ReactNode }) {
               </span>
             ))}
           </nav>
-          <form onSubmit={search} className="relative">
-            <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
-            <input
-              type="search"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Поиск пользователя…"
-              aria-label="Поиск пользователя по нику или имени"
-              className="h-9 w-56 max-w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-secondary)] pl-8 pr-3 text-[length:var(--type-small)] text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          <div className="flex items-center gap-2">
+            {/* Ф15 (З-52): у админа появился свой колокол — до этого его события писались,
+                фильтровались из общей ленты и гасились, но нигде не показывались. */}
+            <NotificationBell
+              feedUrl="/api/admin/notifications"
+              readUrl="/api/admin/notifications/read"
             />
-          </form>
+            <form onSubmit={search} className="relative">
+              <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
+              <input
+                type="search"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Поиск пользователя…"
+                aria-label="Поиск пользователя по нику или имени"
+                className="h-9 w-56 max-w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-secondary)] pl-8 pr-3 text-[length:var(--type-small)] text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              />
+            </form>
+          </div>
         </header>
 
         <main id="admin-main" tabIndex={-1} className="flex-1 p-6 focus:outline-none">

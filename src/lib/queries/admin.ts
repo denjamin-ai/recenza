@@ -2,7 +2,7 @@
 // делает layout, эти функции данные не авторизуют. Мутации — в src/app/api/admin/**.
 // JSON-поля читаем через parseJson; наружу passwordHash не отдаём (выбираем явные колонки).
 
-import { and, desc, eq, inArray, like as like_, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, like as like_, lte, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   blogs,
@@ -23,6 +23,7 @@ import {
 import { parseJson } from "@/lib/db/json";
 import { DONATIONS_ENABLED_KEY, getAppFlag } from "@/lib/queries/settings";
 import { isReviewOpen } from "@/lib/review-status";
+import { REPORT_TARGET_LABEL } from "@/lib/reports";
 import type {
   ApplicationStatus,
   BannerAction,
@@ -52,6 +53,14 @@ export interface AdminDashboard {
     reviewQueue: number; // главы с открытой ревью-сессией
     /** Ф14: заявки, которые никто не взял в срок SLA (пришли на смену «Смене ведущего»). */
     staleRequests: number;
+    /** Ф15: заявки, ждущие ревьюера прямо сейчас. */
+    openRequests: number;
+    /** Ф15: живые заявки с истёкшим сроком SLA (ждут вмешательства). */
+    overdueRequests: number;
+    /** Ф15: бейджи, выданные за последние 30 дней. */
+    recentBadges: number;
+    /** Ф15: сколько блогов закреплено в «Выборе редакции». */
+    featuredBlogs: number;
     pendingRecruit: number;
     pendingApplications: number;
     blockedUsers: number;
@@ -63,13 +72,33 @@ export interface AdminDashboard {
   attention: AttentionItem[];
 }
 
-export async function getAdminDashboard(): Promise<AdminDashboard> {
-  const [blockedUsers, allUsers, calls, reviewItems, openReportRows, recruitRows, appRows, staleRows] =
-    await Promise.all([
+export async function getAdminDashboard(now: number): Promise<AdminDashboard> {
+  const [
+    blockedUsers,
+    allUsers,
+    calls,
+    reviewSessions,
+    openReportRows,
+    recruitRows,
+    appRows,
+    staleRows,
+    openRequests,
+    overdueRequests,
+    recentBadges,
+    featuredBlogs,
+  ] = await Promise.all([
       db.$count(users, eq(users.isBlocked, true)),
       db.$count(users),
       db.$count(boardCalls),
-      getAdminReviewQueue(),
+      // ⚠️ Ф15: раньше здесь звался полный `getAdminReviewQueue()` — скан ВСЕХ ревизий с двумя
+      // join'ами ради одного числа на плитке. Точный список по-прежнему строит `/admin/review`.
+      db.$count(
+        chapterRevisions,
+        and(
+          inArray(chapterRevisions.reviewStatus, ["requested", "in-review", "changes-requested"]),
+          isNull(chapterRevisions.reviewClosedAt),
+        ),
+      ),
       db
         .select({ id: reports.id, targetType: reports.targetType, createdAt: reports.createdAt })
         .from(reports)
@@ -88,12 +117,20 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
         .select({ id: reviewRequests.id, createdAt: reviewRequests.createdAt, channel: reviewRequests.channel })
         .from(reviewRequests)
         .where(and(eq(reviewRequests.status, "open"), eq(reviewRequests.channel, "editorial"))),
+      // Ф15: плитки «Заявки в очереди», «Просроченные SLA» и «Бейджи за 30 дней».
+      db.$count(reviewRequests, eq(reviewRequests.status, "open")),
+      db.$count(
+        reviewRequests,
+        and(inArray(reviewRequests.status, ["open", "claimed"]), lte(reviewRequests.dueAt, now)),
+      ),
+      db.$count(chapterRevisions, gte(chapterRevisions.verifiedAt, now - 30 * 24 * 60 * 60)),
+      db.$count(blogs, isNotNull(blogs.featuredAt)),
     ]);
 
   const attention: AttentionItem[] = [
     ...openReportRows.map((r) => ({
       kind: "report" as const,
-      label: `Жалоба на ${r.targetType === "comment" ? "комментарий" : r.targetType}`,
+      label: `Жалоба на ${REPORT_TARGET_LABEL[r.targetType]}`,
       href: `/admin/reports/${r.id}`,
       createdAt: r.createdAt,
     })),
@@ -120,8 +157,12 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
   return {
     counts: {
       openReports: openReportRows.length,
-      reviewQueue: reviewItems.length,
+      reviewQueue: reviewSessions,
       staleRequests: staleRows.length,
+      openRequests,
+      overdueRequests,
+      recentBadges,
+      featuredBlogs,
       pendingRecruit: recruitRows.length,
       pendingApplications: appRows.length,
       blockedUsers,
