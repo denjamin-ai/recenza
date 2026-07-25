@@ -205,6 +205,13 @@ Suite: **smoke** — входит и в smoke, и в полный регресс
 (`TESTING.md` §2): «читатель» = аккаунт без возможностей, «автор»/«ревьюер» = `can_author`/
 `is_reviewer`. Фактическое распределение автотестов — §9.7 (оно и есть источник правды по числу).
 
+⚠️ **После Фазы 14** из матрицы ВЫБЫЛИ кейсы снесённых механик — подбор/пикер ревьюеров,
+приглашения и согласие, рейтинг ревьюеров (★), «ведущий»: TC-AUTHOR-17, TC-ADMIN-10, TC-REVIEWER-14,
+акцентный сценарий REV-PRIMARY. Взамен добавлены сквозные REV-QUEUE (заявка → очередь → claim),
+REV-BADGE (бейдж двух уровней и его привязка к номеру ревизии) и REV-SLA (эскалация и автовозврат) —
+см. `TESTING.md` §3.1. Спеки Ф14: `flows/review-queue.spec.ts`, `flows/expert-invite.spec.ts`,
+`cron-sla.spec.ts`; переписаны `flows/reviewer-matching.spec.ts` и `reviewer.spec.ts`.
+
 ### 9.1 Гость — `testing/test-cases/TC-GUEST.md` (14)
 
 | TC-ID | Приоритет | Suite | Акцентный сценарий | Spec-файл |
@@ -347,9 +354,12 @@ Suite: **smoke** — входит и в smoke, и в полный регресс
 | COM-STALE | P1 | regression (@critical) | COM-STALE | `flows/comment-thread.spec.ts` |
 | COM-EDIT-WINDOW | P1 | regression (@critical) | COM-EDIT-WINDOW | `flows/comment-thread.spec.ts` |
 | COM-GATING | P0 | regression (@critical) | COM-GATING | `flows/comment-thread.spec.ts` |
-| MATCH-INVITE | P0 | regression (@critical) | MATCH-INVITE | `flows/reviewer-matching.spec.ts` |
 | MATCH-RECRUIT | P1 | regression (@critical) | MATCH-RECRUIT | `flows/reviewer-matching.spec.ts` |
 | MATCH-BOARD | P1 | regression (@critical) | MATCH-BOARD | `flows/reviewer-matching.spec.ts` |
+| RQ-* | P0 | regression (@critical) | REV-QUEUE | `flows/review-queue.spec.ts` |
+| EXP-* | P1 | regression (@critical) | REV-QUEUE | `flows/expert-invite.spec.ts` |
+| SLA-* | P1 | regression | REV-SLA | `cron-sla.spec.ts` |
+| ~~MATCH-INVITE~~ | — | — | снят Ф14 (приглашений нет) | — |
 
 ### 9.7 Сводка распределения по spec-файлам
 
