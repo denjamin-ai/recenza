@@ -325,7 +325,10 @@ test.describe("Роль «Ревьюер»: кабинет, ReviewPage, проф
     });
   });
 
-  test("TC-REVIEWER-15 (SMK-12) @smoke @critical: ревьюер не комментирует публично — UI-гейт и API 403", async ({
+  // Ф13: ролевого запрета «ревьюер не комментирует» больше нет — вместо него КОНФЛИКТ ИНТЕРЕСОВ,
+  // привязанный к конкретной главе. `reviewer` рецензировал event-loop (reviewer_history) → закрыто;
+  // `duo` имеет возможность «ревьюер», но эту главу не рецензировал → комментирует свободно.
+  test("TC-REVIEWER-15 (SMK-12) @smoke @critical: конфликт интересов — рецензировавший главу не комментирует её (UI-гейт и API 403)", async ({
     asReviewer,
     api,
   }) => {
@@ -335,7 +338,7 @@ test.describe("Роль «Ревьюер»: кабинет, ReviewPage, проф
     await test.step("UI: формы нет, гейт-текст показан, чтение доступно", async () => {
       await expect(comments.region).toBeVisible();
       await expect(
-        asReviewer.page.getByText("Ревьюеры не участвуют в публичных обсуждениях."),
+        asReviewer.page.getByText("Вы рецензировали эту главу — публичное обсуждение недоступно."),
       ).toBeVisible();
       await expect(comments.composer).toHaveCount(0);
       await expect(comments.region.getByRole("button", { name: "Ответить" })).toHaveCount(0);
@@ -350,7 +353,24 @@ test.describe("Роль «Ревьюер»: кабинет, ReviewPage, проф
       });
       expect(res.status()).toBe(403);
       const body = (await res.json()) as { error?: string };
-      expect(body.error).toBe("Ревьюеры не участвуют в публичных обсуждениях.");
+      expect(body.error).toBe("Вы рецензировали эту главу — публичное обсуждение недоступно.");
+    });
+
+    await test.step("возможность «ревьюер» сама по себе не блокирует: duo комментирует ту же главу", async () => {
+      const ctx = await apiLoginUser(USERS.duo.handle);
+      try {
+        await throttleMutation(USERS.duo.handle);
+        const res = await ctx.post("/api/comments", {
+          data: {
+            blogSlug: BLOG.slug,
+            chapterSlug: CHAPTERS.published.slug,
+            text: "ревьюер без конфликта интересов комментирует",
+          },
+        });
+        expect(res.status()).toBe(200);
+      } finally {
+        await ctx.dispose();
+      }
     });
   });
 
@@ -387,21 +407,31 @@ test.describe("Роль «Ревьюер»: кабинет, ReviewPage, проф
     expect(new URL(location, BASE_URL).pathname).toBe("/");
   });
 
-  // ── TC-REVIEWER-19 — engagement только у читателя (ui-feedback-5, П4) ────────
+  // ── TC-REVIEWER-19 — engagement доступен ЛЮБОМУ аккаунту (Ф13, реверс ui-feedback-5 П4) ────────
 
-  test("TC-REVIEWER-19 @critical: голос/закладка/подписка ревьюеру → 403; бара «Реакции» в ридере нет", async ({
+  test("TC-REVIEWER-19 @critical: голос/закладка/подписка ревьюеру доступны; бар «Реакции» в ридере есть", async ({
     asReviewer,
     api,
   }) => {
     const ctx = await api("reviewer");
     await throttleMutation(USERS.reviewer.handle);
-    expect((await ctx.post(`/api/blogs/${BLOG.id}/vote`, { data: { value: 1 } })).status()).toBe(403);
-    expect((await ctx.post("/api/bookmarks", { data: { blogId: BLOG.id } })).status()).toBe(403);
-    expect((await ctx.post("/api/follows", { data: { authorId: USERS.author.id } })).status()).toBe(403);
+    expect((await ctx.post(`/api/blogs/${BLOG.id}/vote`, { data: { value: 1 } })).status()).toBe(200);
+    await throttleMutation(USERS.reviewer.handle);
+    expect((await ctx.post("/api/bookmarks", { data: { blogId: BLOG.id } })).status()).toBe(200);
+    await throttleMutation(USERS.reviewer.handle);
+    expect((await ctx.post("/api/follows", { data: { authorId: USERS.author.id } })).status()).toBe(200);
 
     const { page } = asReviewer;
     await page.goto(`/blog/${BLOG.slug}/${CHAPTERS.published.slug}`);
     await expect(page.getByRole("heading", { level: 1, name: CHAPTERS.published.title })).toBeVisible();
-    await expect(page.locator('[aria-label="Реакции"]')).toHaveCount(0);
+    await expect(page.locator('[aria-label="Реакции"]').first()).toBeVisible();
+
+    // Self-restoring: снимаем свои голос/закладку/подписку, чтобы спека осталась read-only по эффекту.
+    await throttleMutation(USERS.reviewer.handle);
+    await ctx.post(`/api/blogs/${BLOG.id}/vote`, { data: { value: 1 } });
+    await throttleMutation(USERS.reviewer.handle);
+    await ctx.post("/api/bookmarks", { data: { blogId: BLOG.id } });
+    await throttleMutation(USERS.reviewer.handle);
+    await ctx.post("/api/follows", { data: { authorId: USERS.author.id } });
   });
 });

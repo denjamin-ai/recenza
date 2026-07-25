@@ -18,9 +18,14 @@ export class ReaderPage {
     await this.page.goto("/");
   }
 
-  /** Главная без табов (ui-feedback-4 П2): h1 «Все блоги» (гость/ревьюер), «Все мои блоги» (автор,
-   *  ui-feedback-6 П6) или «Ваша лента» (reader). */
-  homeHeading(name: "Все блоги" | "Все мои блоги" | "Ваша лента"): Locator {
+  /** Каталог всех блогов (`/?view=all`) — доступен всем, включая вошедших (Ф13). */
+  async gotoCatalog(): Promise<void> {
+    await this.page.goto("/?view=all");
+  }
+
+  /** Главная без табов (ui-feedback-4 П2). Ф13: гость → «Все блоги», любой вошедший →
+   *  «Ваша лента»; каталог «Все блоги» открывается по `?view=all` (ролевого сплита больше нет). */
+  homeHeading(name: "Все блоги" | "Ваша лента"): Locator {
     return this.page.getByRole("heading", { level: 1, name });
   }
 

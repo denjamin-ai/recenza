@@ -8,17 +8,24 @@ export const BASE_URL = "http://localhost:3001";
 /** Пароль всех seed-пользователей. Админ — не в seed: env ADMIN_PASSWORD_PLAIN (.env.test). */
 export const PASSWORD = "password";
 
+/**
+ * Фаза 13: роли заменены ВОЗМОЖНОСТЯМИ (`canAuthor`/`isReviewer`); обе false = читатель
+ * (базовый уровень, есть у всех). Поле `role` в seed осталось legacy-shim'ом и в спеках
+ * НЕ используется — гейты его не читают.
+ */
 export const USERS = {
-  reader: { id: "usr_reader", handle: "reader", slug: "reader", role: "reader" },
-  author: { id: "usr_author", handle: "author", slug: "author", role: "author" },
-  reviewer: { id: "usr_reviewer", handle: "reviewer", slug: "reviewer", role: "reviewer" },
-  lena: { id: "usr_rev_lena", handle: "lena_review", slug: "lena-review", role: "reviewer" },
-  max: { id: "usr_rev_max", handle: "max_review", slug: "max-review", role: "reviewer" },
-  sergey: { id: "usr_rev_sergey", handle: "sergey_review", slug: "sergey-review", role: "reviewer" },
+  reader: { id: "usr_reader", handle: "reader", slug: "reader", canAuthor: false, isReviewer: false },
+  author: { id: "usr_author", handle: "author", slug: "author", canAuthor: true, isReviewer: false },
+  reviewer: { id: "usr_reviewer", handle: "reviewer", slug: "reviewer", canAuthor: false, isReviewer: true },
+  lena: { id: "usr_rev_lena", handle: "lena_review", slug: "lena-review", canAuthor: false, isReviewer: true },
+  max: { id: "usr_rev_max", handle: "max_review", slug: "max-review", canAuthor: false, isReviewer: true },
+  sergey: { id: "usr_rev_sergey", handle: "sergey_review", slug: "sergey-review", canAuthor: false, isReviewer: true },
   /** Читатель с commentingBlocked=true */
-  troll: { id: "usr_troll", handle: "troll", slug: "troll", role: "reader" },
+  troll: { id: "usr_troll", handle: "troll", slug: "troll", canAuthor: false, isReviewer: false },
   /** Заблокированный автор (isBlocked=true), его блог скрыт */
-  ghost: { id: "usr_ghost", handle: "ghost", slug: "ghost", role: "author" },
+  ghost: { id: "usr_ghost", handle: "ghost", slug: "ghost", canAuthor: true, isReviewer: false },
+  /** Ф13: ОБЕ возможности сразу — доказательство единого аккаунта. Блогов и ревью не имеет. */
+  duo: { id: "usr_duo", handle: "duo", slug: "duo", canAuthor: true, isReviewer: true },
 } as const;
 
 export const BLOG = {
@@ -29,16 +36,20 @@ export const BLOG = {
 
 export const HIDDEN_BLOG = { id: "blog_ghost", slug: "hidden-blog", title: "Скрытый блог" } as const;
 
+/**
+ * Ф13 — состояние главы описывается ДВУМЯ осями: status (draft|published) + reviewStatus
+ * (none|requested|in-review|changes-requested|reviewed).
+ */
 export const CHAPTERS = {
-  /** published, ревизии v1+v2 (prevBlocks), primary: reviewer */
+  /** published + reviewed, ревизии v1+v2 (prevBlocks), primary: reviewer */
   published: { id: "chp_published", slug: "event-loop", title: "Цикл событий" },
-  /** under-review, назначены reviewer (primary) + lena_review */
+  /** draft + in-review, назначены reviewer (primary) + lena_review */
   underReview: { id: "chp_under_review", slug: "promises", title: "Промисы изнутри" },
-  /** changes-requested, primary: lena_review */
+  /** draft + changes-requested, primary: lena_review */
   changesRequested: { id: "chp_changes", slug: "async-await", title: "Async/await на практике" },
-  /** draft, ревьюеров нет — отправная точка сквозных флоу */
+  /** draft + none, ревьюеров нет — отправная точка сквозных флоу и свободной публикации */
   draft: { id: "chp_draft", slug: "generators", title: "Генераторы и итераторы" },
-  /** draft в скрытом блоге ghost — мишень негативов ownership */
+  /** draft + none в скрытом блоге ghost — мишень негативов ownership */
   ghost: { id: "chp_ghost", slug: "intro", title: "Вступление" },
 } as const;
 

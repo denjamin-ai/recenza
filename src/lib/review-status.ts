@@ -52,7 +52,7 @@ export interface StatusMeta {
 /** Первичный бейдж — где глава находится по оси публикации. */
 export const PUBLICATION_META: Record<RevisionStatus, StatusMeta> = {
   draft: { label: "Черновик", cls: "bg-[var(--muted)] text-[var(--muted-foreground)]" },
-  published: { label: "Опубликована", cls: "bg-[var(--success-bg)] text-[var(--success)]" },
+  published: { label: "Опубликовано", cls: "bg-[var(--success-bg)] text-[var(--success)]" },
 };
 
 /** Вторичный бейдж — состояние ревью. `none` бейджа не имеет (ревью не запрашивали). */

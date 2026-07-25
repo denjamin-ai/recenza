@@ -250,7 +250,7 @@ test.describe("Автор (author)", () => {
     const skillsCheckItem = editor.submitSheet.locator("li", { hasText: "Ключевые навыки статьи" });
     const submitBtn = editor.submitSheet.getByRole("button", { name: "Отправить", exact: true });
 
-    await test.step("открываем шторку на seed-черновике generators: чек-лист «Готовность N/7», чипы навыков на месте", async () => {
+    await test.step("открываем шторку на seed-черновике generators: чек-лист «Готовность N/5», чипы навыков на месте", async () => {
       await editor.goto(BLOG.slug, CHAPTERS.draft.slug);
       await editor.openSubmitSheet();
       await expect(editor.readinessHeading).toBeVisible();
@@ -293,7 +293,9 @@ test.describe("Автор (author)", () => {
 
   // ── TC-AUTHOR-10+11 — блокировка правки under-review и published (UI + 409) ─
 
-  test("TC-AUTHOR-10+11 @critical: главы under-review и published — read-only баннер без «Сохранить», PATCH → 409", async ({
+  // Ф13: блокируется ТОЛЬКО то, что читают ревьюеры прямо сейчас. Опубликованная глава снова
+  // редактируема — правка заведёт ревизию-черновик поверх (сам фолк проверяется в flows/publish-free).
+  test("TC-AUTHOR-10+11 @critical: глава на ревью — read-only баннер и PATCH → 409; опубликованная снова редактируема", async ({
     asAuthor,
     api,
   }) => {
@@ -301,7 +303,7 @@ test.describe("Автор (author)", () => {
     const editor = new EditorPage(page);
     const ctx = await api("author");
 
-    await test.step("under-review (promises): баннер блокировки, кнопок «Сохранить»/⚙/«Отправить» нет", async () => {
+    await test.step("на ревью (promises): баннер блокировки, кнопок «Сохранить»/⚙/«Отправить» нет", async () => {
       await editor.goto(BLOG.slug, CHAPTERS.underReview.slug);
       await expect(editor.lockedBanner).toBeVisible();
       await expect(editor.saveButton).toHaveCount(0);
@@ -309,31 +311,22 @@ test.describe("Автор (author)", () => {
       await expect(page.getByRole("button", { name: "Настройки блога" })).toHaveCount(0);
     });
 
-    await test.step("PATCH under-review в обход UI → 409 «Главу нельзя редактировать в текущем статусе.»", async () => {
+    await test.step("PATCH главы на ревью в обход UI → 409 «нельзя редактировать, пока идёт ревью»", async () => {
       await throttleMutation(USERS.author.handle);
       const res = await ctx.patch(`/api/author/chapters/${CHAPTERS.underReview.id}`, {
         data: { title: "Взломанный заголовок" },
       });
       expect(res.status()).toBe(409);
       expect(((await res.json()) as { error?: string }).error).toBe(
-        "Главу нельзя редактировать в текущем статусе.",
+        "Главу нельзя редактировать, пока идёт ревью.",
       );
     });
 
-    await test.step("published (event-loop): та же блокировка UI и 409 API", async () => {
+    await test.step("published (event-loop): read-only баннера нет, есть «Сохранить» и предупреждение о новой версии", async () => {
       await editor.goto(BLOG.slug, CHAPTERS.published.slug);
-      await expect(editor.lockedBanner).toBeVisible();
-      await expect(editor.saveButton).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Отправить на ревью →" })).toHaveCount(0);
-
-      await throttleMutation(USERS.author.handle);
-      const res = await ctx.patch(`/api/author/chapters/${CHAPTERS.published.id}`, {
-        data: { title: "Взломанный заголовок" },
-      });
-      expect(res.status()).toBe(409);
-      expect(((await res.json()) as { error?: string }).error).toBe(
-        "Главу нельзя редактировать в текущем статусе.",
-      );
+      await expect(editor.lockedBanner).toHaveCount(0);
+      await expect(editor.saveButton).toBeVisible();
+      await expect(page.getByText(/Правки создадут новую версию поверх опубликованной/)).toBeVisible();
     });
 
     await test.step("заголовки глав не изменились", async () => {
@@ -504,19 +497,20 @@ test.describe("Автор (author)", () => {
     testInfo.annotations.push({ type: "фактический статус", description: String(res.status()) });
   });
 
-  // ── TC-AUTHOR-23 — чужие блоги скрыты из ленты/каталога автора ───────────────
+  // ── TC-AUTHOR-23 — автор читает каталог наравне со всеми; скрыт только блог забаненного ─────
 
-  test("TC-AUTHOR-23 @regression: в ленте/каталоге автора нет чужого «Скрытый блог», прямые URL → 404", async ({
+  test("TC-AUTHOR-23 @regression: каталог автора — общий «Все блоги» без блога забаненного, прямые URL → 404", async ({
     asAuthor,
   }) => {
     const { page } = asAuthor;
     const reader = new ReaderPage(page, USERS.author.handle);
 
-    await test.step("главная-каталог автора: только свои блоги, чужого «Скрытого блога» нет", async () => {
-      // ui-feedback-4 П2 + ui-feedback-6 П6: главная автора = каталог «Все мои блоги» (restrictAuthorId).
-      await reader.gotoFeed();
-      await expect(reader.homeHeading("Все мои блоги")).toBeVisible();
+    await test.step("каталог автора — общий: свои и чужие блоги; блога забаненного ghost нет", async () => {
+      // ⚠️ Ф13 (З-07): ролевой изоляции автора нет — restrictAuthorId снят, h1 общий «Все блоги».
+      await reader.gotoCatalog();
+      await expect(reader.homeHeading("Все блоги")).toBeVisible();
       await expect(page.getByText(BLOG.title).first()).toBeVisible();
+      // Скрыт по модерации (ghost.isBlocked), а не по роли зрителя.
       await expect(page.getByText(HIDDEN_BLOG.title)).toHaveCount(0);
     });
 
@@ -561,40 +555,54 @@ test.describe("Автор (author)", () => {
     });
   });
 
-  // ── TC-AUTHOR-28 — engagement только у читателя (ui-feedback-5, П4) ──────────
+  // ── TC-AUTHOR-28 — engagement доступен любому аккаунту (Ф13, реверс ui-feedback-5 П4) ────────
 
-  test("TC-AUTHOR-28 @critical: голос/закладка/подписка автору → 403; бара «Реакции» и пункта «Закладки» нет", async ({
+  test("TC-AUTHOR-28 @critical: голос/закладка/подписка автору доступны; бар «Реакции», «Лента» и «Закладки» на месте", async ({
     asAuthor,
     api,
   }) => {
     const ctx = await api("author");
 
-    await test.step("API: vote/bookmarks/follows под автором → 403 (reader-only)", async () => {
+    await test.step("API: vote/bookmarks под автором → 200; /bookmarks открывается", async () => {
       await throttleMutation(USERS.author.handle);
-      expect((await ctx.post(`/api/blogs/${BLOG.id}/vote`, { data: { value: 1 } })).status()).toBe(403);
-      expect((await ctx.post("/api/bookmarks", { data: { blogId: BLOG.id } })).status()).toBe(403);
-      expect((await ctx.post("/api/follows", { data: { authorId: USERS.author.id } })).status()).toBe(403);
-      // Страница закладок автору недоступна — 307 на главную.
+      expect((await ctx.post(`/api/blogs/${BLOG.id}/vote`, { data: { value: 1 } })).status()).toBe(200);
+      await throttleMutation(USERS.author.handle);
+      expect((await ctx.post("/api/bookmarks", { data: { blogId: BLOG.id } })).status()).toBe(200);
+      // Подписка на самого себя запрещена по существу (не по роли) — проверяем именно эту причину.
+      await throttleMutation(USERS.author.handle);
+      const self = await ctx.post("/api/follows", { data: { authorId: USERS.author.id } });
+      expect(self.status()).toBe(400);
+      expect(((await self.json()) as { error?: string }).error).toBe("Нельзя подписаться на себя.");
+      // Страница закладок автору доступна (реверс uif-5 П4).
       const page = await ctx.get("/bookmarks", { maxRedirects: 0 });
-      expect(page.status()).toBe(307);
+      expect(page.status()).toBe(200);
     });
 
-    await test.step("UI: бара «Реакции» нет; в шапке нет «Ленты»; меню — без «Закладок»/«Сменить аватар», с «Все мои блоги»", async () => {
+    await test.step("UI: бар «Реакции» есть; «Лента» вернулась в шапку; меню — с «Закладками», без «Все мои блоги»", async () => {
       const { page } = asAuthor;
       await page.goto(`/blog/${BLOG.slug}/${CHAPTERS.published.slug}`);
-      await expect(page.locator('[aria-label="Реакции"]')).toHaveCount(0);
-      // ui-feedback-6 П6: у автора «Ленты» в шапке нет (навигация — «Все мои блоги» в меню аватара).
-      await expect(page.getByRole("banner").getByRole("link", { name: "Лента" })).toHaveCount(0);
+      await expect(page.locator('[aria-label="Реакции"]').first()).toBeVisible();
+      // ⚠️ Ф13 (реверс uif-6 П6): «Лента» в шапке есть у всех — каталог перестал быть ролевым.
+      await expect(page.getByRole("banner").getByRole("link", { name: "Лента" })).toBeVisible();
 
       const reader = new ReaderPage(page, USERS.author.handle);
       await reader.userMenuButton.click();
       const menu = page.getByRole("menu", { name: "Меню пользователя" });
       await expect(menu).toBeVisible();
-      await expect(menu.getByRole("menuitem", { name: "Закладки" })).toHaveCount(0);
+      await expect(menu.getByRole("menuitem", { name: "Закладки" })).toBeVisible();
+      await expect(menu.getByRole("menuitem", { name: "Мой профиль" })).toBeVisible();
+      await expect(menu.getByRole("menuitem", { name: "Кабинет автора" })).toBeVisible();
       // ui-feedback-6 П2: «Сменить аватар» из меню убран (кнопка живёт на своей /u/-странице).
       await expect(menu.getByRole("menuitem", { name: "Сменить аватар" })).toHaveCount(0);
-      await expect(menu.getByRole("menuitem", { name: "Все мои блоги" })).toBeVisible();
+      // Ф13: пункт «Все мои блоги» удалён — каталог общий, свои блоги живут в кабинете.
+      await expect(menu.getByRole("menuitem", { name: "Все мои блоги" })).toHaveCount(0);
     });
+
+    // Self-restoring: снимаем голос и закладку, оставленные выше.
+    await throttleMutation(USERS.author.handle);
+    await ctx.post(`/api/blogs/${BLOG.id}/vote`, { data: { value: 1 } });
+    await throttleMutation(USERS.author.handle);
+    await ctx.post("/api/bookmarks", { data: { blogId: BLOG.id } });
   });
 
   // ── TC-AUTHOR-26 — автосейв структурных правок + «Просмотр» (ui-feedback-3, П10) ─

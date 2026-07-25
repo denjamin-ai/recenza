@@ -2,30 +2,20 @@
 // Требует CRON_SECRET в .env.test (стенд и спек читают одно значение через dotenv) — без него skip.
 // Негативы 401 (нет/неверный Bearer) — в security.spec (SEC-CRON-01), они работают и без секрета.
 //
-// Мутирует seed (approve обоих ревьюеров chp_under_review + публикация) → serial + reseed
-// в beforeAll И afterAll (дисциплина flows/*). Порядок значим: happy-path, затем gate-failure.
+// Мутирует seed (публикация главы) → serial + reseed в beforeAll И afterAll (дисциплина flows/*).
+//
+// ⚠️ Фаза 13: планирование больше НЕ требует одобрений — публикация свободна, роут переехал
+// в /api/author/chapters/[id]/publish. Поэтому сценарий «гейт перестал проходить» исчез:
+// единственная причина, по которой cron не публикует запланированное — ревизию опубликовали иначе.
 
 import { test, expect } from "./fixtures";
-import { apiLoginUser } from "./helpers/auth";
 import { CHAPTERS, USERS, BLOG } from "./helpers/seed";
 import { reseed } from "./helpers/db";
 import { throttleMutation } from "./helpers/throttle";
 
 const CRON_SECRET = process.env.CRON_SECRET ?? "";
 const AUTH = { authorization: `Bearer ${CRON_SECRET}` };
-
-/** Оба назначенных ревьюера chp_under_review дают approve → гейт публикации открыт. */
-async function approveAll(): Promise<void> {
-  for (const handle of [USERS.reviewer.handle, USERS.lena.handle]) {
-    const ctx = await apiLoginUser(handle);
-    await throttleMutation(handle);
-    const res = await ctx.post(`/api/review/${CHAPTERS.underReview.id}/verdict`, {
-      data: { verdict: "approve" },
-    });
-    expect(res.ok()).toBeTruthy();
-    await ctx.dispose();
-  }
-}
+const publishHref = (chapterId: string) => `/api/author/chapters/${chapterId}/publish`;
 
 test.describe("CRON — отложенная публикация", () => {
   test.describe.configure({ mode: "serial" });
@@ -41,12 +31,11 @@ test.describe("CRON — отложенная публикация", () => {
   test("CRON-01 @critical: план в будущем не публикуется, наступивший — публикуется, план очищается", async ({
     api,
   }) => {
-    await approveAll();
     const author = await api("author");
 
-    await test.step("Автор планирует публикацию на +3с → 200 scheduled:true", async () => {
+    await test.step("Автор планирует публикацию на +3с → 200 scheduled:true (ревьюеры не нужны)", async () => {
       await throttleMutation(USERS.author.handle);
-      const res = await author.post(`/api/review/${CHAPTERS.underReview.id}/publish`, {
+      const res = await author.post(publishHref(CHAPTERS.underReview.id), {
         data: { scheduledAt: Math.floor(Date.now() / 1000) + 3 },
       });
       expect(res.status()).toBe(200);
@@ -79,44 +68,39 @@ test.describe("CRON — отложенная публикация", () => {
     });
   });
 
-  test("CRON-02 @critical: вердикт отозван после планирования — cron снимает план и уведомляет автора", async ({
+  test("CRON-02 @critical: ручная публикация до срока снимает план — cron ничего не делает и не дублирует", async ({
     api,
   }) => {
-    reseed(); // независимый сценарий: свежий seed, глава снова under-review
-    await approveAll();
+    reseed(); // независимый сценарий: свежий seed, глава снова черновик на ревью
     const author = await api("author");
 
-    await test.step("План на +1с, затем lena меняет вердикт на request-changes", async () => {
+    await test.step("План на +30с, затем автор публикует главу вручную", async () => {
       await throttleMutation(USERS.author.handle);
-      const res = await author.post(`/api/review/${CHAPTERS.underReview.id}/publish`, {
-        data: { scheduledAt: Math.floor(Date.now() / 1000) + 1 },
+      const planned = await author.post(publishHref(CHAPTERS.underReview.id), {
+        data: { scheduledAt: Math.floor(Date.now() / 1000) + 30 },
       });
-      expect(res.status()).toBe(200);
+      expect(planned.status()).toBe(200);
 
-      const lena = await apiLoginUser(USERS.lena.handle);
-      await throttleMutation(USERS.lena.handle);
-      const verdict = await lena.post(`/api/review/${CHAPTERS.underReview.id}/verdict`, {
-        data: { verdict: "request-changes" },
-      });
-      expect(verdict.ok()).toBeTruthy();
-      await lena.dispose();
+      await throttleMutation(USERS.author.handle);
+      const now = await author.post(publishHref(CHAPTERS.underReview.id), { data: {} });
+      expect(now.status()).toBe(200);
     });
 
-    await test.step("Cron: failed=1, план снят, автору пришло scheduled_publish_failed", async () => {
-      await new Promise((r) => setTimeout(r, 1_500));
+    await test.step("Cron: due=0 — публикация сняла план (двойного fan-out нет)", async () => {
       const res = await author.get("/api/cron/publish", { headers: AUTH });
-      const body = (await res.json()) as { published: number; failed: number };
+      const body = (await res.json()) as { due: number; published: number; failed: number };
+      expect(body.due).toBe(0);
       expect(body.published).toBe(0);
-      expect(body.failed).toBe(1);
+      expect(body.failed).toBe(0);
+    });
 
-      // План очищен: повторный тик пуст, глава НЕ опубликована.
-      const again = await author.get("/api/cron/publish", { headers: AUTH });
-      expect(((await again.json()) as { due: number }).due).toBe(0);
-
-      const feed = (await (await author.get("/api/notifications")).json()) as {
-        items: Array<{ type: string }>;
-      };
-      expect(feed.items.some((i) => i.type === "scheduled_publish_failed")).toBe(true);
+    await test.step("Повторная публикация той же версии → 409 (идемпотентность)", async () => {
+      await throttleMutation(USERS.author.handle);
+      const again = await author.post(publishHref(CHAPTERS.underReview.id), { data: {} });
+      expect(again.status()).toBe(409);
+      expect(((await again.json()) as { error?: string }).error).toBe(
+        "Эта версия главы уже опубликована.",
+      );
     });
   });
 });
