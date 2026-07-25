@@ -264,7 +264,7 @@ window.FAKE_DATA = {
   // Each user gets a profile page in the kit. Roles drive the action panel.
   users: {
     alex: {
-      handle: "alex", name: "Александр Иванов", role: "author",
+      handle: "alex", name: "Александр Иванов", role: "author", roles: ["author", "reviewer"],
       bio: "Персональный блог разработчика. Автор всех статей здесь.",
       links: { github: "https://github.com/alex", telegram: "https://t.me/alex", website: "https://alex.dev" },
       status: "active", joinedAt: 1704067200, lastSeenAt: 1747180800, // 1 янв 2024 / 14 мая
@@ -285,7 +285,7 @@ window.FAKE_DATA = {
       status: "active", joinedAt: 1714521600, lastSeenAt: 1747105200,
     },
     moderator: {
-      handle: "moderator", name: "Модератор", role: "admin",
+      handle: "moderator", name: "Модератор", role: "admin", roles: ["admin", "reviewer"],
       bio: "Служебный аккаунт.",
       status: "active", joinedAt: 1700000000, lastSeenAt: 1747180800,
     },

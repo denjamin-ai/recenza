@@ -430,19 +430,17 @@ function ProfileScreen({ handle, session, onOpenArticle, onBack, onNavigate, onO
   const totalViews = blogs.reduce((n, b) => n + (b.viewCount || 0), 0);
   const totalBookmarks = blogs.reduce((n, b) => n + (b.bookmarkCount || 0), 0);
   const memberSince = user.joinedAt ? new Date(user.joinedAt * 1000).toLocaleDateString("ru-RU", { month: "long", year: "numeric" }) : null;
-  const roleLabel = { author: "Автор", reviewer: "Ревьюер", admin: "Администратор", reader: "Читатель" }[user.role] || null;
+  const myRoles = window.rolesOf ? window.rolesOf(user) : (user.role && user.role !== "reader" ? [user.role] : []);
+  const ROLE_LABEL = { author: "Автор", reviewer: "Ревьюер", admin: "Администратор" };
   const fmt = (n) => n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(".0", "") + "k" : String(n);
   const isAuthorProfile = user.role === "author" || blogs.length > 0;
 
   // Role-scoped sections (Фаза E):
   //   • reviewer → public list of chapters they reviewed (no verdicts);
   //   • reader (own profile) → «Полка» of followed blogs.
-  const reviewed = user.role === "reviewer" ? (D.getReviewedChapters?.(user.handle) || []) : [];
-  const shelfFollows = (isMe && user.role === "reader") ? (window.__follows?.readFollows?.() || []) : [];
-  const shelfBlogs = shelfFollows
-    .map(s => D.getBlogBySlug(s))
-    .filter(b => b && (b.chapters || []).some(c => D.isChapterPublished(c)))
-    .sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
+  // Public profile only — reviewer activity and the reader shelf moved to the
+  // private «Рабочее место» hub (see WorkspaceScreen).
+  const topics = [...new Set(blogs.flatMap(b => Array.isArray(b.tags) ? b.tags : (typeof b.tags === "string" ? b.tags.split(",").map(t => t.trim()) : [])).filter(Boolean))].slice(0, 6);
   const links = user.links || {};
   const linkDefs = [
     links.github && { href: links.github, label: "GitHub", icon: <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" /> },
@@ -468,19 +466,18 @@ function ProfileScreen({ handle, session, onOpenArticle, onBack, onNavigate, onO
           <div className="min-w-0 w-full">
             <div className="flex items-center justify-center sm:justify-start gap-2.5 flex-wrap mb-1 sm:pr-40">
               <h1 className="font-[var(--font-display)] font-extrabold text-[26px] sm:text-4xl tracking-tight title-clamp-2 leading-[1.1]">{user.name}</h1>
-              {roleLabel && (
-                <span className="shrink-0 px-2 py-0.5 rounded-full text-[10.5px] uppercase tracking-wider font-semibold bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] text-[var(--accent)] border border-[color-mix(in_srgb,var(--accent)_30%,transparent)]">
-                  {roleLabel}
+              {myRoles.map(r => (
+                <span key={r} className="shrink-0 px-2 py-0.5 rounded-full text-[10.5px] uppercase tracking-wider font-semibold bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] text-[var(--accent)] border border-[color-mix(in_srgb,var(--accent)_30%,transparent)]">
+                  {ROLE_LABEL[r]}
                 </span>
-              )}
+              ))}
             </div>
             <div className="flex items-center justify-center sm:justify-start gap-2 text-[12.5px] text-[var(--muted-foreground)] mb-3 flex-wrap">
               <span className="font-mono">@{user.handle}</span>
               {memberSince && <><span>·</span><span>на платформе с {memberSince}</span></>}
             </div>
-            {user.bio && !isAuthorProfile && (
-              <p className="text-[14.5px] text-[var(--foreground)] max-w-xl mx-auto sm:mx-0 leading-relaxed mb-4">{user.bio}</p>
-            )}
+            {/* Bio lives in the «О себе» tab now — not duplicated in the header. */}
+
 
             {/* Social links */}
             {linkDefs.length > 0 && (
@@ -502,7 +499,9 @@ function ProfileScreen({ handle, session, onOpenArticle, onBack, onNavigate, onO
 
             {/* Stat row — bordered cells on mobile (2-col grid), inline with
                 hairline dividers on sm+. Stats differ by role. */}
-            {isAuthorProfile ? (
+            {/* Public stats only. Reviewer counts and the reader shelf are
+                private now — they live in «Рабочее место». */}
+            {blogs.length > 0 && (
               <dl className="grid grid-cols-2 gap-2.5 sm:flex sm:flex-wrap sm:gap-x-7 sm:gap-y-3">
                 {[
                   { k: blogs.length === 1 ? "Блог" : "Блогов", v: blogs.length },
@@ -519,22 +518,6 @@ function ProfileScreen({ handle, session, onOpenArticle, onBack, onNavigate, onO
                   </div>
                 ))}
               </dl>
-            ) : user.role === "reviewer" ? (
-              <dl className="flex flex-wrap gap-x-7 gap-y-3">
-                <div>
-                  <dt className="text-[10.5px] uppercase tracking-wider text-[var(--muted-foreground)] mb-0.5">Отрецензировано</dt>
-                  <dd className="text-[19px] font-semibold tabular-nums text-[var(--foreground)] font-[var(--font-display)]">{reviewed.length}</dd>
-                </div>
-              </dl>
-            ) : (isMe && user.role === "reader") ? (
-              <dl className="flex flex-wrap gap-x-7 gap-y-3">
-                <div>
-                  <dt className="text-[10.5px] uppercase tracking-wider text-[var(--muted-foreground)] mb-0.5">В полке</dt>
-                  <dd className="text-[19px] font-semibold tabular-nums text-[var(--foreground)] font-[var(--font-display)]">{shelfBlogs.length}</dd>
-                </div>
-              </dl>
-            ) : (
-              <p className="text-[13px] text-[var(--muted-foreground)]">Читатель блога.</p>
             )}
           </div>
         </div>
@@ -549,187 +532,144 @@ function ProfileScreen({ handle, session, onOpenArticle, onBack, onNavigate, onO
         )}
       </header>
 
-      {user.role === "reviewer" ? (
-        <>
-          <h2 className="text-[13px] uppercase tracking-wider font-semibold text-[var(--muted-foreground)] mb-4">
-            Отрецензированные статьи
-          </h2>
-          {reviewed.length === 0 ? (
-            <p className="text-[14px] text-[var(--muted-foreground)] py-12 text-center border border-dashed border-[var(--border)] rounded-lg">
-              Пока нет завершённых ревью.
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-2.5">
-              {reviewed.map((r) => (
-                <li key={r.blogSlug + "#" + r.chapterSlug}>
+      {/* Public body — «О себе» first, then «Блоги». Nothing private here:
+          reviewer activity, the reader shelf and role dashboards live in the
+          private «Рабочее место» hub. */}
+      {(() => {
+        const portfolio = window.__portfolio?.get(user.handle);
+        const portfolioVisible = window.__portfolio?.isVisible(user.handle);
+        const activeTab = profileTab || "about";
+        const pinnedSlug = window.__pins?.get(user.handle);
+        const pinned = pinnedSlug ? blogs.find(b => b.slug === pinnedSlug) : null;
+        const rest = pinned ? blogs.filter(b => b.slug !== pinnedSlug) : blogs;
+
+        const blogsView = (
+          <>
+            {pinned && (
+              <section className="mb-8">
+                <h2 className="flex items-center gap-1.5 text-[13px] uppercase tracking-wider font-semibold text-[var(--accent)] mb-4">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14l-1.4-4.2a2 2 0 0 1-.1-.6V5a2 2 0 0 0-2-2H8.5a2 2 0 0 0-2 2v7.2a2 2 0 0 1-.1.6z"/></svg>
+                  {isMe ? "Закреплённый блог" : "Рекомендует автор"}
+                </h2>
+                <BlogIndexCard blog={pinned} index={0} session={session} onOpen={onOpenArticle} onOpenProfile={onOpenProfile} />
+              </section>
+            )}
+            {pinned && rest.length > 0 && (
+              <h2 className="text-[13px] uppercase tracking-wider font-semibold text-[var(--muted-foreground)] mb-4">Остальные блоги</h2>
+            )}
+            {rest.length === 0 ? (
+              <p className="text-[14px] text-[var(--muted-foreground)] py-12 text-center border border-dashed border-[var(--border)] rounded-lg">
+                {pinned ? "Других блогов пока нет." : (isMe ? "У вас пока нет блогов." : "У этого пользователя пока нет публичных блогов.")}
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {rest.map((b, i) => (
+                  <BlogIndexCard key={b.id} blog={b} index={i} session={session} onOpen={onOpenArticle} onOpenProfile={onOpenProfile} />
+                ))}
+              </div>
+            )}
+          </>
+        );
+
+        const aboutView = (
+          <div className="max-w-2xl">
+            {isMe && portfolio && !portfolioVisible && (
+              <div className="mb-5 flex items-center gap-2 text-[12.5px] text-[var(--muted-foreground)] rounded-md border border-[var(--border)] bg-[var(--muted)] px-3 py-2">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-7-11-7a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                Расширенный рассказ скрыт от читателей — его видите только вы.
+              </div>
+            )}
+            {user.bio && (
+              <p className="text-[15.5px] leading-relaxed text-[var(--foreground)] [text-wrap:pretty] mb-7">{user.bio}</p>
+            )}
+            {topics.length > 0 && (
+              <section className="mb-7">
+                <h2 className="text-[10.5px] uppercase tracking-wider font-semibold text-[var(--muted-foreground)] mb-2.5">Пишет о</h2>
+                <div className="flex flex-wrap gap-1.5">
+                  {topics.map(t => (
+                    <span key={t} className="px-2.5 py-1 rounded-md bg-[var(--muted)] text-[12px] text-[var(--foreground)]">{t}</span>
+                  ))}
+                </div>
+              </section>
+            )}
+            {(portfolio && (isMe || portfolioVisible)) ? (
+              <article className="border-t border-[var(--border)] pt-7">
+                {portfolio.title && (
+                  <h2 className="font-[var(--font-display)] font-extrabold text-[26px] tracking-tight leading-[1.15] mb-5">{portfolio.title}</h2>
+                )}
+                {(portfolio.blocks || []).map(b => <ReaderBlock key={b.id} block={b} />)}
+              </article>
+            ) : isMe ? (
+              <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--bg-elevated)] p-8 text-center">
+                <span className="w-12 h-12 rounded-xl bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] text-[var(--accent)] inline-flex items-center justify-center mb-3">
+                  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                </span>
+                <h3 className="font-[var(--font-display)] font-bold text-[19px] mb-1.5">Расскажите о себе подробнее</h3>
+                <p className="text-[13.5px] text-[var(--muted-foreground)] max-w-md mx-auto mb-5 leading-relaxed">
+                  Расширенный рассказ открывается как статья, но публикуется сразу, без ревью. Он у вас один.
+                </p>
+                <button
+                  onClick={() => onOpenPortfolioEditor?.()}
+                  className="inline-flex items-center gap-1.5 text-[13px] font-medium px-4 py-2.5 rounded-md bg-[var(--accent)] text-[var(--accent-foreground)] hover:opacity-90 transition-opacity min-h-[44px]"
+                >
+                  ＋ Создать рассказ
+                </button>
+              </div>
+            ) : (!user.bio && topics.length === 0) ? (
+              <p className="text-[14px] text-[var(--muted-foreground)] py-12 text-center border border-dashed border-[var(--border)] rounded-lg">
+                Пользователь пока ничего о себе не рассказал.
+              </p>
+            ) : null}
+          </div>
+        );
+
+        const tabs = [{ id: "about", label: "О себе" }];
+        if (blogs.length > 0) tabs.push({ id: "blogs", label: "Блоги", n: blogs.length });
+
+        return (
+          <div>
+            <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] mb-7">
+              <div className="flex items-center gap-1">
+                {tabs.map(t => (
                   <button
-                    onClick={() => onOpenArticle?.(r.blogSlug)}
-                    className="w-full text-left rounded-lg border border-[var(--border)] hover:border-[var(--foreground)]/20 transition-colors p-4 bg-[var(--bg-elevated)]"
+                    key={t.id}
+                    onClick={() => setProfileTab(t.id)}
+                    className={`relative px-3 first:pl-1 pb-2.5 text-[14px] min-h-[40px] whitespace-nowrap transition-colors ${activeTab === t.id ? "font-semibold text-[var(--foreground)]" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
                   >
-                    {r.isSeries && (
-                      <p className="text-[11px] text-[var(--muted-foreground)] mb-1 title-clamp-1">{r.blogTitle}</p>
-                    )}
-                    <p className="font-[var(--font-display)] font-semibold text-[15.5px] leading-snug title-clamp-2 mb-1.5" title={r.chapterTitle}>{r.chapterTitle}</p>
-                    <p className="text-[12px] text-[var(--muted-foreground)]">
-                      ревьюил{r.publishedAt ? " · " + new Date(r.publishedAt * 1000).toLocaleDateString("ru-RU", { month: "long", year: "numeric" }) : ""}
-                    </p>
+                    {t.label}
+                    {t.n != null && <span className="text-[12px] opacity-70 tabular-nums ml-1">{t.n}</span>}
+                    {activeTab === t.id && <span className="absolute left-0 right-0 -bottom-px h-0.5 bg-[var(--accent)]" />}
                   </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      ) : (isMe && user.role === "reader") ? (
-        <>
-          <h2 className="text-[13px] uppercase tracking-wider font-semibold text-[var(--muted-foreground)] mb-4">
-            Полка
-          </h2>
-          {shelfBlogs.length === 0 ? (
-            <div className="py-12 text-center border border-dashed border-[var(--border)] rounded-lg">
-              <p className="text-[14px] text-[var(--foreground)] mb-1">Полка пуста</p>
-              <p className="text-[13px] text-[var(--muted-foreground)] mb-4">Подпишитесь на блог, и он появится здесь.</p>
-              <button onClick={() => (onNavigate ? onNavigate("blog") : onOpenArticle?.())} className="text-[13px] font-medium text-[var(--accent)] hover:underline underline-offset-2">К ленте →</button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              {shelfBlogs.map((b, i) => (
-                <BlogIndexCard key={b.id} blog={b} index={i} session={session} onOpen={onOpenArticle} onOpenProfile={onOpenProfile} />
-              ))}
-            </div>
-          )}
-        </>
-      ) : isAuthorProfile ? (
-        (() => {
-          const portfolio = window.__portfolio?.get(user.handle);
-          const portfolioVisible = window.__portfolio?.isVisible(user.handle);
-          const hasReadablePortfolio = portfolio && portfolioVisible;
-          const showTabs = isMe || hasReadablePortfolio;
-          const activeTab = profileTab || (showTabs ? "about" : "blogs");
-
-          const blogsView = (() => {
-            const pinnedSlug = window.__pins?.get(user.handle);
-            const pinned = pinnedSlug ? blogs.find(b => b.slug === pinnedSlug) : null;
-            const rest = pinned ? blogs.filter(b => b.slug !== pinnedSlug) : blogs;
-            return (
-              <>
-                {pinned && (
-                  <section className="mb-8">
-                    <h2 className="flex items-center gap-1.5 text-[13px] uppercase tracking-wider font-semibold text-[var(--accent)] mb-4">
-                      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14l-1.4-4.2a2 2 0 0 1-.1-.6V5a2 2 0 0 0-2-2H8.5a2 2 0 0 0-2 2v7.2a2 2 0 0 1-.1.6z"/></svg>
-                      {isMe ? "Закреплённый блог" : "Рекомендует автор"}
-                    </h2>
-                    <BlogIndexCard blog={pinned} index={0} session={session} onOpen={onOpenArticle} onOpenProfile={onOpenProfile} />
-                  </section>
-                )}
-                {!showTabs && (
-                  <h2 className="text-[13px] uppercase tracking-wider font-semibold text-[var(--muted-foreground)] mb-4">
-                    {pinned ? "Остальные блоги" : (isMe ? "Мои блоги" : "Блоги автора")}
-                  </h2>
-                )}
-                {pinned && showTabs && (
-                  <h2 className="text-[13px] uppercase tracking-wider font-semibold text-[var(--muted-foreground)] mb-4">Остальные блоги</h2>
-                )}
-                {rest.length === 0 ? (
-                  <p className="text-[14px] text-[var(--muted-foreground)] py-12 text-center border border-dashed border-[var(--border)] rounded-lg">
-                    {pinned ? "Других блогов пока нет." : (isMe ? "У вас пока нет блогов." : "У этого пользователя пока нет публичных блогов.")}
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    {rest.map((b, i) => (
-                      <BlogIndexCard key={b.id} blog={b} index={i} session={session} onOpen={onOpenArticle} onOpenProfile={onOpenProfile} />
-                    ))}
-                  </div>
-                )}
-              </>
-            );
-          })();
-
-          // No tabs (visitor, no readable portfolio) → blogs only, as before.
-          if (!showTabs) return <div>{blogsView}</div>;
-
-          return (
-            <div>
-              {/* Tab bar — «Об авторе · Блоги» */}
-              <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] mb-7">
-                <div className="flex items-center gap-1">
+                ))}
+              </div>
+              {isMe && activeTab === "about" && portfolio && (
+                <div className="flex items-center gap-2 pb-2 shrink-0">
                   <button
-                    onClick={() => setProfileTab("about")}
-                    className={`relative px-1 pb-2.5 text-[14px] min-h-[40px] whitespace-nowrap transition-colors ${activeTab === "about" ? "font-semibold text-[var(--foreground)]" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
+                    onClick={() => window.__portfolio.setVisible(user.handle, !portfolioVisible)}
+                    className={`inline-flex items-center gap-1.5 text-[11.5px] font-medium px-2.5 py-1 rounded-full border transition-colors ${portfolioVisible ? "border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success)]" : "border-[var(--border)] bg-[var(--muted)] text-[var(--muted-foreground)]"}`}
+                    title={portfolioVisible ? "Видно всем — нажмите, чтобы скрыть" : "Скрыто — нажмите, чтобы показать"}
                   >
-                    Об авторе
-                    {activeTab === "about" && <span className="absolute left-0 right-0 -bottom-px h-0.5 bg-[var(--accent)]" />}
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      {portfolioVisible
+                        ? <><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></>
+                        : <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-7-11-7a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></>}
+                    </svg>
+                    {portfolioVisible ? "Видно всем" : "Скрыто"}
                   </button>
                   <button
-                    onClick={() => setProfileTab("blogs")}
-                    className={`relative px-3 pb-2.5 text-[14px] min-h-[40px] whitespace-nowrap transition-colors ${activeTab === "blogs" ? "font-semibold text-[var(--foreground)]" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
+                    onClick={() => onOpenPortfolioEditor?.()}
+                    className="inline-flex items-center gap-1.5 text-[12.5px] font-medium px-3 py-1.5 rounded-md border border-[var(--accent)] text-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_8%,transparent)] transition-colors"
                   >
-                    Блоги <span className="text-[12px] opacity-70 tabular-nums">{blogs.length}</span>
-                    {activeTab === "blogs" && <span className="absolute left-0 right-0 -bottom-px h-0.5 bg-[var(--accent)]" />}
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                    Изменить
                   </button>
                 </div>
-                {isMe && activeTab === "about" && portfolio && (
-                  <div className="flex items-center gap-2 pb-2 shrink-0">
-                    <button
-                      onClick={() => window.__portfolio.setVisible(user.handle, !portfolioVisible)}
-                      className={`inline-flex items-center gap-1.5 text-[11.5px] font-medium px-2.5 py-1 rounded-full border transition-colors ${portfolioVisible ? "border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success)]" : "border-[var(--border)] bg-[var(--muted)] text-[var(--muted-foreground)]"}`}
-                      title={portfolioVisible ? "Видно всем — нажмите, чтобы скрыть" : "Скрыто — нажмите, чтобы показать"}
-                    >
-                      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                        {portfolioVisible
-                          ? <><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></>
-                          : <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-7-11-7a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></>}
-                      </svg>
-                      {portfolioVisible ? "Видно всем" : "Скрыто"}
-                    </button>
-                    <button
-                      onClick={() => onOpenPortfolioEditor?.()}
-                      className="inline-flex items-center gap-1.5 text-[12.5px] font-medium px-3 py-1.5 rounded-md border border-[var(--accent)] text-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_8%,transparent)] transition-colors"
-                    >
-                      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                      Изменить
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {activeTab === "blogs" ? blogsView : (
-                portfolio ? (
-                  <article className="max-w-2xl">
-                    {isMe && !portfolioVisible && (
-                      <div className="mb-5 flex items-center gap-2 text-[12.5px] text-[var(--muted-foreground)] rounded-md border border-[var(--border)] bg-[var(--muted)] px-3 py-2">
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-7-11-7a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                        Этот раздел скрыт от читателей. Его видите только вы.
-                      </div>
-                    )}
-                    {portfolio.title && (
-                      <h2 className="font-[var(--font-display)] font-extrabold text-[28px] tracking-tight leading-[1.15] mb-5">{portfolio.title}</h2>
-                    )}
-                    {(portfolio.blocks || []).map(b => <ReaderBlock key={b.id} block={b} />)}
-                  </article>
-                ) : (
-                  /* Owner, no portfolio yet — create state */
-                  <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--bg-elevated)] p-8 sm:p-10 text-center max-w-2xl mx-auto">
-                    <span className="w-12 h-12 rounded-xl bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] text-[var(--accent)] inline-flex items-center justify-center mb-3">
-                      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-                    </span>
-                    <h3 className="font-[var(--font-display)] font-bold text-[19px] mb-1.5">Расскажите о себе</h3>
-                    <p className="text-[13.5px] text-[var(--muted-foreground)] max-w-md mx-auto mb-5 leading-relaxed">
-                      «Об авторе» — расширенная страница о вас: открывается как статья, но публикуется сразу, без ревью. У автора она одна.
-                    </p>
-                    <button
-                      onClick={() => onOpenPortfolioEditor?.()}
-                      className="inline-flex items-center gap-1.5 text-[13px] font-medium px-4 py-2.5 rounded-md bg-[var(--accent)] text-[var(--accent-foreground)] hover:opacity-90 transition-opacity min-h-[44px]"
-                    >
-                      ＋ Создать «Об авторе»
-                    </button>
-                  </div>
-                )
               )}
             </div>
-          );
-        })()
-      ) : null}
-
+            {activeTab === "blogs" ? blogsView : aboutView}
+          </div>
+        );
+      })()}
       {editingProfile && (
         <ProfileEditModal user={user} onClose={() => setEditingProfile(false)} />
       )}
