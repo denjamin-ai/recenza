@@ -1,26 +1,28 @@
 "use client";
 
-// Меню аватара: профиль (автор/ревьюер) + «Все мои блоги» (автор, ui-feedback-6 П6) +
-// закладки (только reader, ui-feedback-5 П4) + вход в ролевой кабинет + выход.
+// Меню аватара (Фаза 13, по прототипу shared/components.jsx AvatarMenu): профиль и закладки — ВСЕМ
+// (публичный профиль есть у любого аккаунта, реверс uif-6 П6/uif-5 П4); кабинеты — по возможностям;
+// подзаголовок = возможности через « · », иначе «Читатель».
 // «Сменить аватар» убран по ui-feedback-6 П2 — смена аватарки осталась на своей /u/-странице.
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import type { Role } from "@/types";
+import { capabilitiesLabel, capabilitiesOf } from "@/lib/roles";
 
 type AvatarUser = {
   displayName: string;
   handle: string;
   slug: string;
-  role: Role;
+  canAuthor: boolean;
+  isReviewer: boolean;
   avatarUrl: string | null;
 };
 
-const PORTAL: Partial<Record<Role, { href: string; label: string }>> = {
-  author: { href: "/author", label: "Кабинет автора" },
-  reviewer: { href: "/reviewer", label: "Кабинет ревьюера" },
-};
+const PORTAL = {
+  author: "/author",
+  reviewer: "/reviewer",
+} as const;
 
 export function AvatarMenu({ user }: { user: AvatarUser }) {
   const [open, setOpen] = useState(false);
@@ -54,7 +56,7 @@ export function AvatarMenu({ user }: { user: AvatarUser }) {
     }
   }
 
-  const portal = PORTAL[user.role];
+  const caps = capabilitiesOf(user);
   const initial = (user.displayName || user.handle).charAt(0).toUpperCase();
   const menuItem =
     "block w-full rounded-[var(--radius-md)] px-3 py-2 text-left text-[length:var(--type-small)] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]";
@@ -97,32 +99,30 @@ export function AvatarMenu({ user }: { user: AvatarUser }) {
             <p className="truncate font-mono text-[11px] text-[var(--muted-foreground)]">
               @{user.handle}
             </p>
+            <p className="truncate text-[11px] text-[var(--muted-foreground)]">
+              {capabilitiesLabel(user)}
+            </p>
           </div>
 
           <div className="pt-1">
-            {/* Публичный профиль есть только у автора/ревьюера (у читателя — нет). */}
-            {(user.role === "author" || user.role === "reviewer") && (
-              <Link role="menuitem" href={`/u/${user.slug}`} className={menuItem} onClick={() => setOpen(false)}>
-                Мой профиль
+            {/* Ф13: публичный профиль и закладки есть у ЛЮБОГО аккаунта. */}
+            <Link role="menuitem" href={`/u/${user.slug}`} className={menuItem} onClick={() => setOpen(false)}>
+              Мой профиль
+            </Link>
+            <Link role="menuitem" href="/bookmarks" className={menuItem} onClick={() => setOpen(false)}>
+              Закладки
+            </Link>
+            {caps.map((c) => (
+              <Link
+                key={c}
+                role="menuitem"
+                href={PORTAL[c]}
+                className={menuItem}
+                onClick={() => setOpen(false)}
+              >
+                Кабинет {c === "author" ? "автора" : "ревьюера"}
               </Link>
-            )}
-            {/* Каталог своих блогов — автор («Лента» для него убрана из шапки, ui-feedback-6 П6). */}
-            {user.role === "author" && (
-              <Link role="menuitem" href="/" className={menuItem} onClick={() => setOpen(false)}>
-                Все мои блоги
-              </Link>
-            )}
-            {/* Закладки — только читатель (ui-feedback-5 П4). */}
-            {user.role === "reader" && (
-              <Link role="menuitem" href="/bookmarks" className={menuItem} onClick={() => setOpen(false)}>
-                Закладки
-              </Link>
-            )}
-            {portal && (
-              <Link role="menuitem" href={portal.href} className={menuItem} onClick={() => setOpen(false)}>
-                {portal.label}
-              </Link>
-            )}
+            ))}
             <button role="menuitem" type="button" onClick={logout} className={menuItem}>
               Выйти
             </button>

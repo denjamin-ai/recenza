@@ -28,17 +28,15 @@ export async function SiteNav() {
 
         {/* Правый кластер (порядок прототипа Nav): Лента → Руководство → Тема → Колокол → Аватар/Войти.
             «Лента» на <sm скрыта: логотип ведёт туда же (ui-feedback-4 П3 — «Лента» справа).
-            У автора «Ленты» нет (ui-feedback-6 П6) — в меню аватара есть «Все мои блоги». */}
+            ⚠️ Ф13 (реверс uif-6 П6): «Лента» есть у ВСЕХ — каталог перестал быть ролевым. */}
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-          {user?.role !== "author" && (
-            <Link
-              href="/"
-              className="hidden text-[length:var(--type-small)] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-elevated)] rounded-[var(--radius-sm)] sm:mr-2 sm:block"
-            >
-              Лента
-            </Link>
-          )}
-          <GuideButton role={user?.role ?? null} />
+          <Link
+            href="/"
+            className="hidden text-[length:var(--type-small)] text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-elevated)] rounded-[var(--radius-sm)] sm:mr-2 sm:block"
+          >
+            Лента
+          </Link>
+          <GuideButton user={user} />
           <ThemeToggle />
           {user ? (
             <>
@@ -48,7 +46,8 @@ export async function SiteNav() {
                   displayName: user.displayName,
                   handle: user.handle,
                   slug: user.slug,
-                  role: user.role,
+                  canAuthor: user.canAuthor,
+                  isReviewer: user.isReviewer,
                   avatarUrl: user.avatarUrl,
                 }}
               />

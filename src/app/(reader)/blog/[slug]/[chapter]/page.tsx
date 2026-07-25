@@ -4,7 +4,7 @@
 
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, getSession } from "@/lib/auth";
 import { getReadableBlog } from "@/lib/queries/chapters";
 import { getReaderEngagement } from "@/lib/queries/engagement";
 import { buildReaderSections } from "@/lib/queries/reader-sections";
@@ -44,11 +44,13 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 
 export default async function ChapterPage({ params }: { params: Params }) {
   const { slug, chapter } = await params;
-  const [blog, viewer] = await Promise.all([getReadableBlog(slug), getCurrentUser()]);
+  // Фаза 13: ролевой изоляции автора больше нет — любой аккаунт читает любой видимый блог (З-07).
+  const [blog, viewer, session] = await Promise.all([
+    getReadableBlog(slug),
+    getCurrentUser(),
+    getSession(),
+  ]);
   if (!blog) notFound();
-
-  // Ролевая изоляция автора: автор открывает ТОЛЬКО свой блог (CLAUDE.md binding).
-  if (viewer?.role === "author" && blog.author.id !== viewer.id) notFound();
 
   const active = blog.chapters.find((c) => c.slug === chapter);
   if (!active) notFound();
@@ -82,10 +84,14 @@ export default async function ChapterPage({ params }: { params: Params }) {
         sections={sections}
         isAuthed={!!viewer}
         engagement={engagement}
-        canEngage={!viewer || viewer.role === "reader"}
+        canEngage={!session.isAdmin}
         singleHref={`/blog/${slug}/${active.slug}`}
         wholeHref={`/blog/${slug}?mode=whole`}
-        viewer={viewer ? { id: viewer.id, role: viewer.role, commentingBlocked: viewer.commentingBlocked } : null}
+        viewer={
+          viewer
+            ? { id: viewer.id, handle: viewer.handle, commentingBlocked: viewer.commentingBlocked }
+            : null
+        }
       />
     </>
   );
