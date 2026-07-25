@@ -126,6 +126,8 @@ export interface AuthorChapterRow {
   latestRevisionNumber: number;
   status: RevisionStatus;
   reviewStatus: ReviewStatus;
+  /** Ф14: токен закрытия ревью-сессии (null — открыта). Нужен `isReviewOpen`, ось публикации из него ушла. */
+  reviewClosedAt: number | null;
   reviewers: AuthorReviewerChip[];
 }
 
@@ -200,7 +202,13 @@ export interface AuthorPortfolio {
 
 // ───────────────────────────── helpers ─────────────────────────────
 
-type LatestRev = { revNumber: number; status: RevisionStatus; reviewStatus: ReviewStatus };
+type LatestRev = {
+  revNumber: number;
+  status: RevisionStatus;
+  reviewStatus: ReviewStatus;
+  /** Ф14: закрытие ревью-сессии — явный токен, а не производная от публикации. */
+  reviewClosedAt: number | null;
+};
 
 /** По строкам (chapterId, number, обе оси) оставляет ревизию с наибольшим number на главу. */
 function latestRevByChapter(rows: ({ chapterId: string } & LatestRev)[]): Map<string, LatestRev> {
@@ -212,6 +220,7 @@ function latestRevByChapter(rows: ({ chapterId: string } & LatestRev)[]): Map<st
         revNumber: r.revNumber,
         status: r.status,
         reviewStatus: r.reviewStatus,
+        reviewClosedAt: r.reviewClosedAt,
       });
     }
   }
@@ -253,6 +262,7 @@ export const getAuthorCabinet = cache(async (userId: string): Promise<AuthorCabi
       revNumber: chapterRevisions.number,
       status: chapterRevisions.status,
       reviewStatus: chapterRevisions.reviewStatus,
+      reviewClosedAt: chapterRevisions.reviewClosedAt,
     })
     .from(chapters)
     .innerJoin(chapterRevisions, eq(chapterRevisions.chapterId, chapters.id))
@@ -339,6 +349,7 @@ export const getBlogDetailForAuthor = cache(
         revNumber: chapterRevisions.number,
         status: chapterRevisions.status,
         reviewStatus: chapterRevisions.reviewStatus,
+        reviewClosedAt: chapterRevisions.reviewClosedAt,
       })
       .from(chapters)
       .innerJoin(chapterRevisions, eq(chapterRevisions.chapterId, chapters.id))
@@ -400,6 +411,7 @@ export const getBlogDetailForAuthor = cache(
           latestRevisionNumber: lr?.revNumber ?? 1,
           status: (lr?.status ?? "draft") as RevisionStatus,
           reviewStatus: (lr?.reviewStatus ?? "none") as ReviewStatus,
+          reviewClosedAt: lr?.reviewClosedAt ?? null,
           reviewers: (reviewersByChapter.get(id) ?? []).sort((a, b) =>
             a.displayName.localeCompare(b.displayName, "ru"),
           ),

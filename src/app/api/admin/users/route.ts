@@ -39,6 +39,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     password?: unknown;
     canAuthor?: unknown;
     isReviewer?: unknown;
+    introducedBy?: unknown;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -79,6 +80,27 @@ export async function POST(req: Request): Promise<NextResponse> {
   // legacy-shim для notNull-колонки `role`: гейты её не читают (см. schema.ts).
   const role = isReviewer ? "reviewer" : canAuthor ? "author" : "reader";
 
+  // Ф14: кто привёл этого человека (канал «инвайт-ссылка эксперта»). От этого поля зависит
+  // УРОВЕНЬ БЕЙДЖА: ревью от приведённого автором эксперта помечается `invited` и не пускает блог
+  // на главную. Значит поле — часть доверия, и подделать его нельзя: только админ, только
+  // существующий handle, и никогда не сам на себя (иначе автор-ревьюер выдавал бы себе independent).
+  let introducedBy: string | null = null;
+  if (body.introducedBy != null) {
+    if (typeof body.introducedBy !== "string" || !body.introducedBy.trim()) {
+      return NextResponse.json({ error: "introducedBy: ожидается handle или null." }, { status: 400 });
+    }
+    introducedBy = body.introducedBy.trim().toLowerCase();
+    if (introducedBy === handle) {
+      return NextResponse.json({ error: "Пользователь не может пригласить сам себя." }, { status: 400 });
+    }
+    const inviter = (
+      await db.select({ handle: users.handle }).from(users).where(eq(users.handle, introducedBy)).limit(1)
+    )[0];
+    if (!inviter) {
+      return NextResponse.json({ error: "Пригласивший не найден." }, { status: 400 });
+    }
+  }
+
   // slug = handle (оба UNIQUE); проверяем оба поля, т.к. slug другого пользователя мог занять имя.
   const clash = (
     await db
@@ -104,6 +126,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       role,
       canAuthor,
       isReviewer,
+      introducedBy,
       passwordHash,
       displayName,
       slug: handle,

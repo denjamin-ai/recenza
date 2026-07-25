@@ -1,5 +1,5 @@
 // Сериализуемые view-типы для читательского слоя (Фаза 5). Пользователи — без passwordHash.
-import type { Block, Complexity } from "@/types";
+import type { Block, Complexity, VerifiedTier } from "@/types";
 import type { ChapterReviewerCredit } from "./reviewer-credit";
 
 export interface AuthorView {
@@ -25,6 +25,13 @@ export interface BlogCardView {
   publishedAt: number | null;
   author: AuthorView;
   chapterCount: number;
+  /**
+   * Бейдж блога (Ф14) — денормализованный агрегат `blogs.verified_*`, ИСТОРИЧЕСКИЙ факт
+   * «блог проходил ревью» (правка главы его не гасит). Опциональны намеренно: поверхности,
+   * которым бейдж не нужен (закладки), карточку строят без этих колонок.
+   */
+  verifiedTier?: VerifiedTier | null;
+  verifiedAt?: number | null;
 }
 
 /** Строка ленты глав (последняя published-ревизия главы). */
@@ -39,18 +46,30 @@ export interface FeedItemView {
   author: AuthorView;
 }
 
-/** Глава с контентом для ридера (последняя published-ревизия). */
+/**
+ * Глава с контентом для ридера (по умолчанию — последняя published-ревизия; в режиме `?v=N` —
+ * конкретная published-ревизия). ⚠️ Ф14: `title`/`skills` — СНАПШОТ выбранной ревизии
+ * (`chapter_revisions.title/skills` с fallback на рабочее значение автора в `chapters.*`),
+ * а не текущее значение автора: бейдж «проверена версия N» обязан указывать на метаданные
+ * той самой версии.
+ */
 export interface ReadableChapter {
   id: string;
   slug: string;
   title: string;
   order: number;
   skills: string[];
-  primaryHandle: string | null;
   revisionNumber: number;
   publishedAt: number | null;
   summary: string | null;
   blocks: Block[];
+  /**
+   * Бейдж ПОСЛЕДНЕЙ проверенной published-ревизии главы (может быть старше отображаемой —
+   * тогда бейдж рисуется приглушённым и ведёт на `?v={verifiedRevision}`). null — ревью не было.
+   */
+  verifiedTier: VerifiedTier | null;
+  verifiedAt: number | null;
+  verifiedRevision: number | null;
 }
 
 /** Полный блог для ридера: блог + автор + published-главы (по order). */

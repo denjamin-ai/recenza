@@ -9,12 +9,13 @@
 // Отзыв возможности действует сразу, без перелогина: гарды перечитывают её из БД на каждый запрос.
 
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
-import { users } from "@/lib/db/schema";
+import { chapterReviewers, chapterRevisions, reviewRequests, users } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
+import { SLA_UNCLAIMED_DAYS, dueAtFrom } from "@/lib/review-sla";
 
 export async function PATCH(
   req: Request,
@@ -92,6 +93,48 @@ export async function PATCH(
   // Админа из БД не существует (env-based) — но на всякий случай не даём блокировать admin-роль.
   if (target.role === "admin") return NextResponse.json({ error: "Нельзя модерировать администратора." }, { status: 403 });
 
-  await db.update(users).set(set).where(eq(users.handle, handle));
+  // ⚠️ Ф14 (закрыт backlog-пункт Ф13 P2): отзыв возможности «ревьюер» раньше только закрывал ДОСТУП,
+  // а назначения оставались висеть — глава числилась «на ревью» у человека, который больше не может
+  // в неё войти, а его `review_load` не освобождался никогда. Теперь отзыв ещё и освобождает: взятые
+  // заявки возвращаются в очередь (их сможет взять другой), назначения на ОТКРЫТЫЕ сессии снимаются,
+  // счётчик пересчитывается по факту. Закрытые сессии (кредит, история) не трогаем — они иммутабельны.
+  const releasing = set.isReviewer === false;
+  await db.transaction(async (tx) => {
+    await tx.update(users).set(set).where(eq(users.handle, handle));
+    if (!releasing) return;
+
+    const now = Math.floor(Date.now() / 1000);
+    await tx
+      .update(reviewRequests)
+      .set({ status: "open", claimedBy: null, claimedAt: null, dueAt: dueAtFrom(now, SLA_UNCLAIMED_DAYS) })
+      .where(and(eq(reviewRequests.claimedBy, handle), eq(reviewRequests.status, "claimed")));
+
+    // Снимаем назначения только там, где сессия ещё открыта.
+    const assignments = await tx
+      .select({ chapterId: chapterReviewers.chapterId, revisionNumber: chapterReviewers.revisionNumber })
+      .from(chapterReviewers)
+      .innerJoin(
+        chapterRevisions,
+        and(
+          eq(chapterRevisions.chapterId, chapterReviewers.chapterId),
+          eq(chapterRevisions.number, chapterReviewers.revisionNumber),
+        ),
+      )
+      .where(and(eq(chapterReviewers.handle, handle), isNull(chapterRevisions.reviewClosedAt)));
+    for (const a of assignments) {
+      await tx
+        .delete(chapterReviewers)
+        .where(
+          and(
+            eq(chapterReviewers.chapterId, a.chapterId),
+            eq(chapterReviewers.revisionNumber, a.revisionNumber),
+            eq(chapterReviewers.handle, handle),
+          ),
+        );
+    }
+    // Пересчёт вместо декремента: счётчик мог разъехаться, а здесь мы знаем точную правду.
+    await tx.update(users).set({ reviewLoad: 0 }).where(eq(users.handle, handle));
+  });
+
   return NextResponse.json({ ok: true });
 }

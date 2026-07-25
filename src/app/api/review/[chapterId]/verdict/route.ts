@@ -1,7 +1,9 @@
 // Вердикт ревьюера на последнюю ревизию (Фаза 7). Только назначенный ревьюер (resolveReviewAccess →
-// role reviewer). Автор вердикт НЕ ставит (гейт серверный). Допустимо в статусах under-review|changes-requested.
-// Пересчитываем статус ревизии: любой request-changes → changes-requested; все approve → under-review
-// (готово к публикации — производный флаг allApproved). Уведомляем автора.
+// role reviewer). Автор вердикт НЕ ставит (гейт серверный). Допустимо, пока ревью-сессия открыта.
+// Пересчитываем ось ревью: любой request-changes → changes-requested; все approve → reviewed.
+//
+// ⚠️ Ф14: если одобрена УЖЕ опубликованная ревизия — здесь же закрывается сессия и выдаётся бейдж
+// (публикации после одобрения не будет, а значит `publishRevision()` этого не сделает никогда).
 
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
@@ -12,7 +14,8 @@ import { hitActionRate } from "@/lib/rate-limit";
 import { createNotifications } from "@/lib/queries/notifications";
 import { REVIEW_NOTIFY, authorReviewHref, resolveReviewAccess } from "@/lib/queries/review";
 import { isReviewOpen } from "@/lib/review-status";
-import { VERDICTS, type ReviewStatus, type Verdict } from "@/types";
+import { closeReviewSession, recomputeBlogVerified } from "@/lib/queries/review-session";
+import { VERDICTS, type ReviewStatus, type Verdict, type VerifiedTier } from "@/types";
 
 export async function POST(
   req: Request,
@@ -58,6 +61,7 @@ export async function POST(
   // своего голоса) — иначе при одновременных голосах двух ревьюеров расчёт по кэшу сессии даёт гонку.
   let allApprove = false;
   let newStatus: ReviewStatus = session.revision.reviewStatus;
+  let badge: VerifiedTier | null = null;
 
   try {
     await db.transaction(async (tx) => {
@@ -89,7 +93,22 @@ export async function POST(
           .set({ reviewStatus: newStatus })
           .where(eq(chapterRevisions.id, session.revision.id));
       }
-      // Уведомление автору: запрошены правки / всё одобрено.
+      // ⚠️ Ф14, вторая точка выдачи кредита и бейджа. Если ревизия УЖЕ опубликована, публикации
+      // после одобрения не будет — а значит `publishRevision()` сессию не закроет никогда:
+      // ни кредита, ни бейджа, а `review_load` ревьюера протёк бы навсегда. Закрываем здесь.
+      // Черновик так не закрываем: он ещё будет опубликован, и закрытие произойдёт там.
+      if (allApprove && session.revision.status === "published") {
+        const res = await closeReviewSession(tx, {
+          revisionId: session.revision.id,
+          chapterId,
+          revisionNumber: revNumber,
+          authorHandle: session.blog.authorHandle,
+        });
+        badge = res.tier;
+        await recomputeBlogVerified(tx, session.blog.id);
+      }
+
+      // Уведомление автору: запрошены правки / всё одобрено / выдан бейдж.
       const href = authorReviewHref(session.blog.slug, session.chapter.slug);
       const payload = { href, chapterTitle: session.chapter.title, revision: revNumber };
       if (verdict === "request-changes") {
@@ -98,7 +117,11 @@ export async function POST(
         ]);
       } else if (allApprove) {
         await createNotifications(tx, [
-          { recipientId: session.blog.authorId, type: REVIEW_NOTIFY.ready, payload },
+          {
+            recipientId: session.blog.authorId,
+            type: badge !== null ? REVIEW_NOTIFY.badgeGranted : REVIEW_NOTIFY.ready,
+            payload: badge !== null ? { ...payload, tier: badge } : payload,
+          },
         ]);
       }
     });
@@ -106,5 +129,5 @@ export async function POST(
     return NextResponse.json({ error: "Не удалось сохранить вердикт." }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, verdict, status: newStatus, allApproved: allApprove });
+  return NextResponse.json({ ok: true, verdict, status: newStatus, allApproved: allApprove, badge });
 }
