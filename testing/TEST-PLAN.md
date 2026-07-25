@@ -367,7 +367,7 @@ Suite: **smoke** — входит и в smoke, и в полный регресс
 | `author.spec.ts` | 17 | TC-AUTHOR-01…28 (часть кейсов объединена) |
 | `reviewer.spec.ts` | 14 | TC-REVIEWER-01…19 |
 | `admin.spec.ts` | 19 | TC-ADMIN (кроме 02, 17 — в security.spec) |
-| `account.spec.ts` | 6 | **Ф13:** WS-01/02, SET-01/02, PROF-01/02 |
+| `account.spec.ts` | 9 | **Ф13:** WS-01/02, SET-01/02, PROF-01/02/03, CAP-01/02 |
 | `security.spec.ts` | 9 | TC-READER-21, TC-ADMIN-02/17 + SEC-CSRF/XSS/HTTPONLY/HEADERS/CRON/TS |
 | `uploads.spec.ts` | 5 | UPL-01…05 |
 | `blocks-render.spec.ts` | 2 | BLK-* (рендер блоков ридер ⇄ ревью) |
@@ -380,7 +380,7 @@ Suite: **smoke** — входит и в smoke, и в полный регресс
 | `flows/comment-thread.spec.ts` | 5 | COM-THREAD, COM-STALE, COM-EDIT-WINDOW, COM-DEPTH, COM-GATING |
 | `flows/blog-manage.spec.ts` | 4 | BLOG-MANAGE (создание/переименование/удаление блога) |
 | `flows/reviewer-matching.spec.ts` | 5 | MATCH-INVITE, MATCH-RECRUIT, MATCH-BOARD, MATCH-DECLINE, MATCH-RATING |
-| **Итого** | **144** | полный прогон, 0 skip |
+| **Итого** | **147** | полный прогон, 0 skip |
 
 **Smoke-набор** (`--grep @smoke`, канон — `testing/smoke/SMOKE-SUITE.md`): TC-GUEST-01/02/04/05/06 ·
 TC-READER-01/05/06/09 · TC-AUTHOR-01/09/16 · TC-REVIEWER-01/10/15 · TC-ADMIN-01 · **WS-01**,

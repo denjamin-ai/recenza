@@ -76,6 +76,10 @@ export const users = sqliteTable("users", {
   role: text("role", { enum: ROLES }).notNull(),
   // Возможности аккаунта (Фаза 13). Читатель — базовый уровень: обе false. Выдаёт админ.
   isReviewer: integer("is_reviewer", { mode: "boolean" }).notNull().default(false),
+  // ⚠️ DEFAULT колонки — false, но у НОВОГО аккаунта авторство ВКЛЮЧЕНО: дефолт задаёт
+  // единственный путь создания пользователя (`POST /api/admin/users`, `body.canAuthor !== false`).
+  // Сменить DEFAULT здесь = пересоздать `users`, на которую ссылаются FK ревью-таблиц → запрещено.
+  // Снятый флаг ПРЯЧЕТ блоги автора из всех ридер-запросов (см. CLAUDE.md §Гейтинг).
   canAuthor: integer("can_author", { mode: "boolean" }).notNull().default(false),
   /** Handle автора, пригласившего этого пользователя (уровень бейджа в Ф14). */
   introducedBy: text("introduced_by").references((): AnySQLiteColumn => users.handle),

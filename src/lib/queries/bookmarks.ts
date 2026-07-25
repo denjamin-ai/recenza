@@ -31,7 +31,9 @@ export async function getBookmarkedBlogs(userId: string): Promise<BlogCardView[]
     .from(bookmarks)
     .innerJoin(blogs, eq(bookmarks.blogId, blogs.id))
     .innerJoin(users, eq(blogs.authorId, users.id))
-    .where(and(eq(bookmarks.userId, userId), eq(users.isBlocked, false)))
+    // Закладка на блог скрытого автора не показывается (как и при бане) — сама строка закладки
+    // остаётся, вернут флаг автору — вернётся и в список.
+    .where(and(eq(bookmarks.userId, userId), eq(users.isBlocked, false), eq(users.canAuthor, true)))
     .orderBy(desc(bookmarks.createdAt));
 
   return rows.map((r) => ({

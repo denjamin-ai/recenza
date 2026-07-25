@@ -19,8 +19,9 @@ export function UserCreate() {
   const [handle, setHandle] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
-  // Фаза 13: вместо одной роли — независимые возможности. Обе выключены = читатель (базовый уровень).
-  const [canAuthor, setCanAuthor] = useState(false);
+  // Фаза 13: вместо одной роли — независимые возможности. Авторство включено по умолчанию
+  // (решение владельца), ревьюерство выдаётся явно.
+  const [canAuthor, setCanAuthor] = useState(true);
   const [isReviewer, setIsReviewer] = useState(false);
 
   function submit(e: React.FormEvent) {
@@ -43,7 +44,7 @@ export function UserCreate() {
       setHandle("");
       setDisplayName("");
       setPassword("");
-      setCanAuthor(false);
+      setCanAuthor(true);
       setIsReviewer(false);
       router.refresh();
     });
@@ -64,8 +65,9 @@ export function UserCreate() {
       {open && (
         <form onSubmit={submit} className="space-y-3 border-t border-[var(--border-secondary)] px-4 py-3">
           <p className="text-[length:var(--type-small)] text-[var(--muted-foreground)] [text-wrap:pretty]">
-            Самостоятельной регистрации нет: доступ выдаёт администратор. Без отметок аккаунт —
-            читатель; возможности можно выдать и отозвать позже в карточке пользователя.
+            Самостоятельной регистрации нет: доступ выдаёт администратор. Новый аккаунт по
+            умолчанию может вести блоги; снимите отметку, если это только читатель. Возможности
+            меняются и позже — в карточке пользователя.
           </p>
           {error && (
             <p role="alert" className="rounded-[var(--radius-md)] border border-[var(--danger-border)] bg-[var(--danger-bg)] px-3 py-2 text-[length:var(--type-small)] text-[var(--danger)]">

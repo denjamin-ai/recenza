@@ -8,7 +8,7 @@
 
 import { test, expect } from "./fixtures";
 import { apiLoginUser } from "./helpers/auth";
-import { DUO_BLOG, USERS } from "./helpers/seed";
+import { BLOG, CHAPTERS, DUO_BLOG, USERS } from "./helpers/seed";
 import { reseed } from "./helpers/db";
 import { throttleMutation } from "./helpers/throttle";
 
@@ -210,6 +210,106 @@ test.describe("Аккаунт: рабочее место, настройки, п
       const html = await page.content();
       expect(html).toContain(DUO_BLOG.title);
     });
+  });
+
+  // ── Отзыв авторства прячет блоги (решение владельца) ───────────────────────
+
+  test("CAP-01 @critical: снятие «вести блоги» прячет блоги автора отовсюду; возврат — восстанавливает", async ({
+    api,
+  }) => {
+    const admin = await api("admin");
+    const guest = await api();
+    const chapterUrl = `/blog/${BLOG.slug}/${CHAPTERS.published.slug}`;
+
+    await test.step("исходно блог автора виден гостю и лежит в sitemap", async () => {
+      expect((await guest.get(chapterUrl, { maxRedirects: 0 })).status()).toBe(200);
+      expect(await (await guest.get("/sitemap.xml")).text()).toContain(BLOG.slug);
+    });
+
+    await test.step("админ снимает возможность «автор»", async () => {
+      await expect(async () => {
+        const res = await admin.patch(`/api/admin/users/${USERS.author.handle}`, {
+          data: { canAuthor: false },
+        });
+        expect(res.status()).toBe(200);
+      }).toPass({ timeout: 10_000 });
+    });
+
+    await test.step("блоги скрыты: каталог, прямая ссылка, sitemap, профиль", async () => {
+      // Прямая ссылка — 404, а не просто пропажа из каталога.
+      expect((await guest.get(chapterUrl, { maxRedirects: 0 })).status()).toBe(404);
+      expect((await guest.get(`/blog/${BLOG.slug}`, { maxRedirects: 0 })).status()).toBe(404);
+
+      const catalog = await (await guest.get("/?view=all")).text();
+      expect(catalog).not.toContain(BLOG.title);
+
+      const sitemap = await (await guest.get("/sitemap.xml")).text();
+      expect(sitemap).not.toContain(BLOG.slug);
+
+      // Профиль остаётся (аккаунт не забанен), но без таба «Блоги» и без портфолио —
+      // «Об авторе» это тоже авторский контент. Био/ссылки как личные данные остаются.
+      const profile = await guest.get(`/u/${USERS.author.slug}`);
+      expect(profile.status()).toBe(200);
+      const html = await profile.text();
+      expect(html).not.toContain('id="profile-tab-blogs"');
+      expect(html).not.toContain("Об авторе");
+      expect(html).toContain("Антон Автор");
+    });
+
+    await test.step("комментировать скрытую главу нельзя — цель не резолвится", async () => {
+      const reader = await apiLoginUser(USERS.reader.handle);
+      try {
+        await throttleMutation(USERS.reader.handle);
+        const res = await reader.post("/api/comments", {
+          data: { blogSlug: BLOG.slug, chapterSlug: CHAPTERS.published.slug, text: "после скрытия" },
+        });
+        expect(res.status()).toBe(404);
+      } finally {
+        await reader.dispose();
+      }
+    });
+
+    await test.step("возврат возможности возвращает блоги как были (данные не мутировались)", async () => {
+      await expect(async () => {
+        const res = await admin.patch(`/api/admin/users/${USERS.author.handle}`, {
+          data: { canAuthor: true },
+        });
+        expect(res.status()).toBe(200);
+      }).toPass({ timeout: 10_000 });
+
+      expect((await guest.get(chapterUrl, { maxRedirects: 0 })).status()).toBe(200);
+      expect(await (await guest.get("/sitemap.xml")).text()).toContain(BLOG.slug);
+    });
+  });
+
+  test("CAP-02 @critical: новый аккаунт по умолчанию МОЖЕТ вести блоги", async ({ api }) => {
+    const admin = await api("admin");
+    const handle = "e2e_default_author";
+    const password = "e2e-password-12";
+
+    await expect(async () => {
+      // Возможности в теле НЕ передаём — проверяем именно дефолт.
+      const res = await admin.post("/api/admin/users", {
+        data: { handle, displayName: "Дефолтный Автор", password },
+      });
+      expect(res.status()).toBe(201);
+    }).toPass({ timeout: 10_000 });
+
+    const ctx = await apiLoginUser(handle, password);
+    try {
+      const me = (await (await ctx.get("/api/auth/user")).json()) as {
+        user: { canAuthor: boolean; isReviewer: boolean };
+      };
+      expect(me.user.canAuthor).toBe(true);
+      // Ревьюерство по-прежнему выдаётся явно.
+      expect(me.user.isReviewer).toBe(false);
+
+      await throttleMutation(handle);
+      const blog = await ctx.post("/api/author/blogs", { data: { title: "Блог по умолчанию" } });
+      expect(blog.status()).toBe(200);
+    } finally {
+      await ctx.dispose();
+    }
   });
 
   test("PROF-02 @critical: на своём профиле есть «Изменить профиль», на чужом — нет", async ({
