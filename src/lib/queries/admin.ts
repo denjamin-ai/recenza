@@ -203,6 +203,23 @@ export async function getAdminUsers(filter: AdminUserFilter = {}): Promise<Admin
     .orderBy(...order);
 }
 
+/** Кандидаты для ручного назначения на заявку (Ф15). Компетенции нужны, чтобы показать совпадение. */
+export async function getAssignableReviewers(): Promise<
+  { handle: string; displayName: string; load: number; capacity: number; competencies: string[] }[]
+> {
+  const rows = await db
+    .select({
+      handle: users.handle,
+      displayName: users.displayName,
+      load: users.reviewLoad,
+      capacity: users.reviewCapacity,
+      competencies: users.competencies,
+    })
+    .from(users)
+    .where(and(eq(users.isReviewer, true), eq(users.isBlocked, false)));
+  return rows.map((r) => ({ ...r, competencies: parseJson<string[]>(r.competencies, []) }));
+}
+
 export interface AdminUserDetail extends AdminUserRow {
   bio: string | null;
   competencies: string[];

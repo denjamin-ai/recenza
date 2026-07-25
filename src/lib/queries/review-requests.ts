@@ -218,6 +218,83 @@ export async function getAuthorReviewRequests(userId: string): Promise<AuthorReq
   }));
 }
 
+export interface AdminRequestRow extends AuthorRequestView {
+  authorName: string;
+  authorHandle: string;
+  skills: string[];
+  note: string | null;
+}
+
+/**
+ * Все живые заявки платформы (Ф15) — очередь редакции: что висит без ревьюера и что просрочено.
+ * Отличается от авторской выборки ровно снятым `eq(blogs.authorId, userId)` + именем автора,
+ * поэтому построена поверх неё, а не отдельным запросом с копией JOIN-цепочки.
+ * Сортировка: сначала непросроченные снизу — просроченные и старые всплывают наверх.
+ */
+export async function getAdminRequestQueue(now: number): Promise<AdminRequestRow[]> {
+  const rows = await db
+    .select({
+      id: reviewRequests.id,
+      chapterId: reviewRequests.chapterId,
+      revisionNumber: reviewRequests.revisionNumber,
+      status: reviewRequests.status,
+      channel: reviewRequests.channel,
+      dueAt: reviewRequests.dueAt,
+      claimedBy: reviewRequests.claimedBy,
+      returnCount: reviewRequests.returnCount,
+      createdAt: reviewRequests.createdAt,
+      skills: reviewRequests.skills,
+      note: reviewRequests.note,
+      chapterSlug: chapters.slug,
+      chapterTitle: chapters.title,
+      blogSlug: blogs.slug,
+      blogTitle: blogs.title,
+      authorName: users.displayName,
+      authorHandle: users.handle,
+    })
+    .from(reviewRequests)
+    .innerJoin(chapters, eq(chapters.id, reviewRequests.chapterId))
+    .innerJoin(blogs, eq(blogs.id, chapters.blogId))
+    .innerJoin(users, eq(users.id, blogs.authorId))
+    .where(inArray(reviewRequests.status, ["open", "claimed"]))
+    .orderBy(reviewRequests.createdAt);
+
+  const handles = [...new Set(rows.map((r) => r.claimedBy).filter((h): h is string => !!h))];
+  const claimers =
+    handles.length === 0
+      ? []
+      : await db
+          .select({ handle: users.handle, displayName: users.displayName, slug: users.slug })
+          .from(users)
+          .where(inArray(users.handle, handles));
+  const byHandle = new Map(claimers.map((c) => [c.handle, c]));
+
+  const items = rows.map((r) => ({
+    id: r.id,
+    chapterId: r.chapterId,
+    chapterSlug: r.chapterSlug,
+    chapterTitle: r.chapterTitle,
+    blogSlug: r.blogSlug,
+    blogTitle: r.blogTitle,
+    revisionNumber: r.revisionNumber,
+    status: r.status,
+    channel: r.channel,
+    dueAt: r.dueAt,
+    claimedByName: r.claimedBy ? (byHandle.get(r.claimedBy)?.displayName ?? r.claimedBy) : null,
+    claimedBySlug: r.claimedBy ? (byHandle.get(r.claimedBy)?.slug ?? null) : null,
+    returnCount: r.returnCount,
+    createdAt: r.createdAt,
+    authorName: r.authorName,
+    authorHandle: r.authorHandle,
+    skills: parseJson<string[]>(r.skills, []),
+    note: r.note,
+  }));
+
+  // Просроченные — наверх; внутри группы старые выше (та же справедливость, что в очереди ревьюера).
+  const overdue = (r: AdminRequestRow) => (r.dueAt != null && r.dueAt <= now ? 0 : 1);
+  return items.sort((a, b) => overdue(a) - overdue(b) || a.createdAt - b.createdAt);
+}
+
 /** Живая заявка на конкретную ревизию (для редактора: показать статус вместо формы). */
 export async function getRequestForRevision(
   chapterId: string,
