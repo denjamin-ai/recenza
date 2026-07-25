@@ -2,20 +2,17 @@
 
 // Кабинет автора «Мои блоги» (ui-feedback-4 П1, прототип author-portal.jsx AuthorPortal):
 // двухколоночный layout — сетка карточек (max 2 колонки, плитка «создать» первой, пин первым)
-// + aside 300px (жалобы → оценки → recruit-статус → «Об авторе» → «События»).
+// + aside 300px (заявки на ревью → recruit-статус → «Об авторе» → «События»).
+// Ф14: секции «Оцените ревьюеров» (рейтинг снят целиком) и «Навыки не совпадают» (флоу flag ушёл
+// вместе с приглашениями) удалены; их место занял список ЗАЯВОК с таймером SLA.
 // Карточка: точки-прогресс глав + чипы «Закреплён»/«ваш ход», title+summary, статистика с бейджами,
 // футер «＋ Глава» + pin-тоггл 38px. Создание = create-then-edit: POST /api/author/blogs → деталь.
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import type {
-  AuthorBlogCard,
-  AuthorPortfolio,
-  RatingPrompt,
-  RecruitStatusItem,
-  SkillsMismatchNotice,
-} from "@/lib/queries/author";
+import type { AuthorBlogCard, AuthorPortfolio, RecruitStatusItem } from "@/lib/queries/author";
+import type { AuthorRequestView } from "@/lib/queries/review-requests";
 import type { NotificationView } from "@/lib/queries/notifications";
 import type { Block, RecruitStatus, ReviewStatus, RevisionStatus } from "@/types";
 import { statusDotClass } from "@/lib/review-status";
@@ -23,7 +20,9 @@ import { plural } from "@/lib/plural";
 import { formatRelativeTime } from "@/lib/format";
 import { notificationLabel, notificationTone } from "@/lib/notification-text";
 import { IconBookOpen, IconEdit } from "@/components/icons";
-import { RatingPromptCard } from "./rating-prompt";
+import { ReviewRequestCards } from "./review-request-cards";
+import { ExpertInvitePanel } from "./expert-invite-panel";
+import type { AuthorInviteView } from "@/lib/queries/expert-invites";
 
 const RECRUIT_META: Record<RecruitStatus, { label: string; cls: string }> = {
   pending: { label: "На рассмотрении", cls: "bg-[var(--warning-bg)] text-[var(--warning)]" },
@@ -31,9 +30,12 @@ const RECRUIT_META: Record<RecruitStatus, { label: string; cls: string }> = {
   rejected: { label: "Отклонён", cls: "bg-[var(--danger-bg)] text-[var(--danger)]" },
 };
 
+// Ф14: третий канал поиска ревьюера (после общей очереди заявок и личного приглашения эксперта).
+// ⚠️ Прежний текст pending утверждал, что «блог нельзя опубликовать, пока нет ревьюеров» — это
+// неправда с Ф13: публикация свободна, ревью даёт бейдж, а не право выйти.
 const RECRUIT_HINT: Record<RecruitStatus, string> = {
-  pending: "Запрос отправлен админу. Блог нельзя опубликовать, пока нет подходящих ревьюеров.",
-  approved: "Админ ищет ревьюеров по вашим навыкам — направление добавлено на доску «Ищем ревьюеров».",
+  pending: "Запрос у редакции — запасной канал, если очередь молчит. Публиковать главу можно и без него.",
+  approved: "Редакция ищет ревьюера по вашим навыкам — направление добавлено на доску «Ищем ревьюеров».",
   rejected: "Запрос отклонён.",
 };
 
@@ -409,16 +411,19 @@ export function AuthorCabinet({
   blogs,
   pinnedBlogId,
   recruitRequests,
-  ratingPrompts,
-  mismatches,
+  reviewRequests,
+  expertInvites,
+  now,
   portfolio,
   events,
 }: {
   blogs: AuthorBlogCard[];
   pinnedBlogId: string | null;
   recruitRequests: RecruitStatusItem[];
-  ratingPrompts: RatingPrompt[];
-  mismatches: SkillsMismatchNotice[];
+  /** Ф14: живые заявки на ревью (open|claimed) — их таймер считает от серверного `now`. */
+  reviewRequests: AuthorRequestView[];
+  expertInvites: AuthorInviteView[];
+  now: number;
   portfolio: AuthorPortfolio | null;
   events: NotificationView[];
 }) {
@@ -450,45 +455,8 @@ export function AuthorCabinet({
         </div>
 
         <aside className="flex flex-col gap-7 lg:border-l lg:border-[var(--border)] lg:pl-8">
-          {mismatches.length > 0 && (
-            <section aria-label="Навыки не совпадают">
-              <h2 className="mb-3 text-[0.7rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-                Навыки не совпадают
-              </h2>
-              <ul className="flex flex-col gap-2">
-                {mismatches.map((m) => (
-                  <li
-                    key={m.chapterId}
-                    className="rounded-[var(--radius-md)] border border-[var(--warning-border)] bg-[var(--warning-bg)] p-3"
-                  >
-                    <span className="block truncate text-[0.82rem] font-medium">{m.chapterTitle}</span>
-                    <span className="mt-0.5 block text-[0.72rem] text-[var(--warning)]">
-                      Глава снята с ревью: {m.flagReason ?? "навыки не совпадают"}. Исправьте навыки и отправьте заново.
-                    </span>
-                    <Link
-                      href={`/author/blog/${m.blogSlug}/${m.chapterSlug}/edit`}
-                      className="mt-2 inline-flex min-h-9 items-center rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-1.5 text-[0.78rem] transition-colors hover:border-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                    >
-                      Изменить навыки →
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {ratingPrompts.length > 0 && (
-            <section aria-label="Оцените ревьюеров">
-              <h2 className="mb-3 text-[0.7rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-                Оцените ревьюеров
-              </h2>
-              <div className="flex flex-col gap-3">
-                {ratingPrompts.map((p) => (
-                  <RatingPromptCard key={p.chapterId} prompt={p} />
-                ))}
-              </div>
-            </section>
-          )}
+          <ReviewRequestCards requests={reviewRequests} now={now} />
+          <ExpertInvitePanel invites={expertInvites} now={now} />
 
           {recruitRequests.length > 0 && (
             <section aria-label="Запросы ревьюеров">

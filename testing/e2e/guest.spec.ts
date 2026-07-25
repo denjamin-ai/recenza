@@ -1,5 +1,5 @@
-// TC-GUEST — гость (аноним): публичное чтение, редиректы на логин, intent-replay,
-// скрытие непубличного контента. TC-док: testing/test-cases/TC-GUEST.md.
+// TC-GUEST — гость (аноним): публичное чтение, бейджи проверки (Ф14), редиректы на логин,
+// intent-replay, скрытие непубличного контента. TC-док: testing/test-cases/TC-GUEST.md.
 // Файл read-only/self-restoring: seed не мутируется (TC-GUEST-07 — toggle туда-обратно),
 // reseed не требуется, порядок других спеков не важен.
 // Локаторы и точные тексты — testing/mcp/MCP-FINDINGS.md §2/§5.
@@ -7,7 +7,7 @@
 import { test, expect } from "./fixtures";
 import { loginViaUi } from "./helpers/auth";
 import { throttleMutation } from "./helpers/throttle";
-import { BANNER_TEXTS, BLOG, CHAPTERS, COMMENTS, HIDDEN_BLOG, USERS } from "./helpers/seed";
+import { BANNER_TEXTS, BASE_URL, BLOG, CHAPTERS, COMMENTS, HIDDEN_BLOG, USERS } from "./helpers/seed";
 import { ReaderPage } from "./pages/reader.page";
 import { CommentsPage } from "./pages/comments.page";
 
@@ -107,8 +107,10 @@ test.describe("Гость (аноним)", () => {
   });
 
   // ── TC-GUEST-03 — REV-VERSIONS (гостевая проекция кредита) ─────────────────
+  // ⚠️ Ф14: метка «ведущий» в чипах снята вместе с ролью; вместо неё рядом с заголовком —
+  // УРОВЕНЬ проверки этой версии (у rev_pub_2 в сиде — `independent`).
 
-  test("TC-GUEST-03 @regression: чипы ревьюеров главы — «Эту версию проверяли» + бейдж «ведущий», «Прошлые версии» за раскрытием", async ({
+  test("TC-GUEST-03 @regression: чипы ревьюеров главы — «Эту версию проверяли» + чип уровня, «Прошлые версии» за раскрытием", async ({
     asGuest,
   }) => {
     const { page } = asGuest;
@@ -117,12 +119,14 @@ test.describe("Гость (аноним)", () => {
 
     const lenaChip = reader.reviewersRegion.getByRole("link", { name: /Лена Базы/ });
 
-    await test.step("текущая версия (v2): регион, заголовок, чипы и бейдж «ведущий»", async () => {
+    await test.step("текущая версия (v2): регион, заголовок, чипы и уровень «Проверено на Recenza»", async () => {
       await expect(reader.reviewersRegion).toBeVisible();
       await expect(reader.reviewersRegion.getByRole("heading", { name: "Эту версию проверяли" })).toBeVisible();
       await expect(reader.reviewersRegion.getByRole("link", { name: /Раиса Ревьюер/ })).toBeVisible();
       await expect(reader.reviewersRegion.getByRole("link", { name: /Макс Девопс/ })).toBeVisible();
-      await expect(reader.reviewersRegion.getByText("ведущий", { exact: true }).first()).toBeVisible();
+      await expect(reader.reviewersRegion.getByText("Проверено на Recenza")).toBeVisible();
+      // Иерархии внутри команды нет — метка «ведущий» не рендерится ни у кого.
+      await expect(reader.reviewersRegion.getByText("ведущий")).toHaveCount(0);
       // Ревьюер прошлой версии спрятан внутри свёрнутого <details>
       await expect(lenaChip).toBeHidden();
     });
@@ -430,6 +434,82 @@ test.describe("Гость (аноним)", () => {
       await expect(
         page.getByRole("heading", { name: "Помогите авторам выпускать качественные статьи" }),
       ).toBeVisible();
+    });
+  });
+
+  // ── TC-GUEST-17 — бейдж проверки в ридере (Ф14) ─────────────────────────────
+  // Seed: blogs.verified_tier = independent (агрегат), rev_pub_2.verified_tier = independent.
+  // Уровень `invited` в сиде на публичных поверхностях не встречается — его закрывают flows/*.
+
+  test("TC-GUEST-17 @critical: «Проверено на Recenza» — чип на карточке блога в каталоге и бейдж у h1 главы", async ({
+    asGuest,
+  }) => {
+    const { page } = asGuest;
+    const reader = new ReaderPage(page);
+
+    await test.step("каталог: чип уровня на карточке блога (eyebrow рядом со счётчиком глав)", async () => {
+      await reader.gotoFeed();
+      const card = reader.blogCard(BLOG.title);
+      await expect(card).toBeVisible();
+      await expect(card.getByText("Проверено на Recenza")).toBeVisible();
+      // Второй уровень в сиде не используется — на карточке его быть не должно.
+      await expect(card.getByText("Проверено приглашённым экспертом")).toHaveCount(0);
+    });
+
+    await test.step("страница главы: бейдж — в ряду метаданных сразу под h1, не только в кредите", async () => {
+      await reader.gotoChapter(BLOG.slug, CHAPTERS.published.slug);
+      await expect(page.getByRole("heading", { level: 1, name: CHAPTERS.published.title })).toBeVisible();
+      // Ряд «бейдж + навыки» — прямой div-потомок article; карточка кредита — <section>, не div.
+      const metaRow = page.locator("article > div").filter({ hasText: "Проверено на Recenza" });
+      await expect(metaRow).toHaveCount(1);
+      // Свежий бейдж (проверенная ревизия = отображаемая) ссылкой не оборачивается.
+      await expect(metaRow.getByRole("link", { name: /Проверена версия/ })).toHaveCount(0);
+    });
+  });
+
+  // ── TC-GUEST-18 — чтение проверенной версии `?v=N` (Ф14) ────────────────────
+
+  test("TC-GUEST-18 @critical: `?v=1` — архивный режим: метаданные ревизии, баннер, noindex, без комментариев и реакций; `?v=99` → 404", async ({
+    asGuest,
+  }) => {
+    const { page } = asGuest;
+
+    await test.step("`?v=1`: h1 и навыки — СНАПШОТ ревизии 1, а не текущие", async () => {
+      const res = await page.goto(`/blog/${BLOG.slug}/${CHAPTERS.published.slug}?v=1`);
+      expect(res?.status()).toBe(200);
+      // Seed: rev_pub_1.title = «Событийный цикл» (текущее название главы — «Цикл событий»).
+      await expect(page.getByRole("heading", { level: 1, name: "Событийный цикл" })).toBeVisible();
+      await expect(
+        page.getByRole("heading", { level: 1, name: CHAPTERS.published.title }),
+      ).toHaveCount(0);
+      // Навыки версии 1: «Промисы» появились только в версии 2.
+      const metaRow = page.locator("article > div").filter({ hasText: "Проверено на Recenza" });
+      await expect(metaRow.getByText("Event Loop")).toBeVisible();
+      await expect(metaRow.getByText("Промисы", { exact: true })).toHaveCount(0);
+    });
+
+    await test.step("баннер архива + ссылка на текущую версию", async () => {
+      const notice = page.getByRole("complementary", { name: "Вы читаете архивную версию главы" });
+      await expect(notice).toBeVisible();
+      await expect(notice.getByText(/Вы читаете проверенную версию 1/)).toBeVisible();
+      await expect(notice.getByText(/Текущая версия — 2\./)).toBeVisible();
+      await expect(notice.getByRole("link", { name: /Читать текущую версию/ })).toBeVisible();
+    });
+
+    await test.step("read-only: комментариев и бара «Реакции» в архиве нет; страница noindex", async () => {
+      await expect(page.getByRole("region", { name: "Комментарии" })).toHaveCount(0);
+      await expect(page.locator('[aria-label="Реакции"]')).toHaveCount(0);
+      await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
+    });
+
+    await test.step("`?v=2` (текущая) — редирект на канонический URL без параметра", async () => {
+      await page.goto(`/blog/${BLOG.slug}/${CHAPTERS.published.slug}?v=2`);
+      await expect(page).toHaveURL(`${BASE_URL}/blog/${BLOG.slug}/${CHAPTERS.published.slug}`);
+    });
+
+    await test.step("`?v=99` (нет такой ревизии) → 404", async () => {
+      const res = await page.goto(`/blog/${BLOG.slug}/${CHAPTERS.published.slug}?v=99`);
+      expect(res?.status()).toBe(404);
     });
   });
 });

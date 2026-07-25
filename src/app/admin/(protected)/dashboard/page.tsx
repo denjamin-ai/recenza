@@ -16,7 +16,7 @@ export default async function AdminDashboardPage() {
       <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <KpiTile label="Открытые жалобы" value={counts.openReports} href="/admin/reports" tone={counts.openReports > 0 ? "warning" : "neutral"} />
         <KpiTile label="Главы на ревью" value={counts.reviewQueue} href="/admin/review" />
-        <KpiTile label="Смена ведущего" value={counts.pendingPrimaryChanges} href="/admin/review" tone={counts.pendingPrimaryChanges > 0 ? "warning" : "neutral"} />
+        <KpiTile label="Заявки без ревьюера" value={counts.staleRequests} href="/admin/review" tone={counts.staleRequests > 0 ? "warning" : "neutral"} />
         <KpiTile label="Запросы подбора" value={counts.pendingRecruit} href="/admin/recruit" tone={counts.pendingRecruit > 0 ? "warning" : "neutral"} />
         <KpiTile label="Заявки ревьюеров" value={counts.pendingApplications} href="/admin/recruit" tone={counts.pendingApplications > 0 ? "warning" : "neutral"} />
         <KpiTile label="Заблокированные" value={counts.blockedUsers} href="/admin/users" tone={counts.blockedUsers > 0 ? "danger" : "neutral"} />

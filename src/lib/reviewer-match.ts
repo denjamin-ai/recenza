@@ -1,17 +1,18 @@
-// Подбор ревьюеров (Фаза 9) — ЧИСТЫЙ модуль: без db/auth/drizzle-импортов, чтобы клиентский
-// SubmitSheet мог пересчитывать match%/«Топ» вживую при правке навыков (как split review-links.ts).
-// Сервер остаётся источником правды: match% перепроверяется на /submit и /invitations (flag-гейт).
+// Совпадение компетенций и навыков — ЧИСТЫЙ модуль (без db/auth/drizzle), поэтому его свободно
+// тянут и сервер, и клиент.
+//
+// ⚠️ Фаза 14 «перевернула» подбор: раньше считали «какой ревьюер подходит автору» (пикер в
+// SubmitSheet, композит «Топ» = навыки 50% + рейтинг 30% + объём 20%), теперь — «какая заявка
+// подходит ЭТОМУ ревьюеру» в его очереди. Аргументы поменялись местами, сама функция сравнения
+// не изменилась ни на строку. Вместе с пикером и рейтингом снесены `topScore`, `rankReviewers`,
+// `availability` и типы кандидатов: считать «рейтинг 30%» стало не из чего, а сортировать
+// кандидатов больше некому — очередь сортируется по match% и возрасту заявки
+// (`src/lib/queries/review-requests.ts`).
 //
 // Термины (binding, см. skill review-flow-domain):
 //   competencies — что умеет ревьюер (users.competencies)
-//   skills       — навыки статьи (chapters.skills), обязательны для отправки и видны читателю
+//   skills       — навыки статьи (chapter_revisions.skills), обязательны для ЗАЯВКИ и видны читателю
 //   match.pct    — доля навыков статьи, покрытых компетенциями ревьюера
-//   «Топ»        — композит: навыки 50% + рейтинг 30% + объём 20%
-
-export type Availability = "free" | "busy" | "full";
-
-/** Объём, дающий максимальный вклад (≥ этого числа отрецензированных глав → volume = 1). */
-export const VOLUME_CAP = 60;
 
 /**
  * Токены строки: lowercase → split по не-(буква/цифра/точка) → отбрасываем токены ≤2 символов.
@@ -55,60 +56,4 @@ export function skillMatch(competencies: string[], skills: string[]): MatchResul
   }
   const covered = matched.length;
   return { matched, covered, total, pct: Math.round((covered / total) * 100) };
-}
-
-/** Занятость: load≥capacity → full (не выбирается); load=0 → free; иначе busy. */
-export function availability(load: number, capacity: number): Availability {
-  if (load >= capacity) return "full";
-  if (load <= 0) return "free";
-  return "busy";
-}
-
-const clamp01 = (n: number): number => (n < 0 ? 0 : n > 1 ? 1 : n);
-
-/** «Топ» = навыки 50% + рейтинг 30% + объём 20% → 0..100 (binding-веса). */
-export function topScore(input: { matchPct: number; rating: number | null; reviewsCount: number }): number {
-  const skills = clamp01(input.matchPct / 100);
-  const rating = clamp01((input.rating ?? 0) / 5);
-  const volume = clamp01(input.reviewsCount / VOLUME_CAP);
-  return Math.round((0.5 * skills + 0.3 * rating + 0.2 * volume) * 100);
-}
-
-/** Кандидат для ранжирования (одна форма для сервера и клиента). */
-export interface ReviewerMatchInput {
-  handle: string;
-  displayName: string;
-  competencies: string[];
-  rating: number | null; // агрегат (в «Топ» идёт только он, не отдельные оценки)
-  ratingsN: number;
-  reviewsCount: number; // число отрецензированных глав (reviewer_history)
-  availability: Availability;
-}
-
-export interface RankedReviewer extends ReviewerMatchInput {
-  matchPct: number;
-  matched: string[];
-  top: number;
-}
-
-/**
- * Ранжирование по «Топ» (desc). onlyMatched → только match.pct > 0 (вкладка «По навыкам»).
- * Тай-брейк — имя (стабильный порядок). full-ревьюеров НЕ фильтруем (их дизейблит UI).
- */
-export function rankReviewers(
-  reviewers: ReviewerMatchInput[],
-  skills: string[],
-  opts: { onlyMatched?: boolean } = {},
-): RankedReviewer[] {
-  const ranked = reviewers.map((r): RankedReviewer => {
-    const m = skillMatch(r.competencies, skills);
-    return {
-      ...r,
-      matchPct: m.pct,
-      matched: m.matched,
-      top: topScore({ matchPct: m.pct, rating: r.rating, reviewsCount: r.reviewsCount }),
-    };
-  });
-  const filtered = opts.onlyMatched ? ranked.filter((r) => r.matchPct > 0) : ranked;
-  return filtered.sort((a, b) => b.top - a.top || a.displayName.localeCompare(b.displayName, "ru"));
 }

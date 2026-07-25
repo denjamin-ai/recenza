@@ -16,7 +16,7 @@ export class ReviewPage {
     await this.page.goto(`/author/blog/${blogSlug}/${chapterSlug}/review`);
   }
 
-  /** «@handle · ведущий · онлайн» (пусто при нуле принявших). */
+  /** «@handle · онлайн» (пусто при нуле назначенных; Ф14 — метки «ведущий» больше нет). */
   get team(): Locator {
     return this.page.locator('[aria-label="Команда ревью"]');
   }
@@ -109,15 +109,6 @@ export class ReviewPage {
 
   get submitNextVersionButton(): Locator {
     return this.page.getByRole("button", { name: /Отправить v\d+/ });
-  }
-
-  /** «Сменить ведущего» (disabled при <2 принявших) → модалка → запрос админу. */
-  async requestPrimaryChange(candidateRe: RegExp, reason: string): Promise<void> {
-    await this.page.getByRole("button", { name: "Сменить ведущего" }).click();
-    const dialog = this.page.getByRole("dialog", { name: "Сменить ведущего ревьюера" });
-    await dialog.getByRole("radio", { name: candidateRe }).check();
-    await dialog.getByRole("textbox").fill(reason);
-    await dialog.getByRole("button", { name: "Отправить запрос" }).click();
   }
 
   // --- Чат сессии (не смешивается с тредами) ---

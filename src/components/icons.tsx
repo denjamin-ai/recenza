@@ -192,6 +192,16 @@ export function IconCheck(p: IconProps) {
   );
 }
 
+// Ф14: бейдж «проверено» (щит с галкой) — читательские поверхности (ридер, карточки, кредит).
+export function IconShieldCheck(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M12 3l7 3v5.5c0 4.2-2.9 7.6-7 9.5-4.1-1.9-7-5.3-7-9.5V6l7-3Z" />
+      <path d="m9 12 2 2 4-4" />
+    </Svg>
+  );
+}
+
 export function IconLink(p: IconProps) {
   return (
     <Svg {...p}>

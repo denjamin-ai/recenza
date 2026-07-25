@@ -6,6 +6,7 @@
 import Link from "next/link";
 import { CoverImage } from "@/components/reader/cover-image";
 import { IconListLines } from "@/components/icons";
+import { VerifiedChip } from "@/components/reader/verified-badge";
 import { plural } from "@/lib/plural";
 import type { BlogCardView } from "@/lib/queries/types";
 
@@ -35,10 +36,14 @@ export function BlogIndexCard({ blog }: { blog: BlogCardView }) {
       </Link>
 
       <div className="flex flex-1 flex-col p-5">
-        <p className="mb-1.5 inline-flex items-center gap-1.5 text-[0.66rem] font-bold uppercase tracking-wider text-[var(--accent)]">
-          <IconListLines className="h-3 w-3" />
-          {blog.chapterCount} {plural(blog.chapterCount, "глава", "главы", "глав")}
-        </p>
+        {/* Ф14: eyebrow — счётчик глав + чип уровня проверки блога (если ревью было) */}
+        <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <p className="inline-flex items-center gap-1.5 text-[0.66rem] font-bold uppercase tracking-wider text-[var(--accent)]">
+            <IconListLines className="h-3 w-3" />
+            {blog.chapterCount} {plural(blog.chapterCount, "глава", "главы", "глав")}
+          </p>
+          <VerifiedChip tier={blog.verifiedTier ?? null} size="sm" />
+        </div>
 
         <Link
           href={`/blog/${blog.slug}`}

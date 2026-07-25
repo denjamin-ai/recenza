@@ -17,6 +17,7 @@ import {
   chapterRevisions,
   chapters,
   reviewChat,
+  reviewerHistory,
   threadReplies,
   threads,
   users,
@@ -27,6 +28,7 @@ import { isReviewOpen } from "@/lib/review-status";
 import type {
   Block,
   PublicUser,
+  VerifiedTier,
   ReviewStatus,
   RevisionStatus,
   Suggestion,
@@ -40,7 +42,6 @@ export interface ReviewReviewer {
   handle: string;
   displayName: string;
   slug: string;
-  isPrimary: boolean;
   verdict: Verdict | null;
   verdictAt: number | null;
   online: boolean;
@@ -99,7 +100,6 @@ export interface ReviewSession {
     slug: string;
     title: string;
     order: number;
-    primaryHandle: string | null;
     skills: string[];
   };
   revision: {
@@ -109,6 +109,11 @@ export interface ReviewSession {
     status: RevisionStatus;
     /** Ось ревью: none | requested | in-review | changes-requested | reviewed. */
     reviewStatus: ReviewStatus;
+    /** Ф14: токен закрытия сессии — единственный признак «ревью по этой ревизии завершено». */
+    reviewClosedAt: number | null;
+    /** Ф14: бейдж ревизии (null — не проверена). */
+    verifiedTier: VerifiedTier | null;
+    verifiedAt: number | null;
     summary: string | null;
     blocks: Block[];
     /** Снапшот последней публикации для инлайн-диффа; пусто → глава ещё не публиковалась (дифф «всё ново»). */
@@ -135,7 +140,7 @@ export interface ReviewerQueueItem {
   revisionNumber: number;
   status: RevisionStatus;
   reviewStatus: ReviewStatus;
-  isPrimary: boolean;
+  reviewClosedAt: number | null;
   myVerdict: Verdict | null;
   openThreadCount: number;
 }
@@ -154,7 +159,6 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
         chapterSlug: chapters.slug,
         chapterTitle: chapters.title,
         chapterOrder: chapters.order,
-        primaryHandle: chapters.primaryHandle,
         skills: chapters.skills,
         blogId: blogs.id,
         blogSlug: blogs.slug,
@@ -179,6 +183,9 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
       number: chapterRevisions.number,
       status: chapterRevisions.status,
       reviewStatus: chapterRevisions.reviewStatus,
+      reviewClosedAt: chapterRevisions.reviewClosedAt,
+      verifiedTier: chapterRevisions.verifiedTier,
+      verifiedAt: chapterRevisions.verifiedAt,
       summary: chapterRevisions.summary,
       blocks: chapterRevisions.blocks,
       prevBlocks: chapterRevisions.prevBlocks,
@@ -193,7 +200,6 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
   const reviewerRows = await db
     .select({
       handle: chapterReviewers.handle,
-      isPrimary: chapterReviewers.isPrimary,
       verdict: chapterReviewers.verdict,
       verdictAt: chapterReviewers.verdictAt,
       lastSeenAt: chapterReviewers.lastSeenAt,
@@ -213,12 +219,11 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
       handle: r.handle,
       displayName: r.displayName,
       slug: r.slug,
-      isPrimary: r.isPrimary,
       verdict: (r.verdict as Verdict | null) ?? null,
       verdictAt: r.verdictAt,
       online: r.lastSeenAt !== null && r.lastSeenAt >= presenceThreshold,
     }))
-    .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
+    .sort((a, b) => a.displayName.localeCompare(b.displayName, "ru"));
 
   // Треды последней ревизии + ответы.
   const threadRows = await db
@@ -367,7 +372,6 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
       slug: head.chapterSlug,
       title: head.chapterTitle,
       order: head.chapterOrder,
-      primaryHandle: head.primaryHandle,
       skills: parseJson<string[]>(head.skills, []),
     },
     revision: {
@@ -375,6 +379,9 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
       number: rev.number,
       status: rev.status as RevisionStatus,
       reviewStatus: rev.reviewStatus as ReviewStatus,
+      reviewClosedAt: rev.reviewClosedAt,
+      verifiedTier: rev.verifiedTier,
+      verifiedAt: rev.verifiedAt,
       summary: rev.summary,
       blocks: parseJson<Block[]>(rev.blocks, []),
       prevBlocks: parseJson<Block[]>(rev.prevBlocks, []),
@@ -397,7 +404,6 @@ export async function getReviewerQueue(handle: string): Promise<ReviewerQueueIte
     .select({
       chapterId: chapterReviewers.chapterId,
       revisionNumber: chapterReviewers.revisionNumber,
-      isPrimary: chapterReviewers.isPrimary,
       verdict: chapterReviewers.verdict,
       chapterSlug: chapters.slug,
       chapterTitle: chapters.title,
@@ -419,17 +425,23 @@ export async function getReviewerQueue(handle: string): Promise<ReviewerQueueIte
       number: chapterRevisions.number,
       status: chapterRevisions.status,
       reviewStatus: chapterRevisions.reviewStatus,
+      reviewClosedAt: chapterRevisions.reviewClosedAt,
     })
     .from(chapterRevisions)
     .where(inArray(chapterRevisions.chapterId, chapterIds));
   const latest = new Map<
     string,
-    { number: number; status: RevisionStatus; reviewStatus: ReviewStatus }
+    { number: number; status: RevisionStatus; reviewStatus: ReviewStatus; reviewClosedAt: number | null }
   >();
   for (const r of revRows) {
     const prev = latest.get(r.chapterId);
     if (!prev || r.number > prev.number) {
-      latest.set(r.chapterId, { number: r.number, status: r.status, reviewStatus: r.reviewStatus });
+      latest.set(r.chapterId, {
+        number: r.number,
+        status: r.status,
+        reviewStatus: r.reviewStatus,
+        reviewClosedAt: r.reviewClosedAt,
+      });
     }
   }
 
@@ -456,7 +468,7 @@ export async function getReviewerQueue(handle: string): Promise<ReviewerQueueIte
     if (!lr) continue;
     // Только назначения НА последнюю ревизию и в открытом ревью.
     if (row.revisionNumber !== lr.number) continue;
-    if (!isReviewOpen(lr.status, lr.reviewStatus)) continue;
+    if (!isReviewOpen(lr.reviewStatus, lr.reviewClosedAt)) continue;
     items.push({
       chapterId: row.chapterId,
       blogSlug: row.blogSlug,
@@ -466,7 +478,7 @@ export async function getReviewerQueue(handle: string): Promise<ReviewerQueueIte
       revisionNumber: lr.number,
       status: lr.status,
       reviewStatus: lr.reviewStatus,
-      isPrimary: row.isPrimary,
+      reviewClosedAt: lr.reviewClosedAt,
       myVerdict: (row.verdict as Verdict | null) ?? null,
       openThreadCount: openCounts.get(openCountKey(row.chapterId, lr.number)) ?? 0,
     });
@@ -532,4 +544,175 @@ export async function resolveReviewAccess(chapterId: string): Promise<ReviewAcce
     return { user, role: "reviewer", session };
   }
   return NextResponse.json({ error: "Нет доступа к этому ревью." }, { status: 403 });
+}
+
+// ───────────────────────────── кабинет ревьюера (Фаза 14.6) ─────────────────────────────
+//
+// Кабинет перестал быть инбоксом приглашений: теперь это три таба — «Очередь» (свободные заявки,
+// `getReviewQueue` из review-requests.ts), «Мои ревью» (то, что взято) и «Завершённые» (кредит).
+// Группировка активных ревью и завершённых ПО БЛОГАМ — прямое требование владельца: ревьюер ведёт
+// не отдельные главы, а блог целиком, и плоский список из 8 глав одного блога был нечитаем.
+
+export interface ActiveReviewGroup {
+  blogSlug: string;
+  blogTitle: string;
+  authorName: string;
+  items: ReviewerQueueItem[];
+}
+
+/**
+ * Активные ревью, сгруппированные по блогам (поверх `getReviewerQueue`).
+ * Внутри группы «ваш ход» (без вердикта) поднимается наверх — это то, что ждёт ревьюера.
+ */
+export async function getReviewerActiveByBlog(handle: string): Promise<ActiveReviewGroup[]> {
+  const items = await getReviewerQueue(handle);
+  if (items.length === 0) return [];
+
+  const slugs = [...new Set(items.map((i) => i.blogSlug))];
+  const authorRows = await db
+    .select({ slug: blogs.slug, authorName: users.displayName })
+    .from(blogs)
+    .innerJoin(users, eq(users.id, blogs.authorId))
+    .where(inArray(blogs.slug, slugs));
+  const authorBySlug = new Map(authorRows.map((r) => [r.slug, r.authorName]));
+
+  const groups = new Map<string, ActiveReviewGroup>();
+  for (const it of items) {
+    let g = groups.get(it.blogSlug);
+    if (!g) {
+      g = {
+        blogSlug: it.blogSlug,
+        blogTitle: it.blogTitle,
+        authorName: authorBySlug.get(it.blogSlug) ?? "",
+        items: [],
+      };
+      groups.set(it.blogSlug, g);
+    }
+    g.items.push(it);
+  }
+
+  for (const g of groups.values()) {
+    g.items.sort(
+      (a, b) =>
+        Number(a.myVerdict !== null) - Number(b.myVerdict !== null) ||
+        a.chapterTitle.localeCompare(b.chapterTitle, "ru"),
+    );
+  }
+  return [...groups.values()].sort((a, b) => a.blogTitle.localeCompare(b.blogTitle, "ru"));
+}
+
+export interface CompletedReviewChapter {
+  chapterSlug: string;
+  chapterTitle: string;
+  revisionNumber: number;
+  /** Бейдж ревизии, за которую выдан кредит; null — ревизия закрылась без бейджа. */
+  verifiedTier: VerifiedTier | null;
+}
+
+export interface CompletedReviewGroup {
+  blogSlug: string;
+  blogTitle: string;
+  chapters: CompletedReviewChapter[];
+}
+
+/**
+ * Завершённые ревью: опубликованные главы, где handle числится в кредите (`reviewer_history`),
+ * сгруппированные по блогам.
+ *
+ * Видимость — те же три фильтра, что у `getReadableBlog` (`queries/chapters.ts`): заблокированный
+ * автор, снятый `can_author` и скрытый блог убирают контент отовсюду, и публичная витрина «что я
+ * отрецензировал» не исключение. Глава должна иметь хотя бы одну published-ревизию, иначе кредита
+ * никто не увидит (ревью черновика, который автор так и не опубликовал).
+ */
+export async function getReviewerCompleted(handle: string): Promise<CompletedReviewGroup[]> {
+  const rows = await db
+    .select({
+      chapterId: reviewerHistory.chapterId,
+      revisionNumber: reviewerHistory.revisionNumber,
+      chapterSlug: chapters.slug,
+      chapterTitle: chapters.title,
+      chapterOrder: chapters.order,
+      revisionTitle: chapterRevisions.title,
+      verifiedTier: chapterRevisions.verifiedTier,
+      blogSlug: blogs.slug,
+      blogTitle: blogs.title,
+    })
+    .from(reviewerHistory)
+    .innerJoin(chapters, eq(chapters.id, reviewerHistory.chapterId))
+    .innerJoin(blogs, eq(blogs.id, chapters.blogId))
+    .innerJoin(users, eq(users.id, blogs.authorId))
+    .innerJoin(
+      chapterRevisions,
+      and(
+        eq(chapterRevisions.chapterId, reviewerHistory.chapterId),
+        eq(chapterRevisions.number, reviewerHistory.revisionNumber),
+      ),
+    )
+    .where(
+      and(
+        eq(reviewerHistory.handle, handle),
+        eq(users.isBlocked, false),
+        eq(users.canAuthor, true),
+        eq(blogs.hidden, false),
+      ),
+    );
+  if (rows.length === 0) return [];
+
+  const chapterIds = [...new Set(rows.map((r) => r.chapterId))];
+  const publishedRows = await db
+    .select({ chapterId: chapterRevisions.chapterId })
+    .from(chapterRevisions)
+    .where(
+      and(inArray(chapterRevisions.chapterId, chapterIds), eq(chapterRevisions.status, "published")),
+    );
+  const published = new Set(publishedRows.map((r) => r.chapterId));
+
+  // Кредит может лежать на нескольких ревизиях одной главы — показываем последнюю проверенную.
+  const latest = new Map<string, (typeof rows)[number]>();
+  for (const r of rows) {
+    if (!published.has(r.chapterId)) continue;
+    const prev = latest.get(r.chapterId);
+    if (!prev || r.revisionNumber > prev.revisionNumber) latest.set(r.chapterId, r);
+  }
+
+  const groups = new Map<string, CompletedReviewGroup & { order: Map<string, number> }>();
+  for (const r of latest.values()) {
+    let g = groups.get(r.blogSlug);
+    if (!g) {
+      g = { blogSlug: r.blogSlug, blogTitle: r.blogTitle, chapters: [], order: new Map() };
+      groups.set(r.blogSlug, g);
+    }
+    g.order.set(r.chapterSlug, r.chapterOrder);
+    g.chapters.push({
+      chapterSlug: r.chapterSlug,
+      // Заголовок берём из снапшота ревизии (Ф14): бейдж относится к версии, а не к текущему имени.
+      chapterTitle: r.revisionTitle ?? r.chapterTitle,
+      revisionNumber: r.revisionNumber,
+      verifiedTier: r.verifiedTier,
+    });
+  }
+
+  return [...groups.values()]
+    .map((g) => {
+      g.chapters.sort((a, b) => (g.order.get(a.chapterSlug) ?? 0) - (g.order.get(b.chapterSlug) ?? 0));
+      return { blogSlug: g.blogSlug, blogTitle: g.blogTitle, chapters: g.chapters };
+    })
+    .sort((a, b) => a.blogTitle.localeCompare(b.blogTitle, "ru"));
+}
+
+/**
+ * Объём проделанной работы: сколько РАЗНЫХ глав в скольких РАЗНЫХ блогах отрецензировал handle.
+ * Пришёл на место снесённого рейтинга ревьюера (Ф14) — считается по кредиту, без фильтров
+ * видимости: это личная статистика в приватном кабинете, а не публичная витрина.
+ */
+export async function getReviewerVolume(handle: string): Promise<{ chapters: number; blogs: number }> {
+  const rows = await db
+    .select({ chapterId: reviewerHistory.chapterId, blogId: chapters.blogId })
+    .from(reviewerHistory)
+    .innerJoin(chapters, eq(chapters.id, reviewerHistory.chapterId))
+    .where(eq(reviewerHistory.handle, handle));
+  return {
+    chapters: new Set(rows.map((r) => r.chapterId)).size,
+    blogs: new Set(rows.map((r) => r.blogId)).size,
+  };
 }

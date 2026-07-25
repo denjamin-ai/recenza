@@ -2,7 +2,7 @@ import { expect, type Locator, type Page } from "@playwright/test";
 
 /**
  * Редактор Variant B + SubmitSheet (Фазы 6/9).
- * Гоча: гидрация ~1–2 с — первый клик «Отправить на ревью →» может потеряться,
+ * Гоча: гидрация ~1–2 с — первый клик «Заявка на ревью» может потеряться,
  * поэтому открытие шторки ретраится (MCP-FINDINGS §4).
  */
 export class EditorPage {
@@ -75,12 +75,13 @@ export class EditorPage {
   // --- SubmitSheet ---
 
   get submitSheet(): Locator {
-    return this.page.getByRole("dialog", { name: "Отправка на ревью" });
+    return this.page.getByRole("dialog", { name: "Заявка на ревью" });
   }
 
+  /** Ф14: пикер ревьюеров снят — шторка стала формой ЗАЯВКИ (автор исполнителя не выбирает). */
   async openSubmitSheet(): Promise<void> {
     await expect(async () => {
-      await this.page.getByRole("button", { name: "Отправить на ревью →" }).click();
+      await this.page.getByRole("button", { name: "Заявка на ревью" }).click();
       await expect(this.submitSheet).toBeVisible({ timeout: 3_000 });
     }).toPass({ timeout: 20_000 });
   }
@@ -103,23 +104,17 @@ export class EditorPage {
     await this.submitSheet.getByRole("button", { name: `Удалить «${skill}»` }).click();
   }
 
-  reviewersFilterTab(name: "По навыкам" | "Все"): Locator {
-    return this.submitSheet.getByRole("tablist", { name: "Фильтр ревьюеров" }).getByRole("tab", { name });
+  /**
+   * Состояние уже поданной заявки (вместо формы): «В очереди» / «В работе» + срок SLA.
+   * ⚠️ Роль именно `region`: приложение рендерит `<section aria-label>`, что по HTML-AAM даёт
+   * `region`, а не `group`. Первая редакция POM искала `group` и не находила элемент никогда.
+   */
+  get requestState(): Locator {
+    return this.submitSheet.getByRole("region", { name: "Состояние заявки" });
   }
 
-  get reviewersSearch(): Locator {
-    return this.submitSheet.getByRole("searchbox", { name: "Поиск ревьюеров" });
-  }
-
-  /** Чекбокс ревьюера — accessible name = displayName (aria-label); disabled при «загружен». */
-  reviewerCheckbox(nameRe: RegExp): Locator {
-    return this.submitSheet.getByRole("checkbox", { name: nameRe });
-  }
-
-  /** Toggle ведущего в строке ревьюера: «вести» (не выбран) / «ведущий» (выбран); ui-feedback-3. */
-  async makePrimary(nameRe: RegExp): Promise<void> {
-    const row = this.submitSheet.locator("li", { has: this.page.getByRole("checkbox", { name: nameRe }) });
-    await row.getByRole("button", { name: /^вести$|^ведущий$/ }).click();
+  get withdrawButton(): Locator {
+    return this.submitSheet.getByRole("button", { name: "Отозвать заявку" });
   }
 
   /** Футер: «Закройте все пункты» → «Готово к отправке». */
@@ -130,7 +125,7 @@ export class EditorPage {
   /** Отправка: успех = redirect в кабинет блога (тост не успевает). Клик ретраится против
    *  потери события до гидрации (MCP-FINDINGS §4). */
   async submit(blogSlug: string): Promise<void> {
-    const btn = this.submitSheet.getByRole("button", { name: "Отправить", exact: true });
+    const btn = this.submitSheet.getByRole("button", { name: "Оставить заявку", exact: true });
     await expect(async () => {
       await btn.click();
       await this.page.waitForURL(`**/author/blog/${blogSlug}`, { timeout: 5_000 });

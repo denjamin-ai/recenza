@@ -5,7 +5,9 @@
 //   2. опубликованная глава редактируема — правка заводит ревизию-ЧЕРНОВИК поверх,
 //      читатель продолжает видеть опубликованную версию, пока автор не опубликует новую;
 //   3. возможность «автор» выдаётся админом: без неё создание блога/публикация закрыты;
-//   4. фикс З-05 — повторная отправка в ту же ревизию обнуляет вердикты.
+//   4. Ф14 — инварианты ЗАЯВКИ на ревью (одна живая на ревизию, отзыв, проверенная версия закрыта).
+//      ⚠️ Прежний пункт 4 (З-05: «повторная отправка обнуляет вердикты») снят вместе с роутом
+//      `POST …/submit` — заявка `chapter_reviewers` не трогает, обнулять там нечего.
 //
 // Мутирует seed (создаёт блог, публикует, правит) → serial + reseed в beforeAll И afterAll
 // (дисциплина flows/*): без afterAll срез `--grep @smoke` унёс бы мусор в соседние спеки.
@@ -158,60 +160,62 @@ test.describe("Свободная публикация (Фаза 13)", () => {
     });
   });
 
-  test("PUB-FREE-04 @critical: З-05 — повторная отправка в ту же ревизию обнуляет вердикты", async ({
+  // ⚠️ Ф14 переписала этот кейс. Прежняя формулировка (З-05: «повторная отправка в ту же ревизию
+  // обнуляет вердикты») описывала роут `POST …/submit` с пикером ревьюеров — его больше нет.
+  // Преемник — ЗАЯВКА: она не трогает `chapter_reviewers` вовсе, поэтому проверяем её собственные
+  // инварианты (единственность живой заявки на ревизию, отзыв, запрет на уже проверенную версию).
+  test("PUB-FREE-04 @critical: заявка на ревью — одна живая на ревизию (409), отзыв возвращает возможность подать заново, проверенная версия закрыта (409)", async ({
     api,
   }) => {
-    // chp_changes: lena_review — request-changes, reviewer — approve (seed, ревизия 1).
-    // До Ф13 повторная отправка НЕ трогала chapter_reviewers, и approve переживал правку текста.
     const author = await api("author");
+    const requestHref = (chapterId: string) => `/api/author/chapters/${chapterId}/review-request`;
+    const skills = ["Async/Await", "Обработка ошибок"];
 
-    await test.step("до отправки: у главы есть чужой approve", async () => {
-      const reviewer = await apiLoginUser(USERS.reviewer.handle);
-      try {
-        const res = await reviewer.get(`/api/review/${CHAPTERS.changesRequested.id}`);
-        // Роут может не отдавать JSON-срез — достаточно, что доступ к ревью есть.
-        expect([200, 404]).toContain(res.status());
-      } finally {
-        await reviewer.dispose();
-      }
+    await test.step("заявка на главу в статусе «нужны правки» принимается → 201", async () => {
+      await throttleMutation(USERS.author.handle);
+      const res = await author.post(requestHref(CHAPTERS.changesRequested.id), { data: { skills } });
+      expect(res.status()).toBe(201);
+      const body = (await res.json()) as { ok: boolean; requestId: string; revisionNumber: number };
+      expect(body.ok).toBe(true);
+      expect(body.revisionNumber).toBe(1);
     });
 
-    await test.step("автор правит текст и отправляет ту же ревизию заново", async () => {
+    await test.step("повтор на ту же ревизию → 409 «Заявка на эту версию уже подана.»", async () => {
       await throttleMutation(USERS.author.handle);
-      const patched = await author.patch(`/api/author/chapters/${CHAPTERS.changesRequested.id}`, {
-        data: { summary: "Учёл замечания" },
+      const res = await author.post(requestHref(CHAPTERS.changesRequested.id), { data: { skills } });
+      expect(res.status()).toBe(409);
+      expect(((await res.json()) as { error?: string }).error).toBe("Заявка на эту версию уже подана.");
+    });
+
+    await test.step("DELETE отзывает заявку, пока её никто не взял → подать можно снова", async () => {
+      await throttleMutation(USERS.author.handle);
+      const withdrawn = await author.delete(requestHref(CHAPTERS.changesRequested.id));
+      expect(withdrawn.status()).toBe(200);
+
+      await throttleMutation(USERS.author.handle);
+      const again = await author.post(requestHref(CHAPTERS.changesRequested.id), { data: { skills } });
+      expect(again.status()).toBe(201);
+    });
+
+    await test.step("на УЖЕ проверенную ревизию (event-loop v2, бейдж выдан) → 409", async () => {
+      await throttleMutation(USERS.author.handle);
+      const res = await author.post(requestHref(CHAPTERS.published.id), {
+        data: { skills: ["Event Loop"] },
       });
-      expect(patched.status()).toBe(200);
-
-      await throttleMutation(USERS.author.handle);
-      const submitted = await author.post(
-        `/api/author/chapters/${CHAPTERS.changesRequested.id}/submit`,
-        {
-          data: {
-            skills: ["Async"],
-            reviewers: [USERS.lena.handle, USERS.reviewer.handle],
-            primary: USERS.lena.handle,
-            complexity: "medium",
-          },
-        },
-      );
-      expect(submitted.status()).toBe(200);
+      expect(res.status()).toBe(409);
+      expect(((await res.json()) as { error?: string }).error).toBe("Эта версия главы уже прошла ревью.");
     });
 
-    await test.step("вердикт прошлого круга обнулён: «все одобрили» не показывается", async () => {
-      const reviewer = await apiLoginUser(USERS.reviewer.handle);
+    await test.step("без возможности «автор» заявку не оставить → 403 (гейт возможности раньше ownership)", async () => {
+      const reviewerCtx = await apiLoginUser(USERS.reviewer.handle);
       try {
-        // Ревьюер снова может поставить вердикт — значит его прошлый approve не «залип».
-        await throttleMutation(USERS.reviewer.handle);
-        const res = await reviewer.post(`/api/review/${CHAPTERS.changesRequested.id}/verdict`, {
-          data: { verdict: "approve" },
+        // У ревьюера нет `can_author` → 403 ещё на гейте возможности, до резолва главы.
+        const res = await reviewerCtx.post(requestHref(CHAPTERS.changesRequested.id), {
+          data: { skills },
         });
-        expect(res.status()).toBe(200);
-        const body = (await res.json()) as { allApproved: boolean };
-        // lena свой вердикт после пересдачи ещё не ставила → консенсуса нет.
-        expect(body.allApproved).toBe(false);
+        expect(res.status()).toBe(403);
       } finally {
-        await reviewer.dispose();
+        await reviewerCtx.dispose();
       }
     });
   });

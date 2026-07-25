@@ -1,29 +1,21 @@
 // Снятие ревьюера с главы админом (Фаза 10). Логирует в removed_reviewers (byAdmin + причина),
 // удаляет назначение на последней ревизии (chapter_reviewers), корректирует reviewLoad −1
-// (консистентно с accept=+1 / publish=−1), гасит pending-приглашение этой ревизии (→ declined),
-// уведомляет ревьюера (reviewer_removed) и автора. Только админ.
-// Фаза 12 (P1-фикс): если снят ВЕДУЩИЙ — primary детерминированно переназначается на первого
-// (по handle) из оставшихся ревьюеров (нет dangling primary); pending-запросы смены ведущего
-// с участием снятого гасятся (→ void) вместе с их строками в админ-очереди.
+// (консистентно с claim=+1 / закрытие сессии=−1), уведомляет ревьюера и автора. Только админ.
+//
+// ⚠️ Ф14: снята вся обвязка «ведущего» и приглашений (переназначение primary, гашение pending-PCR
+// и их строк в админ-очереди) — этих сущностей больше нет. Взамен заявка, по которой ревьюер попал
+// на главу, ВОЗВРАЩАЕТСЯ в очередь: снятие ревьюера не должно оставлять главу без пути к ревью.
 
 import { NextResponse } from "next/server";
-import { and, eq, or, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import {
-  chapterReviewers,
-  chapters,
-  notifications,
-  primaryChangeRequests,
-  removedReviewers,
-  reviewInvitations,
-  users,
-} from "@/lib/db/schema";
+import { chapterReviewers, removedReviewers, reviewRequests, users } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
-import { parseJson } from "@/lib/db/json";
 import { ADMIN_NOTIFY } from "@/lib/review-links";
 import { createNotifications, type NotificationSpec } from "@/lib/queries/notifications";
 import { getReviewSession, userIdsByHandle } from "@/lib/queries/review";
+import { SLA_UNCLAIMED_DAYS, dueAtFrom } from "@/lib/review-sla";
 
 export async function POST(
   req: Request,
@@ -97,114 +89,24 @@ export async function POST(
         .update(users)
         .set({ reviewLoad: sql`max(${users.reviewLoad} - 1, 0)` })
         .where(eq(users.handle, handle));
-      // Если было активное приглашение этой ревизии — помечаем declined (consent-инвариант).
+      // ⚠️ Ф14: снятая обвязка. Приглашений больше нет (ревьюер берёт заявку сам), роли «ведущего»
+      // нет — переназначать преемника и гасить запросы смены некому. Взамен: заявка, по которой
+      // ревьюер попал на главу, возвращается в очередь, чтобы главу мог взять кто-то другой.
       await tx
-        .update(reviewInvitations)
-        .set({ status: "declined", respondedAt: now })
+        .update(reviewRequests)
+        .set({ status: "open", claimedBy: null, claimedAt: null, dueAt: dueAtFrom(now, SLA_UNCLAIMED_DAYS) })
         .where(
           and(
-            eq(reviewInvitations.chapterId, chapterId),
-            eq(reviewInvitations.revision, revNumber),
-            eq(reviewInvitations.toHandle, handle),
-            eq(reviewInvitations.status, "accepted"),
+            eq(reviewRequests.chapterId, chapterId),
+            eq(reviewRequests.revisionNumber, revNumber),
+            eq(reviewRequests.claimedBy, handle),
+            eq(reviewRequests.status, "claimed"),
           ),
         );
 
-      // P1-фикс: снят ведущий → детерминированный преемник (первый по handle из оставшихся),
-      // иначе primary «висит» на неназначенном ревьюере и action-bar/запросы смены ломаются.
-      let successorHandle: string | null = null;
-      const removedWasPrimary = session.chapter.primaryHandle === handle;
-      if (removedWasPrimary) {
-        const remaining = await tx
-          .select({ handle: chapterReviewers.handle })
-          .from(chapterReviewers)
-          .where(
-            and(
-              eq(chapterReviewers.chapterId, chapterId),
-              eq(chapterReviewers.revisionNumber, revNumber),
-            ),
-          );
-        successorHandle = remaining.map((r) => r.handle).sort()[0] ?? null;
-        await tx
-          .update(chapters)
-          .set({ primaryHandle: successorHandle })
-          .where(eq(chapters.id, chapterId));
-        // Флаг isPrimary в назначениях — консистентно с chapters.primaryHandle.
-        await tx
-          .update(chapterReviewers)
-          .set({ isPrimary: false })
-          .where(
-            and(eq(chapterReviewers.chapterId, chapterId), eq(chapterReviewers.revisionNumber, revNumber)),
-          );
-        if (successorHandle) {
-          await tx
-            .update(chapterReviewers)
-            .set({ isPrimary: true })
-            .where(
-              and(
-                eq(chapterReviewers.chapterId, chapterId),
-                eq(chapterReviewers.revisionNumber, revNumber),
-                eq(chapterReviewers.handle, successorHandle),
-              ),
-            );
-        }
-      }
-
-      // P1-фикс: pending-запросы смены ведущего с участием снятого гасим (→ void) + чистим
-      // их строки в админ-очереди (matching по chapterSlug и участнику — точечно, не всю главу).
-      const stalePcr = await tx
-        .select({ id: primaryChangeRequests.id })
-        .from(primaryChangeRequests)
-        .where(
-          and(
-            eq(primaryChangeRequests.chapterId, chapterId),
-            eq(primaryChangeRequests.status, "pending"),
-            or(eq(primaryChangeRequests.fromHandle, handle), eq(primaryChangeRequests.toHandle, handle)),
-          ),
-        );
-      if (stalePcr.length > 0) {
-        for (const p of stalePcr) {
-          await tx.update(primaryChangeRequests).set({ status: "void" }).where(eq(primaryChangeRequests.id, p.id));
-        }
-        const adminRows = await tx
-          .select({ id: notifications.id, payload: notifications.payload })
-          .from(notifications)
-          .where(
-            and(
-              eq(notifications.isAdminRecipient, true),
-              eq(notifications.type, "primary_change_request"),
-              eq(notifications.isRead, false),
-            ),
-          );
-        const staleIds = adminRows
-          .filter((r) => {
-            const p = parseJson<Record<string, unknown>>(r.payload, {});
-            return (
-              p.chapterSlug === session.chapter.slug &&
-              (p.fromHandle === handle || p.toHandle === handle)
-            );
-          })
-          .map((r) => r.id);
-        for (const nid of staleIds) {
-          await tx.update(notifications).set({ isRead: true }).where(eq(notifications.id, nid));
-        }
-      }
-
-      const idByHandle = await userIdsByHandle(
-        successorHandle ? [handle, successorHandle] : [handle],
-      );
+      const idByHandle = await userIdsByHandle([handle]);
       const reviewerId = idByHandle.get(handle);
       const specs: NotificationSpec[] = [];
-      if (successorHandle) {
-        const successorId = idByHandle.get(successorHandle);
-        if (successorId) {
-          specs.push({
-            recipientId: successorId,
-            type: ADMIN_NOTIFY.primaryChanged,
-            payload: { chapterTitle: session.chapter.title, handle: successorHandle },
-          });
-        }
-      }
       if (reviewerId) {
         specs.push({
           recipientId: reviewerId,

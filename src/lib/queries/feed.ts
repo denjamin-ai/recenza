@@ -9,7 +9,7 @@ import { db } from "@/lib/db";
 import { blogs, chapterRevisions, chapters, follows, users } from "@/lib/db/schema";
 import { parseJson } from "@/lib/db/json";
 import type { AuthorView, BlogCardView, FeedFilter, FeedItemView } from "./types";
-import type { Complexity } from "@/types";
+import type { Complexity, VerifiedTier } from "@/types";
 
 interface BaseRow {
   blogId: string;
@@ -23,6 +23,9 @@ interface BaseRow {
   bookmarkCount: number;
   lastActivityAt: number | null;
   blogPublishedAt: number | null;
+  /** Ф14: денормализованный бейдж блога (`blogs.verified_*`) — чип на карточке каталога. */
+  blogVerifiedAt: number | null;
+  blogVerifiedTier: VerifiedTier | null;
   authorId: string;
   authorHandle: string;
   authorSlug: string;
@@ -34,6 +37,9 @@ interface BaseRow {
   chapterOrder: number;
   skills: string | null;
   revNumber: number;
+  /** Ф14: снапшот метаданных ревизии (fallback — рабочее значение автора в `chapters.*`). */
+  revTitle: string | null;
+  revSkills: string | null;
   revPublishedAt: number | null;
   revSummary: string | null;
 }
@@ -53,6 +59,8 @@ export const getReadableChapters = cache(async (): Promise<BaseRow[]> => {
       bookmarkCount: blogs.bookmarkCount,
       lastActivityAt: blogs.lastActivityAt,
       blogPublishedAt: blogs.publishedAt,
+      blogVerifiedAt: blogs.verifiedAt,
+      blogVerifiedTier: blogs.verifiedTier,
       authorId: users.id,
       authorHandle: users.handle,
       authorSlug: users.slug,
@@ -64,6 +72,8 @@ export const getReadableChapters = cache(async (): Promise<BaseRow[]> => {
       chapterOrder: chapters.order,
       skills: chapters.skills,
       revNumber: chapterRevisions.number,
+      revTitle: chapterRevisions.title,
+      revSkills: chapterRevisions.skills,
       revPublishedAt: chapterRevisions.publishedAt,
       revSummary: chapterRevisions.summary,
     })
@@ -123,8 +133,10 @@ export async function getFeed(filter?: FeedFilter): Promise<FeedItemView[]> {
     blogSlug: r.blogSlug,
     blogTitle: r.blogTitle,
     chapterSlug: r.chapterSlug,
-    chapterTitle: r.chapterTitle,
-    skills: parseJson<string[]>(r.skills, []),
+    // Ф14: заголовок/навыки — снапшот опубликованной ревизии, а не текущее значение автора
+    // (иначе feed.xml показывал бы метаданные ещё не опубликованной правки).
+    chapterTitle: r.revTitle ?? r.chapterTitle,
+    skills: parseJson<string[]>(r.revSkills ?? r.skills, []),
     publishedAt: r.revPublishedAt,
     summary: r.revSummary,
     author: authorOf(r),
@@ -155,6 +167,8 @@ export async function getVisibleBlogs(filter?: FeedFilter): Promise<BlogCardView
       publishedAt: r.blogPublishedAt,
       author: authorOf(r),
       chapterCount: 1,
+      verifiedTier: r.blogVerifiedTier,
+      verifiedAt: r.blogVerifiedAt,
     });
   }
   return [...byBlog.values()].sort(

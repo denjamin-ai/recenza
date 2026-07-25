@@ -8,6 +8,7 @@
 // Файл намеренно self-contained (импортирует только drizzle-orm + ulid), чтобы drizzle-kit
 // бандлил его без резолва path-alias. Общие типы и union'ы — в src/types/index.ts (re-export отсюда).
 
+import { sql } from "drizzle-orm";
 import {
   type AnySQLiteColumn,
   integer,
@@ -64,6 +65,28 @@ export const RECRUIT_STATUSES = ["pending", "approved", "rejected"] as const;
 export const APPLICATION_STATUSES = ["pending", "accepted", "declined"] as const;
 export const BANNER_ACTIONS = ["internal", "external", "donate"] as const;
 export const DONATION_TYPES = ["link", "qr"] as const;
+/**
+ * Фаза 14 — откуда пришёл ревьюер по заявке:
+ *   queue     — взял сам из очереди кабинета (основной путь)
+ *   invite    — пришёл по инвайт-ссылке эксперта от автора
+ *   editorial — подобран редакцией через `recruit_requests`/доску
+ */
+export const REVIEW_REQUEST_CHANNELS = ["queue", "invite", "editorial"] as const;
+/**
+ * Жизненный цикл заявки на ревью (Фаза 14).
+ *   open → claimed → done                      — штатный путь
+ *   open → cancelled                           — автор отозвал
+ *   claimed → open                             — SLA-возврат (ревьюер молчал), cron
+ *   open → expired                             — эскалация: никто не взял в срок
+ */
+export const REVIEW_REQUEST_STATUSES = ["open", "claimed", "done", "cancelled", "expired"] as const;
+export const EXPERT_INVITE_STATUSES = ["pending", "used", "revoked", "expired"] as const;
+/**
+ * Уровень бейджа (Фаза 14) — выводится из происхождения ревьюера, отдельного флага нет:
+ *   invited     — все кредитованные ревьюеры приглашены самим автором (`users.introduced_by` = автор)
+ *   independent — есть хотя бы один независимый ревьюер; только он пускает блог на главную (Ф15)
+ */
+export const VERIFIED_TIERS = ["invited", "independent"] as const;
 
 const id = () => text("id").primaryKey().$defaultFn(() => ulid());
 
@@ -132,6 +155,13 @@ export const blogs = sqliteTable("blogs", {
   rating: real("rating").notNull().default(0),
   bookmarkCount: integer("bookmark_count").notNull().default(0),
   hidden: integer("hidden", { mode: "boolean" }).notNull().default(false), // Фаза 10: скрытие блога админом (модерация), независимо от author.isBlocked
+  // Бейдж блога (Фаза 14) — ДЕНОРМАЛИЗАЦИЯ агрегата по главам, пересчитывается в той же транзакции,
+  // что выдаёт бейдж (`grantReviewCredit`). Ф15 фильтрует по ним главную.
+  // ⚠️ Решение владельца: это ИСТОРИЧЕСКИЙ факт «блог проходил ревью» — правка главы его НЕ гасит
+  // (иначе исправленная опечатка выкидывала бы блог с витрины). Точная правда — на уровне главы:
+  // `chapter_revisions.verified_at` привязан к номеру ревизии.
+  verifiedAt: integer("verified_at"),
+  verifiedTier: text("verified_tier", { enum: VERIFIED_TIERS }),
 });
 
 export const chapters = sqliteTable(
@@ -164,9 +194,32 @@ export const chapterRevisions = sqliteTable(
     summary: text("summary"),
     blocks: text("blocks"), // JSON Block[] (текущий контент) → parseJson
     prevBlocks: text("prev_blocks"), // JSON Block[] (снапшот последней публикации, для инлайн-диффа)
+    // Снапшот метаданных главы на момент ревизии (Фаза 14). До неё `chapters.title`/`skills` были
+    // общими на все версии: переименование опубликованной главы читатель видел мгновенно, а бейдж
+    // «проверена версия 2» указывал на навыки, которых в версии 2 не было. Читатель видит значения
+    // ВЫБРАННОЙ ревизии, автор правит `chapters.*` как рабочее значение (оно уезжает в новую ревизию).
+    // Nullable: старые строки до бэкфилла и защита от рассинхрона → COALESCE с `chapters.*`.
+    title: text("title"),
+    skills: text("skills"), // JSON string[] → parseJson
     submittedAt: integer("submitted_at"),
     publishedAt: integer("published_at"),
     scheduledAt: integer("scheduled_at"), // отложенная публикация: cron публикует при scheduled_at <= now
+    /**
+     * Токен «ревью-сессия по этой ревизии закрыта» (Фаза 14) — ЕДИНСТВЕННЫЙ признак закрытия.
+     * ⚠️ До Ф14 закрытием считалась публикация (`isReviewOpen` возвращал false для `published`),
+     * из-за чего ревью ОПУБЛИКОВАННОЙ главы было невозможно физически: вердикт отвечал 409.
+     * Ф14 требует заявку в любом статусе, включая published (З-03), поэтому ось публикации
+     * из предиката ушла. Он же даёт идемпотентность `closeReviewSession` (двойной `reviewLoad −1`
+     * невозможен). Сбрасывается в NULL при новой заявке на ревизию БЕЗ бейджа.
+     */
+    reviewClosedAt: integer("review_closed_at"),
+    /**
+     * Бейдж ревизии (Фаза 14): проставляется в `closeReviewSession`, когда ревизия и опубликована,
+     * и одобрена. ИММУТАБЕЛЕН — переживает публикацию новых версий («версия N проверена такого-то
+     * числа») и не сбрасывается вместе с `review_closed_at`. Новая ревизия начинается без бейджа.
+     */
+    verifiedAt: integer("verified_at"),
+    verifiedTier: text("verified_tier", { enum: VERIFIED_TIERS }),
   },
   (t) => [unique("chapter_revisions_chapter_number_uq").on(t.chapterId, t.number)],
 );
@@ -399,6 +452,11 @@ export const reports = sqliteTable("reports", {
   createdAt: integer("created_at").notNull(),
 });
 
+/**
+ * @deprecated Фаза 14 (решение владельца): роль «ведущего» упразднена — один ревьюер достаточен,
+ * состав больше не иерархичен. Таблица и колонки `chapters.primary_handle`/`chapter_reviewers.is_primary`
+ * остаются в БД, но не читаются и не пишутся.
+ */
 export const primaryChangeRequests = sqliteTable("primary_change_requests", {
   id: id(),
   chapterId: text("chapter_id")
@@ -428,7 +486,12 @@ export const removedReviewers = sqliteTable("removed_reviewers", {
 
 // ───────────────────────────── подбор · согласие · оценка · монетизация (§11.9) ─────────────────────────────
 
-// Приглашение ревьюеру; ревью стартует ТОЛЬКО после accept.
+/**
+ * @deprecated Фаза 14: модель назначения сменилась на «автор оставляет ЗАЯВКУ, ревьюер берёт её сам»
+ * (`review_requests`). Автор больше нигде не выбирает ревьюеров, поэтому приглашений не существует.
+ * Таблица оставлена в схеме и БД (деструктивные миграции запрещены), новые строки НЕ создаются,
+ * ни один гейт её не читает. Не использовать в новом коде.
+ */
 export const reviewInvitations = sqliteTable(
   "review_invitations",
   {
@@ -451,7 +514,11 @@ export const reviewInvitations = sqliteTable(
   (t) => [uniqueIndex("review_invitations_chapter_rev_handle_uq").on(t.chapterId, t.revision, t.toHandle)],
 );
 
-// Приватно (ревьюер + админ); в «Топ» идёт только агрегат.
+/**
+ * @deprecated Фаза 14 (решение владельца): рейтинг ревьюеров снят целиком. Взамен — SLA,
+ * приватная жалоба админу (Ф15), счётчик объёма в профиле и отзыв возможности. Таблица и колонки
+ * `users.reviewer_rating`/`reviewer_ratings_n` остаются в БД, но не читаются и не пишутся.
+ */
 export const reviewerRatings = sqliteTable(
   "reviewer_ratings",
   {
@@ -494,7 +561,7 @@ export const boardCalls = sqliteTable("board_calls", {
   hot: integer("hot", { mode: "boolean" }).notNull().default(false),
 });
 
-// Apply-to-review с доски (by_handle = null → гость).
+// Apply-to-review с доски (by_handle = null → гость) ИЛИ анкета по инвайт-ссылке эксперта (Ф14).
 export const reviewerApplications = sqliteTable("reviewer_applications", {
   id: id(),
   byHandle: text("by_handle").references(() => users.handle),
@@ -504,6 +571,71 @@ export const reviewerApplications = sqliteTable("reviewer_applications", {
   message: text("message"),
   status: text("status", { enum: APPLICATION_STATUSES }).notNull().default("pending"),
   createdAt: integer("created_at").notNull(),
+  // Ф14, канал «инвайт-ссылка эксперта»: кто пригласил и по какому токену пришла анкета.
+  // Админ, принимая такую анкету, создаёт аккаунт и проставляет `users.introduced_by = invited_by` —
+  // отсюда берётся уровень бейджа `invited`.
+  invitedBy: text("invited_by").references(() => users.handle),
+  inviteToken: text("invite_token"),
+});
+
+// ───────────────────────────── заявки на ревью и каналы (Фаза 14) ─────────────────────────────
+
+/**
+ * Заявка автора на ревью главы (Фаза 14) — заменяет «автор выбирает ревьюеров и ждёт согласия».
+ * Заявку можно оставить в ЛЮБОМ состоянии главы, включая `published` (ревью — не барьер публикации).
+ * Claim ревьюером создаёт строку `chapter_reviewers` (downstream-роуты тредов/вердиктов/чата
+ * опираются на неё и правок не потребовали).
+ */
+export const reviewRequests = sqliteTable(
+  "review_requests",
+  {
+    id: id(),
+    chapterId: text("chapter_id")
+      .notNull()
+      .references(() => chapters.id, { onDelete: "cascade" }),
+    revisionNumber: integer("revision_number").notNull(),
+    byHandle: text("by_handle")
+      .notNull()
+      .references(() => users.handle), // автор
+    skills: text("skills"), // JSON string[] — навыки статьи на момент заявки → parseJson
+    note: text("note"),
+    channel: text("channel", { enum: REVIEW_REQUEST_CHANNELS }).notNull().default("queue"),
+    status: text("status", { enum: REVIEW_REQUEST_STATUSES }).notNull().default("open"),
+    claimedBy: text("claimed_by").references(() => users.handle),
+    claimedAt: integer("claimed_at"),
+    /** Дедлайн текущей фазы SLA: пока open — «взять до», после claim — «сдать до» (см. lib/review-sla.ts). */
+    dueAt: integer("due_at"),
+    createdAt: integer("created_at").notNull(),
+    resolvedAt: integer("resolved_at"),
+    /** Сколько раз заявка возвращалась в очередь по SLA — видно автору и админу. */
+    returnCount: integer("return_count").notNull().default(0),
+  },
+  // Активная заявка на (главу, ревизию) одна: claim идемпотентен, «две очереди на один текст» невозможны.
+  // Частичный uniqueIndex по open|claimed: завершённые заявки истории не мешают повторной подаче.
+  (t) => [
+    uniqueIndex("review_requests_chapter_rev_active_uq")
+      .on(t.chapterId, t.revisionNumber)
+      .where(sql`${t.status} in ('open','claimed')`),
+  ],
+);
+
+/**
+ * Инвайт-ссылка эксперта (Фаза 14, канал 2): автор зовёт человека ИЗВНЕ платформы.
+ * По токену открывается публичная анкета `/invite/[token]` → строка в `reviewer_applications`.
+ * Аккаунт по-прежнему создаёт админ (регистрация закрыта — альфа), проставляя `users.introduced_by`.
+ */
+export const expertInvites = sqliteTable("expert_invites", {
+  id: id(),
+  token: text("token").notNull().unique(), // 32 hex-символа из crypto.randomBytes — не ulid (неугадываемость)
+  byHandle: text("by_handle")
+    .notNull()
+    .references(() => users.handle),
+  chapterId: text("chapter_id").references(() => chapters.id, { onDelete: "cascade" }), // nullable: приглашение «в платформу», не в главу
+  status: text("status", { enum: EXPERT_INVITE_STATUSES }).notNull().default("pending"),
+  note: text("note"),
+  expiresAt: integer("expires_at").notNull(),
+  createdAt: integer("created_at").notNull(),
+  usedAt: integer("used_at"),
 });
 
 // Карусель промо на ленте (админ).

@@ -1,0 +1,12 @@
+# Таймер cron SLA заявок на ревью (Фаза 14) → /etc/systemd/system/recenza-review-sla.timer
+# Раз в час: сроки измеряются в днях (14/21), чаще гонять нечего.
+[Unit]
+Description=Recenza: таймер SLA заявок на ревью (раз в час)
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=120
+Persistent=true
+
+[Install]
+WantedBy=timers.target

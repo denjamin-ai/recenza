@@ -11,12 +11,12 @@ import {
   chapterRevisions,
   chapters,
   donationMethods,
-  primaryChangeRequests,
   promoBanners,
   publicComments,
   recruitRequests,
   removedReviewers,
   reports,
+  reviewRequests,
   reviewerApplications,
   users,
 } from "@/lib/db/schema";
@@ -35,7 +35,7 @@ import type {
 
 // ───────────────────────────── Сводка (dashboard) ─────────────────────────────
 
-export type AttentionKind = "report" | "recruit" | "application" | "primary";
+export type AttentionKind = "report" | "recruit" | "application" | "stale-request";
 
 export interface AttentionItem {
   kind: AttentionKind;
@@ -47,8 +47,9 @@ export interface AttentionItem {
 export interface AdminDashboard {
   counts: {
     openReports: number;
-    reviewQueue: number; // главы в активном ревью (under-review|changes-requested)
-    pendingPrimaryChanges: number;
+    reviewQueue: number; // главы с открытой ревью-сессией
+    /** Ф14: заявки, которые никто не взял в срок SLA (пришли на смену «Смене ведущего»). */
+    staleRequests: number;
     pendingRecruit: number;
     pendingApplications: number;
     blockedUsers: number;
@@ -61,7 +62,7 @@ export interface AdminDashboard {
 }
 
 export async function getAdminDashboard(): Promise<AdminDashboard> {
-  const [blockedUsers, allUsers, calls, reviewItems, openReportRows, recruitRows, appRows, pcrRows] =
+  const [blockedUsers, allUsers, calls, reviewItems, openReportRows, recruitRows, appRows, staleRows] =
     await Promise.all([
       db.$count(users, eq(users.isBlocked, true)),
       db.$count(users),
@@ -79,10 +80,12 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
         .select({ id: reviewerApplications.id, area: reviewerApplications.area, createdAt: reviewerApplications.createdAt })
         .from(reviewerApplications)
         .where(eq(reviewerApplications.status, "pending")),
+      // Ф14: вместо запросов смены ведущего — заявки, просроченные по SLA либо эскалированные
+      // в редакцию. Именно они теперь требуют вмешательства человека.
       db
-        .select({ id: primaryChangeRequests.id, createdAt: primaryChangeRequests.createdAt })
-        .from(primaryChangeRequests)
-        .where(eq(primaryChangeRequests.status, "pending")),
+        .select({ id: reviewRequests.id, createdAt: reviewRequests.createdAt, channel: reviewRequests.channel })
+        .from(reviewRequests)
+        .where(and(eq(reviewRequests.status, "open"), eq(reviewRequests.channel, "editorial"))),
     ]);
 
   const attention: AttentionItem[] = [
@@ -104,11 +107,11 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
       href: "/admin/recruit",
       createdAt: a.createdAt,
     })),
-    ...pcrRows.map((p) => ({
-      kind: "primary" as const,
-      label: "Запрос смены ведущего ревьюера",
+    ...staleRows.map((r) => ({
+      kind: "stale-request" as const,
+      label: "Заявку на ревью никто не взял — нужен подбор",
       href: "/admin/review",
-      createdAt: p.createdAt,
+      createdAt: r.createdAt,
     })),
   ].sort((a, b) => b.createdAt - a.createdAt);
 
@@ -116,7 +119,7 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
     counts: {
       openReports: openReportRows.length,
       reviewQueue: reviewItems.length,
-      pendingPrimaryChanges: pcrRows.length,
+      staleRequests: staleRows.length,
       pendingRecruit: recruitRows.length,
       pendingApplications: appRows.length,
       blockedUsers,
@@ -141,7 +144,6 @@ export interface AdminUserRow {
   commentingBlocked: boolean;
   reviewLoad: number;
   reviewCapacity: number;
-  reviewerRating: number | null;
   createdAt: number;
 }
 
@@ -158,7 +160,6 @@ export async function getAdminUsers(): Promise<AdminUserRow[]> {
       commentingBlocked: users.commentingBlocked,
       reviewLoad: users.reviewLoad,
       reviewCapacity: users.reviewCapacity,
-      reviewerRating: users.reviewerRating,
       createdAt: users.createdAt,
     })
     .from(users)
@@ -168,7 +169,6 @@ export async function getAdminUsers(): Promise<AdminUserRow[]> {
 export interface AdminUserDetail extends AdminUserRow {
   bio: string | null;
   competencies: string[];
-  reviewerRatingsN: number | null;
   blogs: { id: string; slug: string; title: string; hidden: boolean; publishedAt: number | null }[];
 }
 
@@ -186,8 +186,6 @@ export async function getAdminUserDetail(handle: string): Promise<AdminUserDetai
         commentingBlocked: users.commentingBlocked,
         reviewLoad: users.reviewLoad,
         reviewCapacity: users.reviewCapacity,
-        reviewerRating: users.reviewerRating,
-        reviewerRatingsN: users.reviewerRatingsN,
         competencies: users.competencies,
         bio: users.bio,
         createdAt: users.createdAt,
@@ -302,12 +300,11 @@ export async function getAdminReportDetail(id: string): Promise<AdminReportDetai
   return { ...base, comment };
 }
 
-// ───────────────────────────── Очередь ревью + смена ведущего ─────────────────────────────
+// ───────────────────────────── Очередь ревью (Ф14: без «ведущего») ─────────────────────────────
 
 export interface AdminReviewReviewer {
   handle: string;
   displayName: string;
-  isPrimary: boolean;
   approved: boolean;
 }
 
@@ -324,8 +321,6 @@ export interface AdminReviewItem {
   reviewerCount: number;
   approvedCount: number;
   reviewers: AdminReviewReviewer[];
-  primaryHandle: string | null;
-  pendingPrimaryChange: { id: string; fromHandle: string; toHandle: string } | null;
 }
 
 export async function getAdminReviewQueue(): Promise<AdminReviewItem[]> {
@@ -339,20 +334,26 @@ export async function getAdminReviewQueue(): Promise<AdminReviewItem[]> {
       number: chapterRevisions.number,
       status: chapterRevisions.status,
       reviewStatus: chapterRevisions.reviewStatus,
+      reviewClosedAt: chapterRevisions.reviewClosedAt,
     })
     .from(chapterRevisions);
   const latest = new Map<
     string,
-    { number: number; status: RevisionStatus; reviewStatus: ReviewStatus }
+    { number: number; status: RevisionStatus; reviewStatus: ReviewStatus; reviewClosedAt: number | null }
   >();
   for (const r of allRevs) {
     const prev = latest.get(r.chapterId);
     if (!prev || r.number > prev.number) {
-      latest.set(r.chapterId, { number: r.number, status: r.status, reviewStatus: r.reviewStatus });
+      latest.set(r.chapterId, {
+        number: r.number,
+        status: r.status,
+        reviewStatus: r.reviewStatus,
+        reviewClosedAt: r.reviewClosedAt,
+      });
     }
   }
   for (const [cid, lr] of latest) {
-    if (!isReviewOpen(lr.status, lr.reviewStatus)) latest.delete(cid);
+    if (!isReviewOpen(lr.reviewStatus, lr.reviewClosedAt)) latest.delete(cid);
   }
   const activeIds = [...latest.keys()];
   if (activeIds.length === 0) return [];
@@ -362,7 +363,6 @@ export async function getAdminReviewQueue(): Promise<AdminReviewItem[]> {
       chapterId: chapters.id,
       chapterSlug: chapters.slug,
       chapterTitle: chapters.title,
-      primaryHandle: chapters.primaryHandle,
       blogSlug: blogs.slug,
       blogTitle: blogs.title,
       authorName: users.displayName,
@@ -377,7 +377,6 @@ export async function getAdminReviewQueue(): Promise<AdminReviewItem[]> {
       chapterId: chapterReviewers.chapterId,
       revisionNumber: chapterReviewers.revisionNumber,
       handle: chapterReviewers.handle,
-      isPrimary: chapterReviewers.isPrimary,
       verdict: chapterReviewers.verdict,
       displayName: users.displayName,
     })
@@ -385,22 +384,10 @@ export async function getAdminReviewQueue(): Promise<AdminReviewItem[]> {
     .innerJoin(users, eq(users.handle, chapterReviewers.handle))
     .where(inArray(chapterReviewers.chapterId, activeIds));
 
-  const pcrRows = await db
-    .select({
-      id: primaryChangeRequests.id,
-      chapterId: primaryChangeRequests.chapterId,
-      fromHandle: primaryChangeRequests.fromHandle,
-      toHandle: primaryChangeRequests.toHandle,
-    })
-    .from(primaryChangeRequests)
-    .where(and(inArray(primaryChangeRequests.chapterId, activeIds), eq(primaryChangeRequests.status, "pending")));
-  const pcrByChapter = new Map(pcrRows.map((p) => [p.chapterId, p]));
-
   return heads
     .map((h) => {
       const lr = latest.get(h.chapterId)!;
       const rs = reviewerRows.filter((r) => r.chapterId === h.chapterId && r.revisionNumber === lr.number);
-      const pcr = pcrByChapter.get(h.chapterId);
       return {
         chapterId: h.chapterId,
         blogSlug: h.blogSlug,
@@ -414,10 +401,8 @@ export async function getAdminReviewQueue(): Promise<AdminReviewItem[]> {
         reviewerCount: rs.length,
         approvedCount: rs.filter((r) => r.verdict === "approve").length,
         reviewers: rs
-          .map((r) => ({ handle: r.handle, displayName: r.displayName, isPrimary: r.isPrimary, approved: r.verdict === "approve" }))
-          .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary)),
-        primaryHandle: h.primaryHandle,
-        pendingPrimaryChange: pcr ? { id: pcr.id, fromHandle: pcr.fromHandle, toHandle: pcr.toHandle } : null,
+          .map((r) => ({ handle: r.handle, displayName: r.displayName, approved: r.verdict === "approve" }))
+          .sort((a, b) => a.displayName.localeCompare(b.displayName, "ru")),
       };
     })
     .sort((a, b) => a.blogTitle.localeCompare(b.blogTitle, "ru"));
@@ -461,6 +446,8 @@ export interface AdminApplicationRow {
   message: string | null;
   status: ApplicationStatus;
   createdAt: number;
+  /** Ф14: handle автора, приславшего инвайт-ссылку. null — обычный отклик с доски. */
+  invitedBy: string | null;
 }
 
 export interface AdminRecruitData {
@@ -525,6 +512,7 @@ export async function getAdminRecruit(): Promise<AdminRecruitData> {
       message: reviewerApplications.message,
       status: reviewerApplications.status,
       createdAt: reviewerApplications.createdAt,
+      invitedBy: reviewerApplications.invitedBy,
     })
     .from(reviewerApplications)
     .leftJoin(users, eq(users.handle, reviewerApplications.byHandle))
@@ -541,6 +529,7 @@ export async function getAdminRecruit(): Promise<AdminRecruitData> {
     message: a.message,
     status: a.status,
     createdAt: a.createdAt,
+    invitedBy: a.invitedBy,
   }));
 
   return { requests, applications };

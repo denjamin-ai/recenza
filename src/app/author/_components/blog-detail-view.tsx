@@ -32,17 +32,16 @@ function ReviewerChips({ reviewers }: { reviewers: AuthorChapterRow["reviewers"]
   return (
     <div className="flex items-center gap-1.5">
       <span className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">Команда:</span>
-      {/* Ф13.8 (З-50): чип ревьюера ведёт на его публичный профиль. */}
+      {/* Ф13.8 (З-50): чип ревьюера ведёт на его публичный профиль.
+          Ф14: метки «ведущий» больше нет — ревьюер один и берёт заявку сам, иерархии внутри нет. */}
       <div className="flex -space-x-1">
         {reviewers.slice(0, 4).map((r) => (
           <Link
             key={r.handle}
             href={`/u/${r.slug}`}
-            title={`${r.displayName}${r.isPrimary ? " · ведущий" : ""}${r.verdict ? ` · ${r.verdict === "approve" ? "одобрил" : "нужны правки"}` : ""}`}
+            title={`${r.displayName}${r.verdict ? ` · ${r.verdict === "approve" ? "одобрил" : "нужны правки"}` : ""}`}
             aria-label={`Профиль ${r.displayName}`}
-            className={`flex h-6 w-6 items-center justify-center rounded-full border bg-[var(--bg-secondary)] text-[0.7rem] transition-colors hover:border-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
-              r.isPrimary ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--border)] text-[var(--muted-foreground)]"
-            }`}
+            className="flex h-6 w-6 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] text-[0.7rem] text-[var(--muted-foreground)] transition-colors hover:border-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
           >
             {r.displayName.slice(0, 1).toUpperCase()}
           </Link>
@@ -332,7 +331,7 @@ export function BlogDetailView({ detail }: { detail: AuthorBlogDetail }) {
                     </button>
                   </span>
                 )}
-                {isReviewOpen(ch.status, ch.reviewStatus) && (
+                {isReviewOpen(ch.reviewStatus, ch.reviewClosedAt) && (
                   <Link
                     href={`/author/blog/${detail.slug}/${ch.slug}/review`}
                     className="min-h-9 rounded-[var(--radius-sm)] border border-[var(--info-border)] bg-[var(--info-bg)] px-3 py-2 text-[length:var(--type-small)] text-[var(--info)] transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"

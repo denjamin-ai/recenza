@@ -15,9 +15,11 @@ Caddy + Node standalone + systemd; деплой — GH Actions `deploy.yml` на
 `src/`, `node_modules/`, `tsconfig.json`, `next.config.ts`, `drizzle.config.ts`, миграции
 `drizzle/0000_*.sql` … `0007_*.sql` (0004: `chapter_revisions.scheduled_at` + `chapter_reviewers.last_seen_at`;
 0005: drop `chapter_reviewers.online`; 0006: `blog_votes` + data-миграция голосов с глав на блоги,
-`chapter_votes` deprecated; **0007**: `users.is_reviewer/can_author/introduced_by` +
+`chapter_votes` deprecated; 0007: `users.is_reviewer/can_author/introduced_by` +
 `chapter_revisions.review_status` + бэкфилл ролей и разведение осей — Фаза 13;
-всего **29 таблиц**), `blog.db`/`blog.test.db`, два стенда, auth/возможности,
+**0008**: `review_requests` + `expert_invites` + `chapter_revisions.{title,skills,review_closed_at,
+verified_at,verified_tier}` + `blogs.verified_{at,tier}` + `reviewer_applications.{invited_by,invite_token}`
+— Фаза 14; всего **31 таблица**), `blog.db`/`blog.test.db`, два стенда, auth/возможности,
 читательский слой, авторский слой (кабинет/редактор/портфолио), review-flow (ReviewPage), публичные
 комментарии, подбор ревьюеров, админка/монетизация, слой качества (Playwright e2e + CI),
 **hardening + прод-деплой (Фаза 12)**. npm-скрипты работают.
@@ -106,18 +108,23 @@ Turso выведен из эксплуатации). Прод-БД — лока�
 - **JSON-поля — `text`, не `{mode:"json"}`** (json-mode роняет весь SELECT на битой строке). Разбор —
   **только** через `parseJson()` из `db/json.ts` (try/catch → безопасный дефолт); запись — `stringifyJson()`.
   Прямой `JSON.parse` вне `json.ts` запрещён.
-- **29 таблиц** (полная схема — `ENVIRONMENTS.md` §4): `users`, `app_settings`, `blogs`, `chapters`,
+- **31 таблица** (полная схема — `ENVIRONMENTS.md` §4): `users`, `app_settings`, `blogs`, `chapters`,
   `chapter_revisions`, `chapter_reviewers`, `reviewer_history`, `threads`, `thread_replies`, `review_chat`,
   `review_checklists`, `public_comments`, `comment_votes`, `chapter_votes` (deprecated с ui-feedback-5),
   `blog_votes` (голос за блог — модель прототипа), `bookmarks`, `follows`,
-  `notifications`, `portfolios`, `reports`, `primary_change_requests`, `removed_reviewers`,
-  `review_invitations`, `reviewer_ratings`, `recruit_requests`, `board_calls`,
-  `reviewer_applications`, `promo_banners`, `donation_methods` (`app_settings` — KV-singleton, напр.
-  `donations_enabled`). Поля у `users`: `competencies` (JSON), `reviewer_rating`/`reviewer_ratings_n`,
-  `review_load`/`review_capacity`; у `chapters` — `skills` (JSON, ключевые навыки статьи). Полное описание
-  новых таблиц — `docs/prototype/README.md` §11.9. Ревью-таблицы ссылаются FK на **`users.handle`**
+  `notifications`, `portfolios`, `reports`, `removed_reviewers`, `recruit_requests`, `board_calls`,
+  `reviewer_applications`, `promo_banners`, `donation_methods`,
+  **`review_requests`** и **`expert_invites`** (Ф14) + legacy, которые НЕ читаются:
+  `primary_change_requests`, `review_invitations`, `reviewer_ratings` (`app_settings` — KV-singleton,
+  напр. `donations_enabled`). Поля у `users`: `competencies` (JSON), `introduced_by` (уровень бейджа),
+  `review_load`/`review_capacity`; у `chapter_revisions` — `title`/`skills` (снапшот метаданных),
+  `review_closed_at`, `verified_at`/`verified_tier`; у `blogs` — `verified_at`/`verified_tier`.
+  Ревью-таблицы ссылаются FK на **`users.handle`**
   (UNIQUE, иммутабелен) — пользователя с ревью-историей нельзя hard-delete (только soft/бан).
-- Перечисления: `role`, `revision.status` (`draft|under-review|changes-requested|published`),
+- Перечисления: `role`, `revision.status` (`draft|published`), `revision.review_status`
+  (`none|requested|in-review|changes-requested|reviewed`),
+  `review_request.channel` (`queue|invite|editorial`) и `.status` (`open|claimed|done|cancelled|expired`),
+  `expert_invite.status` (`pending|used|revoked|expired`), `verified_tier` (`invited|independent`),
   `verdict` (`approve|request-changes`), `thread.status` (`open|resolved`), `complexity`, `block.type`,
   `invitation.status` (`pending|accepted|declined|flagged`),
   `recruit.status`/`application.status` (`pending|approved|rejected` / `pending|accepted|declined`),
@@ -179,6 +186,10 @@ Turso выведен из эксплуатации). Прод-БД — лока�
 предикатов и подписей — `src/lib/review-status.ts` (`isReviewOpen`, `isRevisionEditable`,
 `PUBLICATION_META`, `REVIEW_META`, `statusDotClass`); локальных копий множества активных статусов
 заводить нельзя (до Ф13 их было девять).
+⚠️ **Ф14: `isReviewOpen(reviewStatus, reviewClosedAt)` — ось публикации из предиката УШЛА.** До неё
+предикат возвращал `false` для любой `published`-ревизии, из-за чего ревью опубликованной главы было
+невозможно физически (вердикт отвечал 409), а фаза требует заявку в любом статусе. Закрытие сессии —
+явный токен `chapter_revisions.review_closed_at`, который ставит только `closeReviewSession()`.
 - **Публикация свободна**: ревьюеры не нужны никогда, гейт «все approve» удалён.
   Роут — `POST /api/author/chapters/[chapterId]/publish` (он же принимает `scheduledAt`).
 - **Публикация не трогает ось ревью**; `reviewed` переживает публикацию — это основание кредита.
@@ -190,31 +201,66 @@ Turso выведен из эксплуатации). Прод-БД — лока�
   одной проверки `draft` НЕДОСТАТОЧНО (глава на ревью тоже `draft`).
 
 ### Review-flow
-- Назначение ревьюеров на главу + **ведущий (primary)**; вердикты на handle/ревизию; `reviewer_history`
-  хранит кредит по версиям. Чат сессии (`review_chat`) — вне тредов. Чек-лист готовности — гейт отправки.
-- Публикация главы доступна автору **только при всех `approve`** (или force-approve админом).
-- Опубликованная глава указывает ревьюеров текущей версии + прошлых (за раскрытием).
+- Назначение ревьюера создаёт **claim заявки** (`review_requests` → `chapter_reviewers`); вердикты на
+  handle/ревизию; `reviewer_history` хранит кредит по версиям. Чат сессии (`review_chat`) — вне тредов.
+- ⚠️ **Ф14: роли «ведущего» (primary) НЕТ** — состав ревью не иерархичен, один ревьюер достаточен.
+  Колонки `chapters.primary_handle`/`chapter_reviewers.is_primary` и таблица `primary_change_requests`
+  остались в БД как legacy и не читаются.
+- Публикация свободна (Ф13) и ревью не гейтит её никогда.
+- Опубликованная глава указывает ревьюеров текущей версии + прошлых (за раскрытием) и **бейдж**.
 - ⚠️ Регресс-ловушка: роут `article` обязан рендерить data-driven `BlogReaderScreen`, не легаси
   single-article вид (см. `README.md` §3). Открытие разных блогов → разный контент, обновление `title`/OG.
 
-### Подбор ревьюеров, согласие, оценка, монетизация (этап «подбор ревьюеров»)
-Полная спецификация — `docs/prototype/README.md` §11. Ключевое (binding):
-- **Компетенции ревьюера** (`users.competencies`) и **навыки статьи** (`chapters.skills`) — РАЗНЫЕ
-  сущности. Навыки статьи — как ключевые слова в научной статье: **обязательны для отправки**
-  главы и **видны читателю** (отдельно от `blog.tags`).
-- **Подбор**: совпадение навыков → `match.pct`; «Топ» = навыки 50% + рейтинг 30% + объём 20%;
-  учитывается занятость (`review_load/capacity` → `free|busy|full`).
-- **Согласие (смена модели назначения):** ревьюер НЕ активен по факту назначения — автор шлёт
-  **приглашение** (`review_invitations`), ревьюер **принимает/отклоняет**, автор узнаёт сразу.
-  Ревьюер может пожаловаться **«навыки не совпадают»** (при match < 50%) → глава снимается с ревью,
-  автору предлагается исправить навыки (регуляция через админа).
-- **Оценка ревьюера автором** после публикации (`reviewer_ratings`): 1–5 звёзд, **приватно**
-  (видит ревьюер и админ); в «Топ» идёт только агрегат.
-- **Нет совпадений** → автор шлёт запрос админу (`recruit_requests`) с вердиктом
-  (на рассмотрении / одобрен / отклонён + причина); одобрение публикует направление на
-  публичную доску. Блог нельзя опубликовать без ревью — это запасной путь.
+### Ревью 2.0: заявки, каналы, бейджи (binding; Фаза 14 заменила «подбор + согласие + рейтинг»)
+⚠️ `docs/prototype/README.md` §11.2–§11.5 помечен **SUPERSEDED** — подбор, приглашения и рейтинг
+описаны там как история; реализовывать их заново нельзя.
+- **Компетенции ревьюера** (`users.competencies`) и **навыки статьи** (`chapter_revisions.skills`,
+  рабочее значение — `chapters.skills`) — РАЗНЫЕ сущности. Навыки статьи обязательны для ЗАЯВКИ
+  и видны читателю (отдельно от `blog.tags`).
+- **Автор нигде не выбирает ревьюеров.** Он оставляет ЗАЯВКУ (`review_requests`,
+  `POST /api/author/chapters/[id]/review-request`), ревьюер берёт её сам из очереди своего кабинета
+  (`POST /api/reviewer/requests/[id]/claim`). Claim пишет `chapter_reviewers` — поэтому downstream
+  (треды/вердикты/чат/`resolveReviewAccess`) правок не потребовал.
+- **Заявку можно оставить в ЛЮБОМ состоянии главы, включая `published`** (З-03). Нельзя только на
+  ревизию, у которой уже есть бейдж. Одна живая заявка на ревизию — частичный `uniqueIndex`
+  `(chapter_id, revision_number) WHERE status IN ('open','claimed')` + перепроверка в транзакции.
+- **Гейты claim'а — все на сервере и внутри транзакции:** заявка ещё `open`, `review_load < capacity`
+  (З-06 — раньше `full` проверялся только в UI), не свой блог, ревизия актуальна.
+- **Очередь сортируется по совпадению с компетенциями РЕВЬЮЕРА** — `skillMatch()` из чистого
+  `src/lib/reviewer-match.ts` переиспользуется как есть, меняются лишь аргументы местами;
+  тай-брейк — старые заявки выше (справедливость очереди).
+- **Три канала:** (1) очередь; (2) **инвайт-ссылка эксперта** (`expert_invites`, токен из CSPRNG,
+  публичная `/invite/[token]` → анкета в `reviewer_applications` с `invited_by`; аккаунт создаёт
+  админ, проставляя `users.introduced_by`); (3) запрос в редакцию (`recruit_requests`) → доска.
+- **SLA** (`src/lib/review-sla.ts`, решение владельца): **14 дней** без claim → эскалация
+  (`channel` → `editorial`, уведомление админу); **21 день** молчания после claim → автовозврат
+  заявки в очередь, `reviewLoad −1`, уведомления. Признак работы = вердикт/тред/сообщение чата
+  после claim; heartbeat признаком НЕ считается. Роут — `/api/cron/review-sla` (Bearer, constant-time).
+- **Рейтинг ревьюеров удалён целиком** (решение владельца). Взамен: SLA, приватная жалоба админу,
+  счётчик объёма в профиле, отзыв возможности. `reviewer_ratings` и `users.reviewer_rating*` —
+  legacy, не читаются.
 - **Публичная доска** «Ищем ревьюеров» (`board_calls`, ведёт админ) + **заявки**
-  (`reviewer_applications`, apply-to-review → админ принимает/отклоняет).
+  (`reviewer_applications`, apply-to-review → админ принимает/отклоняет) — без изменений.
+
+### Бейдж ревью — «награда на выходе» (binding; Фаза 14)
+- **Выдаётся только в `closeReviewSession()`** (`src/lib/queries/review-session.ts`) — единственное
+  место, где пишется кредит `reviewer_history`, освобождается `review_load` и замораживается уровень.
+  Ни один роут не принимает уровень/дату бейджа из тела запроса.
+- **Две точки вызова:** `publishRevision()` и verdict-роут при all-approve на УЖЕ опубликованной
+  ревизии. Без второй точки ревью после публикации не давало бы ни кредита, ни бейджа, а
+  `review_load` тёк бы навсегда.
+- **Идемпотентность — на `chapter_revisions.review_closed_at`**, перечитываемом ВНУТРИ транзакции.
+- **Уровень:** `invited`, если ВСЕ кредитованные ревьюеры приведены автором (`users.introduced_by`
+  = его handle); иначе `independent`. Один независимый поднимает уровень всей ревизии. Значение
+  замораживается — правка `introduced_by` задним числом прошлые бейджи не переписывает.
+- **Бейдж главы привязан к НОМЕРУ ревизии** и иммутабелен; если проверенная ревизия старее текущей,
+  читателю показывается «Проверена версия N от ‹дата› · текущая версия изменилась» со ссылкой
+  `?v=N` на архивное чтение (только published-ревизии, `noindex` + canonical, комментарии и
+  реакции подавлены).
+- **`blogs.verified_at`/`verified_tier` — денормализация, ИСТОРИЧЕСКАЯ** (решение владельца):
+  агрегат по всем проверенным ревизиям, правка главы его НЕ гасит (иначе исправленная опечатка
+  выкидывала бы блог с главной). Пересчёт — `recomputeBlogVerified()`, БЕЗУСЛОВНО из обеих точек.
+  Фильтрация главной по этим полям — Фаза 15, здесь только данные и поверхности.
 
 ### Монетизация и промо (admin-managed)
 - **Промо-баннеры ленты** (`promo_banners`) — карусель на ленте; действие по клику
@@ -358,17 +404,20 @@ DPI-инцидент 2026-07-11, продление LE-сертификата) �
   (`subtype→variant`, `tone→variant`, `caption→alt`); валидатор + чек-лист готовности
   (`src/lib/blocks/validate.ts`) изоморфны клиент⇄сервер. Константы блоков — в клиент-безопасном
   `src/lib/blocks/constants.ts` (без drizzle, чтобы редактор не тащил схему БД в бандл).
-- **Submit главы (Фаза 9 — согласие) создаёт `review_invitations` (pending), НЕ `chapter_reviewers`.**
-  Ревью стартует только после accept — accept (`src/app/api/reviewer/invitations/[id]`) наполняет
-  `chapter_reviewers` (`reviewLoad +1`). Все downstream-гейты (verdict/threads/chat/publish/инбокс/queue)
-  опираются на `chapter_reviewers`, поэтому согласие соблюдается без их правок. publish делает `reviewLoad −1`.
-  `submit-revision` (Ф7) переносит уже принявших напрямую — намеренный carry-forward (re-consent не нужен,
-  backlog P2 Ф10). ⚠️ Ф13: submit ставит `review_status='requested'` и **обнуляет вердикты своей ревизии**
-  (фикс З-05); первый accept переводит в `in-review`; редактор не даёт править только пока ревью открыто
-  (published — даёт, заводя черновик поверх). match%/«Топ» (навыки
-  50%+рейтинг 30%+объём 20%) — чистый `src/lib/reviewer-match.ts`; flag «навыки не совпадают» доступен лишь
-  при match<50% (перепроверка на сервере) → ревизия `changes-requested`. Оценки приватны: наружу только
-  агрегат `users.reviewerRating`.
+- **Ф14: заявка вместо приглашений.** `POST /api/author/chapters/[id]/review-request` создаёт
+  `review_requests(open)` и ставит `review_status='requested'`; `chapter_reviewers` наполняет ТОЛЬКО
+  claim (`POST /api/reviewer/requests/[id]/claim`, `reviewLoad +1`, `review_status → 'in-review'`).
+  Все downstream-гейты (verdict/threads/chat/инбокс/очередь) опираются на `chapter_reviewers` —
+  это и есть главная экономия фазы: смена способа НАЗНАЧЕНИЯ их не задела.
+  Закрытие сессии (`closeReviewSession`) делает `reviewLoad −1` и переводит заявку в `done`.
+  ⚠️ Удалены (роуты отвечают 404): `POST /api/author/chapters/[id]/submit`, `POST /api/author/ratings`,
+  `POST /api/review/[id]/primary-change`, `POST /api/admin/review/[id]/primary`,
+  `POST /api/reviewer/invitations/[id]`. Модуль `src/lib/queries/invitations.ts` снесён.
+  `submit-revision` переносит назначения на новую ревизию с обнулёнными вердиктами И **тащит за собой
+  заявку** (`revisionNumber` → новый, срок молчания заново) — иначе она висела бы на устаревшем номере
+  и SLA вернул бы в очередь работающего ревьюера.
+  ⚠️ Ф13 (в силе): заявка обнуляет вердикты своей ревизии (фикс З-05); редактор не даёт править,
+  пока ревью открыто (published — даёт, заводя черновик поверх).
 - **Изображения — только путь `/uploads/`**; загрузка — `POST /api/uploads` (Фаза 12: kind
   `article|cover|donation|banner` → гейт author/admin; magic-bytes + 4МБ + ранний 413 по Content-Length;
   dev/test пишет в `public/uploads`, прод — `UPLOADS_DIR`, отдаёт Caddy). UI — `src/components/upload-field.tsx`.
@@ -392,13 +441,23 @@ DPI-инцидент 2026-07-11, продление LE-сертификата) �
   (деривация в `queries/review.ts`); typing-индикатора нет (backlog).
 - **Публикация — единый `publishRevision()`** (`src/lib/queries/publish.ts`): его используют
   author-publish, admin force-approve и cron. ⚠️ Ф13: параметра `gate` НЕТ — ревью-гейт удалён,
-  осталась одна race-safe перепроверка «ревизия ещё не published». Внутри транзакции: кредит
-  `reviewer_history` **только за `approve`**, `reviewLoad −1` всем назначенным, fan-out `new_chapter`
-  подписчикам **только при первой публикации главы**, void pending `primary_change_requests`.
+  осталась одна race-safe перепроверка «ревизия ещё не published». ⚠️ Ф14: кредит, `reviewLoad −1`,
+  бейдж и закрытие заявок уехали в `closeReviewSession()` — `publishRevision` зовёт его ПОСЛЕ
+  проставления `status='published'` (бейдж выдаётся только опубликованной ревизии) и затем
+  **безусловно** `recomputeBlogVerified()`: публикация непроверенной ревизии тоже меняет картину.
+  Осталось здесь: fan-out `new_chapter` подписчикам **только при первой публикации главы**.
   Отложенная публикация: author-`publish`-роут принимает `{scheduledAt}` (или `null` для отмены),
   `/api/cron/publish` (Bearer `CRON_SECRET`, constant-time) публикует наступившие **только у последней
-  ревизии**; при появлении новой ревизии план гасится в `submit-revision`/fork. Снятие ведущего админом
-  переназначает primary детерминированно (первый по handle из оставшихся).
+  ревизии**; при появлении новой ревизии план гасится в `submit-revision`/fork.
+- **Частичный UNIQUE в SQLite — единственный в схеме** (`review_requests_chapter_rev_active_uq`,
+  `WHERE status IN ('open','claimed')`). drizzle-kit его генерирует корректно (проверено: SQLite
+  принимает и квалифицированное имя колонки в WHERE), но полагаться только на него нельзя — гейт
+  «живая заявка уже есть» перепроверяется ВНУТРИ транзакции роута.
+- **Метаданные главы версионируются (Ф14)**: читателю отдаются `chapter_revisions.title/skills`
+  выбранной ревизии (COALESCE с `chapters.*`), автор правит `chapters.*` как рабочее значение,
+  а `PATCH /api/author/chapters/[id]` пишет снапшот в ревизию во ВСЕХ ветках (форк из published,
+  ветка гонки «черновик уже появился», in-place). Иначе бейдж «проверена версия N» врал бы:
+  навыки и заголовок можно было бы поменять задним числом.
 - **Прод-деплой (Фаза 12)**: standalone-сборка ТОЛЬКО с `BUILD_STANDALONE=1` (иначе ломается `next start`);
   `outputFileTracingExcludes` в `next.config.ts` ОБЯЗАТЕЛЕН — без него трейсер утаскивает `.env*`/`.git`/
   `blog.db` в артефакт (утечка секретов). Миграции на проде — `scripts/migrate.mjs` (drizzle-orm migrator;
@@ -406,7 +465,12 @@ DPI-инцидент 2026-07-11, продление LE-сертификата) �
   (БЕЗ `\$`-экранирования). Строго один Node-инстанс (in-memory rate-limit). На VPS рядом AmneziaWG
   в Docker (51820/udp, 51821/tcp) — ufw-правила не трогать.
 - **Создание пользователей — только админом** (`POST /api/admin/users` + форма в «Люди»);
-  self-registration нет по построению (альфа). ⚠️ Ф13: вместо роли задаются **возможности**
+  self-registration нет по построению (альфа). ⚠️ Ф14: сюда добавлен `introducedBy` — от него зависит
+  УРОВЕНЬ БЕЙДЖА, поэтому он валидируется как часть доверия: только админ, только существующий handle,
+  никогда не сам на себя (иначе `independent` подделывается). ⚠️ Ф14: отзыв `isReviewer` через PATCH
+  теперь ещё и ОСВОБОЖДАЕТ — возвращает взятые заявки в очередь, снимает назначения с открытых сессий
+  и обнуляет `reviewLoad` (раньше назначение «висело», а счётчик тёк — backlog Ф13 P2).
+  ⚠️ Ф13: вместо роли задаются **возможности**
   (чекбоксы `canAuthor`/`isReviewer`, обе выключены = читатель) и их можно менять позже —
   `PATCH /api/admin/users/[handle]`. Смена пароля пользователю — `password` там же
   (ui-feedback-3); активные сессии при этом НЕ гасятся (backlog; немедленный разлогин — бан).

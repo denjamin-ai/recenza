@@ -87,6 +87,14 @@ export default async function AdminRecruitPage() {
                   </p>
                   <span className="text-[0.7rem] text-[var(--muted-foreground)]">{formatRelativeTime(a.createdAt)}</span>
                 </div>
+                {/* Ф14: анкета пришла по инвайт-ссылке автора. Пометка нужна админу до решения:
+                    у аккаунта, заведённого под такого эксперта, надо проставить `introducedBy`,
+                    иначе его ревью получит уровень «независимое» вместо «приглашённого». */}
+                {a.invitedBy && (
+                  <p className="mt-1.5 rounded-[var(--radius-sm)] bg-[var(--info-bg)] px-2 py-1 text-[length:var(--type-small)] text-[var(--info)]">
+                    По приглашению автора @{a.invitedBy} — при создании аккаунта укажите его в «Кто пригласил»
+                  </p>
+                )}
                 {a.skills.length > 0 && <div className="mt-1.5"><SkillChips skills={a.skills} /></div>}
                 {a.message && <p className="mt-1.5 text-[length:var(--type-small)] text-[var(--muted-foreground)] [text-wrap:pretty]">{a.message}</p>}
                 <ApplicationActions id={a.id} canPromote={!!a.byHandle && a.applicantIsReviewer === false} />

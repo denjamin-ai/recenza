@@ -47,7 +47,7 @@ TURSO_CONNECTION_URL=
 TURSO_AUTH_TOKEN=
 
 # --- прод ---
-CRON_SECRET=               # Bearer для /api/cron/publish
+CRON_SECRET=               # Bearer для /api/cron/publish и /api/cron/review-sla
 
 # --- только .env.test ---
 ADMIN_PASSWORD_PLAIN=      # открытый пароль админа для авто-логина в тестах (напр. dhome$32)
@@ -104,7 +104,7 @@ npm run test:reset                   # создаёт blog.test.db + детер�
 
 ---
 
-## 4. Схема БД (глава-ориентированная модель)
+## 4. Схема БД (глава-ориентированная модель) — 31 таблица
 
 Все таблицы создаются миграциями Drizzle (dialect `turso`). `snake_case`, `id = ulid()`,
 timestamps — **Unix seconds**, JSON-поля — строки/`JSONB`, читаются в `try/catch`.
@@ -118,16 +118,21 @@ users
   display_name, bio, avatar_url, links(JSON), slug(uniq),
   is_blocked, commenting_blocked, created_at,
   competencies(JSON[]),            -- что ревьюер может рецензировать (этап «подбор»)
-  reviewer_rating, reviewer_ratings_n, review_load, review_capacity
+  review_load, review_capacity
+  -- reviewer_rating, reviewer_ratings_n — LEGACY (Ф14: рейтинг снят, колонки не читаются)
 
 blogs
   id, slug(uniq), title, author_id→users, cover_url, tags(JSON[]),
   complexity(simple|medium|complex), summary,
-  published_at, last_activity_at, view_count, rating, bookmark_count
+  published_at, last_activity_at, view_count, rating, bookmark_count, hidden,
+  verified_at, verified_tier(invited|independent)   -- Ф14: денормализованный бейдж блога
+  -- ⚠️ Историчен: агрегат по ВСЕМ проверенным ревизиям, правка главы его НЕ гасит
+  --    (решение владельца; точная правда — на уровне ревизии). Пересчёт — recomputeBlogVerified().
 
 chapters
-  id, blog_id→blogs(CASCADE), slug, title, "order", primary_handle→users.handle,
-  skills(JSON[])               -- ключевые навыки статьи: обяз. для отправки, видны читателю
+  id, blog_id→blogs(CASCADE), slug, title, "order", skills(JSON[])
+  -- title/skills здесь — РАБОЧЕЕ значение автора; читателю отдаётся снапшот ревизии (Ф14)
+  -- primary_handle — LEGACY (Ф14: роль «ведущего» упразднена, колонка не читается)
   UNIQUE(blog_id, slug)
 
 chapter_revisions            -- ДВЕ независимые оси состояния (Ф13)
@@ -135,14 +140,20 @@ chapter_revisions            -- ДВЕ независимые оси состо�
   status(draft|published),                                     -- ось публикации
   review_status(none|requested|in-review|changes-requested|reviewed),  -- ось ревью
   summary, blocks(JSONB), prev_blocks(JSONB),  -- снапшот последней публикации (для инлайн-диффа)
+  title, skills(JSON[]),       -- Ф14: снапшот метаданных главы на момент ревизии
+  review_closed_at,            -- Ф14: ЕДИНСТВЕННЫЙ токен «ревью-сессия закрыта»
+  verified_at, verified_tier(invited|independent),  -- Ф14: бейдж ревизии (иммутабелен)
   submitted_at, published_at, scheduled_at
   UNIQUE(chapter_id, number)
+  -- ⚠️ До Ф14 сессию закрывала ПУБЛИКАЦИЯ (isReviewOpen смотрел на status), из-за чего ревью
+  --    опубликованной главы было невозможно физически. Теперь ось публикации из предиката ушла.
   -- До Ф13 status совмещал обе оси (under-review/changes-requested); миграция 0007 их развела.
   -- Мёртвые значения в данных не остались (бэкфилл), но на уровне SQLite колонка — свободный text.
 
-chapter_reviewers            -- назначения + вердикты на ревизию
+chapter_reviewers            -- назначения + вердикты на ревизию (строку создаёт claim заявки)
   chapter_id→chapters, revision_number, handle→users.handle,
-  is_primary, verdict(approve|request-changes), verdict_at, online, typing
+  verdict(approve|request-changes), verdict_at, last_seen_at, typing
+  -- is_primary — LEGACY (Ф14), не читается
   PRIMARY KEY(chapter_id, revision_number, handle)
 
 reviewer_history             -- кредит ревьюеров по версиям (для опубликованной главы)
@@ -182,7 +193,7 @@ portfolios                   -- «Об авторе», один на автор�
 reports                      -- жалобы
   id, reporter_id→users, target_type, target_id, reason, status(open|resolved), created_at
 
-primary_change_requests      -- заявки на смену ведущего ревьюера
+primary_change_requests      -- LEGACY (Ф14: роль «ведущего» упразднена; таблица не читается)
   id, chapter_id→chapters, from_handle, to_handle, status, created_at
 
 removed_reviewers            -- лог снятия ревьюера админом
@@ -190,20 +201,34 @@ removed_reviewers            -- лог снятия ревьюера админ�
 
 -- Этап «подбор ревьюеров, согласие, оценка, монетизация» (детали — prototype/README.md §11.9).
 -- chapters получает: skills(JSON[]) — ключевые навыки статьи (обяз. для отправки, видны читателю).
-review_invitations           -- приглашение ревьюеру; ревью стартует ТОЛЬКО после accept
+review_invitations           -- LEGACY (Ф14: приглашений нет, ревьюер берёт заявку сам)
   id, chapter_id→chapters, revision, to_handle→users.handle, as_lead,
   note, status(pending|accepted|declined|flagged), flag_reason, invited_at, responded_at
-reviewer_ratings             -- приватно (ревьюер+админ); в «Топ» идёт только агрегат
+reviewer_ratings             -- LEGACY (Ф14: рейтинг ревьюеров снят целиком)
   chapter_id→chapters, reviewer_handle→users.handle, by_handle→users.handle (автор),
   stars(1..5), created_at; PK(chapter_id, reviewer_handle, by_handle)
+
+-- Фаза 14 «Ревью 2.0»: заявка вместо выбора ревьюеров.
+review_requests              -- автор оставляет заявку, ревьюер берёт её сам из очереди
+  id, chapter_id→chapters(CASCADE), revision_number, by_handle→users.handle,
+  skills(JSON[]), note, channel(queue|invite|editorial),
+  status(open|claimed|done|cancelled|expired), claimed_by→users.handle,
+  claimed_at, due_at, created_at, resolved_at, return_count
+  UNIQUE(chapter_id, revision_number) WHERE status IN ('open','claimed')  -- частичный индекс
+  -- claim пишет chapter_reviewers (+review_load); SLA: 14д без claim → эскалация в редакцию,
+  -- 21д молчания → автовозврат в очередь (/api/cron/review-sla)
+expert_invites               -- канал «пригласить эксперта извне»: ссылка → анкета
+  id, token(uniq, CSPRNG), by_handle→users.handle, chapter_id→chapters(CASCADE)|NULL,
+  status(pending|used|revoked|expired), note, expires_at, created_at, used_at
 recruit_requests             -- автор→админ «найдите ревьюеров»
   id, chapter_id→chapters, by_handle→users.handle, skills(JSON[]),
   status(pending|approved|rejected), reason, created_at, resolved_at
 board_calls                  -- публичная доска «Ищем ревьюеров» (ведёт админ)
   id, area, skills(JSON[]), waiting, note, hot
-reviewer_applications        -- apply-to-review с доски (by_handle null = гость)
+reviewer_applications        -- apply-to-review с доски ИЛИ анкета по инвайт-ссылке (Ф14)
   id, by_handle→users.handle, name, area, skills(JSON[]), message,
-  status(pending|accepted|declined), created_at
+  status(pending|accepted|declined), created_at,
+  invited_by→users.handle, invite_token   -- Ф14: кто пригласил (→ users.introduced_by у аккаунта)
 promo_banners                -- карусель промо на ленте (админ)
   id, eyebrow, title, cta, tone, icon, action(internal|external|donate),
   target, cover_url, visible, sort
@@ -307,6 +332,7 @@ bash .claude/playwright-tester/reset-test-db.sh
 
 systemd: `recenza.service` (Node standalone, **строго один инстанс** — in-memory rate-limit),
 `recenza-publish.timer` (cron отложенной публикации, каждые 5 мин, Bearer `CRON_SECRET`),
+`recenza-review-sla.timer` (Ф14: SLA заявок на ревью, раз в час, тот же Bearer),
 `recenza-backup.timer` (03:30). Reverse-proxy — Caddy (`/etc/caddy/Caddyfile`): авто-TLS, HSTS,
 `/uploads/*` с диска, остальное → `127.0.0.1:3000`.
 
@@ -332,7 +358,8 @@ systemd EnvironmentFile, значения в одинарных кавычках
 - **Откат релиза:** `ln -sfn /srv/recenza/releases/<прежний> /srv/recenza/current &&
   sudo systemctl restart recenza`. Миграции only-forward (аддитивные) — откат кода безопасен.
 - **Ручной прогон cron:** `. /srv/recenza/shared/env; curl -H "Authorization: Bearer $CRON_SECRET"
-  http://127.0.0.1:3000/api/cron/publish` (или `systemctl start recenza-publish.service`).
+  http://127.0.0.1:3000/api/cron/publish` (или `systemctl start recenza-publish.service`);
+  аналогично `/api/cron/review-sla` ↔ `recenza-review-sla.service`.
 - **Восстановление из бэкапа:** остановить сервис → скопировать `backups/blog-<ts>.db` в
   `shared/data/blog.prod.db` → распаковать `uploads-<ts>.tar.gz` в `shared/` → старт. Offsite-копии — backlog.
 - **Ротация секретов:** правка `shared/env` → `sudo systemctl restart recenza`. Смена

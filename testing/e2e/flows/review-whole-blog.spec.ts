@@ -104,12 +104,15 @@ test.describe("REV-WHOLE-BLOG: ревью всего блога — strip гла
       await expect(page.getByRole("heading", { level: 1, name: CHAPTERS.underReview.title })).toBeVisible();
     });
 
-    await test.step("Не назначенная глава по прямому URL → серверный редирект в /reviewer", async () => {
+    await test.step("Не назначенная глава по прямому URL → серверный редирект в кабинет /reviewer", async () => {
       // chp_draft без chapter_reviewers → isAssignedReviewer=false → redirect("/reviewer") на сервере.
+      // ⚠️ Ф14: строку в chapter_reviewers создаёт ТОЛЬКО claim заявки — открытая заявка сама по
+      // себе доступа к ревью-экрану не даёт.
       await review.gotoAsReviewer(CHAPTERS.draft.id);
       await expect(page).toHaveURL(/\/reviewer$/);
-      // Инбокс отрисован (плитка «Активные ревью» — есть и при пустых приглашениях).
+      // Кабинет отрисован: плитка «Активные ревью» + три таба (Ф14.6 — вместо единого инбокса).
       await expect(page.getByText("Активные ревью").first()).toBeVisible();
+      await expect(page.getByRole("tablist", { name: "Разделы кабинета ревьюера" })).toBeVisible();
     });
   });
 
@@ -171,6 +174,11 @@ test.describe("REV-WHOLE-BLOG: ревью всего блога — strip гла
       const blogCredit = page.getByRole("region", { name: "Ревьюеры блога" });
       await expect(blogCredit).toBeVisible();
       await expect(blogCredit.getByRole("heading", { name: "Блог ревьюили" })).toBeVisible();
+      // Ф14: рядом с заголовком — агрегированный уровень блога (сильнейший среди глав).
+      // «Цикл событий» v2 проверена независимым ревьюером → independent.
+      await expect(blogCredit.getByText("Проверено на Recenza")).toBeVisible();
+      // Иерархии внутри команды нет — метки «ведущий» в агрегате быть не может.
+      await expect(blogCredit.getByText("ведущий")).toHaveCount(0);
     });
 
     await test.step("Реакции (ui-feedback-5 П1): ОДИН бар на весь блог — наверху, до секций глав", async () => {

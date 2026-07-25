@@ -8,7 +8,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { and, eq, inArray, isNotNull, lte } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { blogs, chapterRevisions, chapters } from "@/lib/db/schema";
+import { blogs, chapterRevisions, chapters, users } from "@/lib/db/schema";
 import { REVIEW_NOTIFY } from "@/lib/review-links";
 import { createNotifications } from "@/lib/queries/notifications";
 import { PublishGateError, publishRevision } from "@/lib/queries/publish";
@@ -39,10 +39,12 @@ export async function GET(req: Request): Promise<NextResponse> {
       blogId: blogs.id,
       blogSlug: blogs.slug,
       authorId: blogs.authorId,
+      authorHandle: users.handle,
     })
     .from(chapterRevisions)
     .innerJoin(chapters, eq(chapters.id, chapterRevisions.chapterId))
     .innerJoin(blogs, eq(blogs.id, chapters.blogId))
+    .innerJoin(users, eq(users.id, blogs.authorId))
     .where(
       and(
         isNotNull(chapterRevisions.scheduledAt),
@@ -87,6 +89,7 @@ export async function GET(req: Request): Promise<NextResponse> {
         chapterSlug: row.chapterSlug,
         chapterTitle: row.chapterTitle,
         authorId: row.authorId,
+        authorHandle: row.authorHandle,
       });
       published += 1;
     } catch (e) {

@@ -12,7 +12,7 @@ import { ConvoCanvas } from "./convo-canvas";
 import { ThreadsRail } from "./threads-rail";
 import { ActionBar } from "./action-bar";
 import { ReviewChat } from "./review-chat";
-import { PrimaryChangeModal, PublishModal, TeamSheet } from "./review-modals";
+import { PublishModal, TeamSheet } from "./review-modals";
 import { Toast, type ToastState } from "./review-primitives";
 
 const POLL_MS = 30_000;
@@ -41,14 +41,13 @@ export function ReviewScreen({
   const [selection, setSelection] = useState<{ blockId: string; quote: string } | null>(null);
   const [mobileTab, setMobileTab] = useState<"article" | "threads">("article");
   const [teamOpen, setTeamOpen] = useState(false);
-  const [primaryOpen, setPrimaryOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [busy, setBusy] = useState(false);
   const [flashKey, setFlashKey] = useState(0);
 
   const status = revision.status;
-  const active = isReviewOpen(status, revision.reviewStatus);
+  const active = isReviewOpen(revision.reviewStatus, revision.reviewClosedAt);
   const myVerdict = reviewers.find((r) => r.handle === viewerHandle)?.verdict ?? null;
   const allApproved = session.allApproved;
   const anyChanges = reviewers.some((r) => r.verdict === "request-changes");
@@ -248,15 +247,6 @@ export function ReviewScreen({
     });
   };
 
-  const submitPrimaryChange = async (toHandle: string, reason: string) => {
-    const ok = await post(
-      `/api/review/${chapter.id}/primary-change`,
-      { toHandle, reason },
-      { kind: "ok", text: "Запрос на смену ведущего отправлен админу." },
-    );
-    if (ok) setPrimaryOpen(false);
-  };
-
   const sendChat = async (text: string) => {
     await post(`/api/review/${chapter.id}/chat`, { text });
   };
@@ -338,43 +328,21 @@ export function ReviewScreen({
         pov={pov}
         status={status}
         reviewStatus={revision.reviewStatus}
+        reviewClosedAt={revision.reviewClosedAt}
         reviewerCount={reviewers.length}
         openThreadCount={openCount}
         allApproved={allApproved}
         anyChanges={anyChanges}
         myVerdict={myVerdict}
         nextRevision={revision.number + 1}
-        canChangePrimary={!!chapter.primaryHandle && reviewers.length > 1}
         busy={busy}
         onApprove={() => setVerdict("approve")}
         onRequestChanges={() => setVerdict("request-changes")}
         onSubmitRevision={submitRevision}
         onPublish={() => setPublishOpen(true)}
-        onRequestPrimaryChange={() => setPrimaryOpen(true)}
       />
 
-      {teamOpen && (
-        <TeamSheet
-          reviewers={reviewers}
-          primaryHandle={chapter.primaryHandle}
-          pov={pov}
-          onClose={() => setTeamOpen(false)}
-          onRequestPrimaryChange={() => {
-            setTeamOpen(false);
-            setPrimaryOpen(true);
-          }}
-        />
-      )}
-
-      {primaryOpen && (
-        <PrimaryChangeModal
-          reviewers={reviewers}
-          primaryHandle={chapter.primaryHandle}
-          busy={busy}
-          onClose={() => setPrimaryOpen(false)}
-          onSubmit={submitPrimaryChange}
-        />
-      )}
+      {teamOpen && <TeamSheet reviewers={reviewers} onClose={() => setTeamOpen(false)} />}
 
       {publishOpen && (
         <PublishModal

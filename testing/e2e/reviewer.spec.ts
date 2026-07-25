@@ -1,26 +1,47 @@
-// Спеки роли «Ревьюер» (Фаза 11.3) — кейсы TC-REVIEWER.md: кабинет-инбокс, приглашение (read-only),
-// ReviewPage (треды/suggestion/вердикт/чат), публичный профиль, негативы ролевого гейтинга.
+// Спеки роли «Ревьюер» — кейсы TC-REVIEWER.md: кабинет (три таба), ReviewPage
+// (треды/suggestion/вердикт/чат), публичный профиль, негативы гейтинга.
+//
+// ⚠️ Фаза 14 переписала кабинет и модель работы. Из файла УБРАНЫ проверки:
+//   · «Входящие приглашения» и кнопки Принять/Отклонить/«Навыки не совпадают» — приглашений нет,
+//     ревьюер берёт заявку из общей очереди сам (claim-флоу — flows/review-queue.spec.ts);
+//   · бейдж «вы ведущий» — роли «ведущего» больше не существует;
+//   · плитка «Ваш рейтинг» и любые ★ — рейтинг ревьюеров снесён целиком (вместо него объём).
 //
 // Категория A — файл самодостаточен и НЕ требует reseed:
-//   • read-only (TC-01/02/03/06/13/14/15/16/17/18);
+//   • read-only (TC-01/02/03/04/06/13/14/15/16/17/18);
 //   • additive (новые треды/ответы/чат — уникальные тексты; вердикт approve (TC-10) идемпотентен;
 //     его сайд-эффект — пересчёт статуса ревизии в changes-requested, т.к. у lena_review в seed
-//     request-changes: статус остаётся ACTIVE, треды/чат/вердикты доступны, ассерты файла
+//     request-changes: сессия остаётся открытой, треды/чат/вердикты доступны, ассерты файла
 //     от точного статус-бейджа не зависят).
-// Accept/decline/flag приглашений здесь НЕ трогаем — это сквозные flows.
+// Кнопку «Взять» здесь НЕ нажимаем — claim мутирует seed и живёт в сквозных flows.
 //
 // Локаторы и точные тексты — testing/mcp/MCP-FINDINGS.md (§2, §5) + исходники компонентов
 // (src/components/review/**, src/app/reviewer/_components/**).
 
+import type { Page } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { apiLoginUser, loginViaUi } from "./helpers/auth";
-import { BASE_URL, BLOG, CHAPTERS, COMMENTS, THREADS, USERS } from "./helpers/seed";
+import { BASE_URL, BLOG, CHAPTERS, COMMENTS, DUO_BLOG, THREADS, USERS } from "./helpers/seed";
 import { throttleMutation } from "./helpers/throttle";
 import { ReviewPage } from "./pages/review.page";
 import { CommentsPage } from "./pages/comments.page";
 
 /** Уникальный суффикс — additive-тексты не конфликтуют между прогонами без reseed. */
 const uniq = (text: string): string => `${text} [e2e ${Date.now()}]`;
+
+/** Панель таба кабинета ревьюера (скрытые панели `hidden` в a11y-дерево не попадают). */
+function tabPanel(page: Page, name: RegExp) {
+  return page.getByRole("tabpanel", { name });
+}
+
+/** Переключение таба кабинета с ретраем «мёртвого» клика до гидрации. */
+async function openReviewerTab(page: Page, name: RegExp): Promise<void> {
+  const tab = page.getByRole("tab", { name });
+  await expect(async () => {
+    await tab.click();
+    await expect(tab).toHaveAttribute("aria-selected", "true", { timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
+}
 
 /**
  * Надёжный старт нового треда: до гидрации тройной клик не регистрирует выделение и
@@ -58,53 +79,110 @@ async function showResolvedReliably(review: ReviewPage): Promise<void> {
 }
 
 test.describe("Роль «Ревьюер»: кабинет, ReviewPage, профиль, негативы", () => {
-  test("TC-REVIEWER-01 (SMK-09) @smoke: логин ревьюера → редирект /reviewer, плитки кабинета", async ({
+  test("TC-REVIEWER-01 (SMK-09) @smoke: логин ревьюера → /reviewer, плитки и три таба, рейтинга нет", async ({
     asGuest,
   }) => {
     const { page } = asGuest;
     await loginViaUi(page, USERS.reviewer.handle);
-    // roleHome ревьюера — /reviewer (роль берётся из БД, не из cookie).
+    // roleHome ревьюера — /reviewer (возможность берётся из БД, не из cookie).
     await expect(page).toHaveURL(/\/reviewer$/);
     await expect(page.getByRole("heading", { name: "Кабинет ревьюера" })).toBeVisible();
-    // Четыре плитки-счётчика (значения не ассертим — состояние аддитивно между спеками).
-    await expect(page.getByText("Приглашения", { exact: true })).toBeVisible();
-    await expect(page.getByText("Ваш ход", { exact: true })).toBeVisible();
-    // «Активные ревью» встречается дважды (плитка + h2 секции) — берём первый.
-    await expect(page.getByText("Активные ревью", { exact: true }).first()).toBeVisible();
-    await expect(page.getByText("Ваш рейтинг", { exact: true })).toBeVisible();
+
+    await test.step("плитки: очередь · ваш ход · активные · объём (вместо рейтинга)", async () => {
+      await expect(page.getByText("Заявок в очереди", { exact: true })).toBeVisible();
+      await expect(page.getByText("Ваш ход", { exact: true })).toBeVisible();
+      await expect(page.getByText("Активные ревью", { exact: true })).toBeVisible();
+      // Ф14: «Ваш рейтинг» заменён объёмом проделанной работы.
+      await expect(page.getByText("Отрецензировано", { exact: true })).toBeVisible();
+      await expect(page.getByText("Ваш рейтинг")).toHaveCount(0);
+    });
+
+    await test.step("три таба рабочего места ревьюера", async () => {
+      const tabs = page.getByRole("tablist", { name: "Разделы кабинета ревьюера" });
+      await expect(tabs).toBeVisible();
+      await expect(tabs.getByRole("tab", { name: /^Очередь/ })).toBeVisible();
+      await expect(tabs.getByRole("tab", { name: /^Мои ревью/ })).toBeVisible();
+      await expect(tabs.getByRole("tab", { name: /^Завершённые/ })).toBeVisible();
+      // По умолчанию открыта «Очередь» — работа начинается с неё.
+      await expect(tabs.getByRole("tab", { name: /^Очередь/ })).toHaveAttribute("aria-selected", "true");
+    });
+
+    await test.step("никаких ★ и приглашений на странице", async () => {
+      await expect(page.getByText(/★/)).toHaveCount(0);
+      await expect(page.getByText("Входящие приглашения")).toHaveCount(0);
+    });
   });
 
-  test("TC-REVIEWER-02 @regression: инбокс — активное ревью «Промисы изнутри» с бейджем «вы ведущий»", async ({
+  test("TC-REVIEWER-02 @regression: таб «Мои ревью» — активное ревью «Промисы изнутри», «ведущего» нет", async ({
     asReviewer,
   }) => {
     await asReviewer.goto("/reviewer");
-    // Карточка активного ревью — целиком ссылка на ReviewPage главы.
-    const card = asReviewer.page.getByRole("link", { name: /Промисы изнутри/ });
+    const { page } = asReviewer;
+    await openReviewerTab(page, /^Мои ревью/);
+
+    const panel = tabPanel(page, /Мои ревью/);
+    // Взятые в работу главы сгруппированы по блогу (ревьюер ведёт блог целиком).
+    await expect(panel.getByRole("heading", { name: BLOG.title })).toBeVisible();
+
+    const card = panel.getByRole("link", { name: new RegExp(CHAPTERS.underReview.title) });
     await expect(card).toBeVisible();
     await expect(card).toHaveAttribute("href", `/reviewer/review/${CHAPTERS.underReview.id}`);
-    // reviewer — primary главы chp_under_review (seed).
-    await expect(card).toContainText("вы ведущий");
-    await expect(card).toContainText(BLOG.title);
+    // Вердикта по этой ревизии ревьюер ещё не ставил.
+    await expect(card).toContainText("ваш ход");
+    // Ф14: иерархии внутри ревью больше нет.
+    await expect(page.getByText("вы ведущий")).toHaveCount(0);
   });
 
-  test("TC-REVIEWER-03 @regression: входящее приглашение sergey_review — карточка и кнопки ответа (без кликов)", async ({
-    loginAs,
+  test("TC-REVIEWER-03 @regression: таб «Очередь» — карточка заявки, совпадение, навыки, «Взять»", async ({
+    asReviewer,
   }) => {
-    const sergey = await loginAs(USERS.sergey.handle);
-    await sergey.goto("/reviewer");
-    const { page } = sergey;
+    await asReviewer.goto("/reviewer");
+    const panel = tabPanel(asReviewer.page, /Очередь/);
+    await expect(panel).toBeVisible();
 
-    await expect(page.getByRole("heading", { name: "Входящие приглашения" })).toBeVisible();
-    // Карточка inv_pending: sergey_review → «Промисы изнутри», match 0% (компетенции не совпали).
-    const card = page.locator("li").filter({ hasText: CHAPTERS.underReview.title });
-    await expect(card).toBeVisible();
-    await expect(card).toContainText(BLOG.title);
-    await expect(card.getByText("0% совпадение")).toBeVisible();
-    await expect(card.getByRole("button", { name: "Принять", exact: true })).toBeVisible();
-    await expect(card.getByRole("button", { name: "Отклонить", exact: true })).toBeVisible();
-    // Flag-кнопка доступна только при match < 50% (здесь 0%).
-    await expect(card.getByRole("button", { name: "Навыки не совпадают" })).toBeVisible();
-    // НЕ кликаем: accept/decline/flag мутируют seed и покрыты сквозными flows.
+    await test.step("свободная заявка: автор, блог, 0% совпадения, чипы навыков, «Взять»", async () => {
+      // Сидовая req_open — на опубликованной главе duo; навыки «Тайм-менеджмент» не пересекаются
+      // с компетенциями reviewer (TypeScript/React/Архитектура/Event Loop).
+      const card = panel.getByRole("listitem").filter({ hasText: DUO_BLOG.chapter.title });
+      await expect(card).toBeVisible();
+      await expect(card).toContainText(DUO_BLOG.title);
+      await expect(card).toContainText("совпадение 0%");
+      await expect(card.getByText("Тайм-менеджмент", { exact: true })).toBeVisible();
+      await expect(card.getByRole("button", { name: "Взять" })).toBeVisible();
+      // НЕ кликаем: claim мутирует seed и покрыт сквозными flows (RQ-02/RQ-04).
+    });
+
+    await test.step("заявка на уже опубликованную главу помечена, срок не вышел", async () => {
+      const card = panel.getByRole("listitem").filter({ hasText: DUO_BLOG.chapter.title });
+      await expect(card).toContainText("заявка на опубликованную главу");
+      await expect(card).toContainText(/осталось \d+ дн|остался 1 день/);
+      await expect(card.getByRole("link", { name: "Открыть главу" })).toHaveAttribute(
+        "href",
+        `/blog/${DUO_BLOG.slug}/${DUO_BLOG.chapter.slug}`,
+      );
+    });
+
+    await test.step("заявка заблокированного автора в очередь не попадает", async () => {
+      // req_stale заведена на главу забаненного `ghost` — контент такого автора скрыт везде.
+      await expect(panel.getByRole("listitem").filter({ hasText: CHAPTERS.ghost.title })).toHaveCount(0);
+    });
+  });
+
+  test("TC-REVIEWER-04 @regression: таб «Завершённые» — кредит с уровнем бейджа", async ({
+    asReviewer,
+  }) => {
+    await asReviewer.goto("/reviewer");
+    await openReviewerTab(asReviewer.page, /^Завершённые/);
+    const panel = tabPanel(asReviewer.page, /Завершённые/);
+
+    const link = panel.getByRole("link", { name: new RegExp(CHAPTERS.published.title) });
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute("href", `/blog/${BLOG.slug}/${CHAPTERS.published.slug}`);
+    // Кредит выдан за v2, бейдж этой ревизии — independent (ревьюеров автор не приводил).
+    await expect(link).toContainText("версия 2");
+    await expect(link).toContainText("Проверено на Recenza");
+    // Незавершённые главы сюда не попадают.
+    await expect(panel.getByText(CHAPTERS.underReview.title)).toHaveCount(0);
   });
 
   test("TC-REVIEWER-06 @regression: ReviewPage — рейл «Обсуждения», сид-треды, показ решённых", async ({
@@ -300,8 +378,8 @@ test.describe("Роль «Ревьюер»: кабинет, ReviewPage, проф
       await expect(page.getByText(`@${USERS.reviewer.handle}`, { exact: true })).toBeVisible();
       await expect(page.getByText("Ревьюер", { exact: true })).toBeVisible();
       await expect(page.getByText("Отрецензировано", { exact: true })).toBeVisible();
-      // ⚠️ Ф13.5 (З-41): рейтинг ★ из профиля убран (окончательный снос рейтинга — Ф14).
-      await expect(page.getByText(/★ \d\.\d/)).toHaveCount(0);
+      // ⚠️ Ф14: рейтинг ревьюеров снесён целиком — ни агрегата, ни звёзд нигде.
+      await expect(page.getByText(/★/)).toHaveCount(0);
     });
 
     await test.step("Таб «Ревью»: только published-главы", async () => {
@@ -322,14 +400,14 @@ test.describe("Роль «Ревьюер»: кабинет, ReviewPage, проф
       const res = await ctx.get(`/u/${USERS.reviewer.slug}`);
       expect(res.status()).toBe(200);
       const html = await res.text();
-      // Поле reviewer_ratings.stars не должно утекать ни в разметку, ни в RSC-пейлоад.
+      // Ф14: таблицы оценок нет вовсе — поле не должно течь ни в разметку, ни в RSC-пейлоад.
       expect(html).not.toContain('"stars"');
     });
   });
 
   // Ф13: ролевого запрета «ревьюер не комментирует» больше нет — вместо него КОНФЛИКТ ИНТЕРЕСОВ,
   // привязанный к конкретной главе. `reviewer` рецензировал event-loop (reviewer_history) → закрыто;
-  // `duo` имеет возможность «ревьюер», но эту главу не рецензировал → комментирует свободно.
+  // `sergey_review` имеет возможность «ревьюер», но эту главу не рецензировал → комментирует свободно.
   test("TC-REVIEWER-15 (SMK-12) @smoke @critical: конфликт интересов — рецензировавший главу не комментирует её (UI-гейт и API 403)", async ({
     asReviewer,
     api,
@@ -360,7 +438,7 @@ test.describe("Роль «Ревьюер»: кабинет, ReviewPage, проф
 
     await test.step("возможность «ревьюер» сама по себе не блокирует: sergey комментирует ту же главу", async () => {
       // sergey_review — ревьюер БЕЗ строк chapter_reviewers/reviewer_history по этой главе
-      // (у него только pending/flagged приглашения), значит конфликта интересов нет.
+      // (Ф14: заявок он не брал), значит конфликта интересов нет.
       const ctx = await apiLoginUser(USERS.sergey.handle);
       try {
         await throttleMutation(USERS.sergey.handle);
@@ -378,8 +456,9 @@ test.describe("Роль «Ревьюер»: кабинет, ReviewPage, проф
     });
   });
 
-  test("TC-REVIEWER-16 @critical: вердикт до accept приглашения → 403 (pending не даёт доступа)", async () => {
-    // sergey_review приглашён (inv_pending), но НЕ принял — записи в chapter_reviewers нет.
+  test("TC-REVIEWER-16 @critical: вердикт без взятой заявки → 403 (доступ даёт claim, а не возможность)", async () => {
+    // Ф14: sergey_review — ревьюер, но заявку на эту главу не брал, значит строки в
+    // chapter_reviewers у него нет. Возможности «ревьюер» самой по себе для вердикта мало.
     const ctx = await apiLoginUser(USERS.sergey.handle);
     try {
       const res = await ctx.post(`/api/review/${CHAPTERS.underReview.id}/verdict`, {

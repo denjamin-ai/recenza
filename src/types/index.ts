@@ -16,6 +16,10 @@ export {
   APPLICATION_STATUSES,
   BANNER_ACTIONS,
   DONATION_TYPES,
+  REVIEW_REQUEST_CHANNELS,
+  REVIEW_REQUEST_STATUSES,
+  EXPERT_INVITE_STATUSES,
+  VERIFIED_TIERS,
 } from "@/lib/db/schema";
 
 // --- union-типы перечислений ---
@@ -28,7 +32,13 @@ export type Verdict = (typeof schema.VERDICTS)[number];
 export type ThreadStatus = (typeof schema.THREAD_STATUSES)[number];
 export type ReportStatus = (typeof schema.REPORT_STATUSES)[number];
 export type Complexity = (typeof schema.COMPLEXITIES)[number];
+/** @deprecated Фаза 14: приглашений ревьюерам больше нет — ревьюер сам берёт заявку из очереди. */
 export type InvitationStatus = (typeof schema.INVITATION_STATUSES)[number];
+// --- Фаза 14: заявки на ревью, инвайт-ссылки эксперта, уровень бейджа ---
+export type ReviewRequestChannel = (typeof schema.REVIEW_REQUEST_CHANNELS)[number];
+export type ReviewRequestStatus = (typeof schema.REVIEW_REQUEST_STATUSES)[number];
+export type ExpertInviteStatus = (typeof schema.EXPERT_INVITE_STATUSES)[number];
+export type VerifiedTier = (typeof schema.VERIFIED_TIERS)[number];
 export type RecruitStatus = (typeof schema.RECRUIT_STATUSES)[number];
 export type ApplicationStatus = (typeof schema.APPLICATION_STATUSES)[number];
 export type BannerAction = (typeof schema.BANNER_ACTIONS)[number];

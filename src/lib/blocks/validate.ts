@@ -1,7 +1,7 @@
 // Валидация контента + чек-лист готовности к отправке. Изоморфно: редактор (клиент) показывает гейт,
 // submit-роут (сервер) применяет его повторно (никогда не доверяем клиенту). Нормализация — в normalize.ts.
 
-import type { Block, Complexity } from "@/types";
+import type { Block } from "@/types";
 import { normalizeBlocks } from "./normalize";
 
 const MAX_BLOCKS = 400;
@@ -43,11 +43,9 @@ export function validateBlocks(raw: unknown): BlocksValidation {
 
 // ───────────────────────────── чек-лист готовности к ревью ─────────────────────────────
 
-export const COMPLEXITY_TIERS = {
-  simple: { label: "Простая", min: 1, max: 2, hint: "1 ревьюер хватит; максимум 2." },
-  medium: { label: "Средняя", min: 2, max: 3, hint: "2 ревьюера — оптимально; максимум 3." },
-  complex: { label: "Сложная", min: 3, max: 5, hint: "Минимум 3 ревьюера; до 5 для глубокого ревью." },
-} as const satisfies Record<Complexity, { label: string; min: number; max: number; hint: string }>;
+// ⚠️ Ф14: `COMPLEXITY_TIERS` (min/max ревьюеров по сложности) удалён — состав ревью больше не
+// задаётся автором и ничего не гейтит. Сложность осталась ЧИТАТЕЛЬСКОЙ меткой; её подписи —
+// `COMPLEXITY_LABELS` в клиент-безопасном `src/lib/blocks/constants.ts`.
 
 export const MAX_SKILLS = 6;
 

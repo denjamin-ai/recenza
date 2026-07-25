@@ -5,15 +5,16 @@
 // Предыдущая ревизия сохраняется как история (снапшот-до-записи соблюдён). Уведомляем ревьюеров.
 
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { chapterReviewers, chapterRevisions } from "@/lib/db/schema";
+import { chapterReviewers, chapterRevisions, reviewRequests } from "@/lib/db/schema";
 import { assertSameOrigin } from "@/lib/csrf";
 import { hitActionRate } from "@/lib/rate-limit";
 import { stringifyJson } from "@/lib/db/json";
 import { createNotifications } from "@/lib/queries/notifications";
 import { REVIEW_NOTIFY, resolveReviewAccess, reviewerReviewHref, userIdsByHandle } from "@/lib/queries/review";
 import { isReviewOpen } from "@/lib/review-status";
+import { SLA_SILENT_DAYS, dueAtFrom } from "@/lib/review-sla";
 
 const MAX_SUMMARY = 2000;
 
@@ -40,7 +41,7 @@ export async function POST(
   }
 
   const { session } = access;
-  if (!isReviewOpen(session.revision.status, session.revision.reviewStatus)) {
+  if (!isReviewOpen(session.revision.reviewStatus, session.revision.reviewClosedAt)) {
     return NextResponse.json({ error: "Главу нельзя пересдать из текущего статуса." }, { status: 409 });
   }
   if (session.reviewers.length === 0) {
@@ -91,13 +92,26 @@ export async function POST(
         .update(chapterRevisions)
         .set({ scheduledAt: null })
         .where(eq(chapterRevisions.id, session.revision.id));
+      // Ф14: заявка едет за ревью на новую ревизию. Иначе она осталась бы висеть на устаревшем
+      // номере: из очереди её отфильтровало бы «заявка не на последней ревизии», а SLA-свип
+      // вернул бы в очередь ревьюера, который как раз работает. Срок молчания отсчитываем заново.
+      await tx
+        .update(reviewRequests)
+        .set({ revisionNumber: newNumber, dueAt: dueAtFrom(now, SLA_SILENT_DAYS) })
+        .where(
+          and(
+            eq(reviewRequests.chapterId, chapterId),
+            eq(reviewRequests.revisionNumber, session.revision.number),
+            inArray(reviewRequests.status, ["open", "claimed"]),
+          ),
+        );
+
       // Переносим назначения на новую ревизию с обнулёнными вердиктами.
       for (const r of session.reviewers) {
         await tx.insert(chapterReviewers).values({
           chapterId,
           revisionNumber: newNumber,
           handle: r.handle,
-          isPrimary: r.isPrimary,
         });
       }
       await createNotifications(
@@ -107,7 +121,7 @@ export async function POST(
           .filter((id): id is string => !!id)
           .map((recipientId) => ({
             recipientId,
-            type: REVIEW_NOTIFY.invited,
+            type: REVIEW_NOTIFY.revisionSubmitted,
             payload: {
               href: reviewerReviewHref(chapterId),
               chapterTitle: session.chapter.title,

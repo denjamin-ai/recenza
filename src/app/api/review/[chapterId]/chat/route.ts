@@ -30,7 +30,7 @@ export async function POST(
     );
   }
 
-  if (!isReviewOpen(access.session.revision.status, access.session.revision.reviewStatus)) {
+  if (!isReviewOpen(access.session.revision.reviewStatus, access.session.revision.reviewClosedAt)) {
     return NextResponse.json({ error: "Глава не на активном ревью." }, { status: 409 });
   }
 

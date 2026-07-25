@@ -1,17 +1,17 @@
 "use client";
 
-// Действия админа над главой в ревью (Фаза 10): force-approve (обход гейта all-approve),
-// разбор запроса смены ведущего (approve/reject), снятие ревьюера (+ причина).
+// Действия админа над главой в ревью (Фаза 10): force-approve (публикация за автора) и снятие
+// ревьюера (+ причина). ⚠️ Ф14: разбор запроса смены ведущего снят вместе с самой ролью; снятие
+// ревьюера теперь возвращает его заявку в очередь (см. роут remove-reviewer).
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { adminMutate } from "@/app/admin/_components/client";
-import { btnPrimary, btnSecondary, btnText, btnWarning, btnWarningStrong } from "@/app/admin/_components/buttons";
+import { btnText, btnWarning, btnWarningStrong } from "@/app/admin/_components/buttons";
 import type { AdminReviewReviewer } from "@/lib/queries/admin";
 
 export function ReviewActions(props: {
   chapterId: string;
   reviewers: AdminReviewReviewer[];
-  pendingPrimaryChange: { id: string; fromHandle: string; toHandle: string } | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -39,32 +39,6 @@ export function ReviewActions(props: {
         <p role="alert" className="rounded-[var(--radius-md)] border border-[var(--danger-border)] bg-[var(--danger-bg)] px-3 py-2 text-[length:var(--type-small)] text-[var(--danger)]">
           {error}
         </p>
-      )}
-
-      {props.pendingPrimaryChange && (
-        <div className="rounded-[var(--radius-md)] border border-[var(--warning-border)] bg-[var(--warning-bg)] p-3">
-          <p className="mb-2 text-[length:var(--type-small)] text-[var(--warning)]">
-            Запрос смены ведущего: @{props.pendingPrimaryChange.fromHandle} → @{props.pendingPrimaryChange.toHandle}
-          </p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => run(() => adminMutate(`/api/admin/review/${props.chapterId}/primary`, "POST", { action: "approve", requestId: props.pendingPrimaryChange!.id }))}
-              className={btnPrimary}
-            >
-              Утвердить смену
-            </button>
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => run(() => adminMutate(`/api/admin/review/${props.chapterId}/primary`, "POST", { action: "reject", requestId: props.pendingPrimaryChange!.id }))}
-              className={btnSecondary}
-            >
-              Отклонить
-            </button>
-          </div>
-        </div>
       )}
 
       <div className="flex flex-wrap items-center gap-2">
@@ -107,7 +81,6 @@ export function ReviewActions(props: {
             {props.reviewers.map((rv) => (
               <li key={rv.handle} className="flex flex-wrap items-center gap-2 text-[length:var(--type-small)]">
                 <span className="text-[var(--foreground)]">{rv.displayName}</span>
-                {rv.isPrimary && <span className="text-[0.7rem] text-[var(--accent)]">ведущий</span>}
                 {rv.approved && <span className="text-[0.7rem] text-[var(--success)]">approve</span>}
                 {removing === rv.handle ? (
                   <span className="flex items-center gap-1.5">

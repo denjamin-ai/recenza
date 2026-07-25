@@ -1,6 +1,10 @@
 // Кредит ревьюеров в конце главы: текущая версия чипами + прошлые версии за раскрытием (<details>, RSC).
+// Ф14: рядом с заголовком — УРОВЕНЬ проверки этой версии (independent/invited), если он есть;
+// заголовок «Эту версию проверяли» сохранён.
 
 import Link from "next/link";
+import { VerifiedChip, formatVerifiedDate } from "@/components/reader/verified-badge";
+import type { VerifiedTier } from "@/types";
 import type { ChapterReviewerCredit as Credit, ReviewerChip } from "@/lib/queries/reviewer-credit";
 
 function Chip({ chip }: { chip: ReviewerChip }) {
@@ -12,25 +16,38 @@ function Chip({ chip }: { chip: ReviewerChip }) {
         className="inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] border border-[var(--border)] bg-[var(--bg-secondary)] px-2.5 py-1 text-[length:var(--type-small)] text-[var(--accent)] underline-offset-2 transition-colors hover:border-[var(--accent)] hover:bg-[var(--muted)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
       >
         <span>{chip.displayName}</span>
-        {chip.isPrimary && (
-          <span className="rounded-[var(--radius-sm)] bg-[var(--accent)] px-1.5 text-[11px] font-medium text-[var(--accent-foreground)]">
-            ведущий
-          </span>
-        )}
       </Link>
     </li>
   );
 }
 
-export function ChapterReviewerCredit({ credit }: { credit: Credit }) {
+export function ChapterReviewerCredit({
+  credit,
+  tier = null,
+  verifiedAt = null,
+}: {
+  credit: Credit;
+  /** Ф14: уровень бейджа ИМЕННО этой версии (null — версия без бейджа). */
+  tier?: VerifiedTier | null;
+  verifiedAt?: number | null;
+}) {
   if (credit.current.length === 0 && credit.past.length === 0) return null;
+  const verifiedDate = formatVerifiedDate(verifiedAt);
 
   return (
     <section
       aria-label="Ревьюеры главы"
       className="mt-10 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] px-5 py-4"
     >
-      <h2 className="text-[length:var(--type-h4)]">Эту версию проверяли</h2>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h2 className="text-[length:var(--type-h4)]">Эту версию проверяли</h2>
+        <VerifiedChip tier={tier} />
+        {tier && verifiedDate && (
+          <span className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+            {verifiedDate}
+          </span>
+        )}
+      </div>
       {credit.current.length > 0 ? (
         <ul className="mt-3 flex flex-wrap gap-2">
           {credit.current.map((c) => (
