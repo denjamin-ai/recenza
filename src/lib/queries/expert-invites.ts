@@ -8,9 +8,9 @@
 // Регистрация остаётся закрытой (альфа): по ссылке заполняется АНКЕТА (`reviewer_applications`),
 // аккаунт создаёт админ и лично выдаёт данные.
 
-import { and, desc, eq, gt } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { chapters, expertInvites, reviewerApplications } from "@/lib/db/schema";
+import { blogs, chapters, expertInvites, users } from "@/lib/db/schema";
 import type { ExpertInviteStatus } from "@/types";
 
 /** Сколько дней живёт ссылка. Короткий срок ограничивает окно, в которое утёкший токен полезен. */
@@ -55,21 +55,6 @@ export async function getAuthorExpertInvites(handle: string): Promise<AuthorInvi
   }));
 }
 
-/** Сколько ссылок автора ещё живы (для лимита). */
-export async function countActiveInvites(handle: string, now: number): Promise<number> {
-  const rows = await db
-    .select({ id: expertInvites.id })
-    .from(expertInvites)
-    .where(
-      and(
-        eq(expertInvites.byHandle, handle),
-        eq(expertInvites.status, "pending"),
-        gt(expertInvites.expiresAt, now),
-      ),
-    );
-  return rows.length;
-}
-
 export interface PublicInviteView {
   token: string;
   /** Имя автора-пригласившего — единственное, что раскрывается по валидному токену. */
@@ -84,7 +69,6 @@ export interface PublicInviteView {
  * в оракул существования токенов.
  */
 export async function getPublicInvite(token: string, now: number): Promise<PublicInviteView | null> {
-  const { blogs, users } = await import("@/lib/db/schema");
   const row = (
     await db
       .select({
@@ -111,22 +95,4 @@ export async function getPublicInvite(token: string, now: number): Promise<Publi
     chapterTitle: row.chapterTitle ?? null,
     blogTitle: row.blogTitle ?? null,
   };
-}
-
-/** Анкеты, пришедшие по инвайт-ссылкам — для админской страницы разбора. */
-export async function getInviteApplications() {
-  return db
-    .select({
-      id: reviewerApplications.id,
-      name: reviewerApplications.name,
-      area: reviewerApplications.area,
-      skills: reviewerApplications.skills,
-      message: reviewerApplications.message,
-      status: reviewerApplications.status,
-      createdAt: reviewerApplications.createdAt,
-      invitedBy: reviewerApplications.invitedBy,
-      byHandle: reviewerApplications.byHandle,
-    })
-    .from(reviewerApplications)
-    .orderBy(desc(reviewerApplications.createdAt));
 }

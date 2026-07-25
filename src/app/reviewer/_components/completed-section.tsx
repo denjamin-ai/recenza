@@ -2,32 +2,15 @@
 // (`reviewer_history`), сгруппированные по блогам. Кредит выдаётся только за `approve`
 // (CLAUDE.md §Две оси состояния), поэтому это витрина реально проверенного.
 //
-// Бейдж уровня здесь — ЛОКАЛЬНЫЙ минимальный чип на токенах: общий компонент бейджа делает
-// параллельная подфаза, дублировать его импортом нельзя (разъедутся тексты).
+// ⚠️ Бейдж уровня рендерится ОБЩИМ `VerifiedChip` — свой чип здесь заводить нельзя. Первая
+// редакция файла держала локальную копию (её писала параллельная подфаза, чтобы не конфликтовать
+// с компонентом бейджа) — и цвет уровня `invited` разъехался: в ридере синий, в кабинете серый,
+// то есть один и тот же факт выглядел как два разных статуса. Дизайн-ревью поймало это как P1.
 
 import Link from "next/link";
 import type { CompletedReviewGroup } from "@/lib/queries/review";
-import type { VerifiedTier } from "@/types";
+import { VerifiedChip } from "@/components/reader/verified-badge";
 import { plural } from "@/lib/plural";
-
-const TIER_LABEL: Record<VerifiedTier, string> = {
-  independent: "Проверено на Recenza",
-  invited: "Проверено приглашённым экспертом",
-};
-
-function TierChip({ tier }: { tier: VerifiedTier }) {
-  return (
-    <span
-      className={`shrink-0 rounded-[var(--radius-pill)] px-2 py-0.5 text-[length:var(--type-small)] ${
-        tier === "independent"
-          ? "bg-[var(--success-bg)] text-[var(--success)]"
-          : "bg-[var(--muted)] text-[var(--muted-foreground)]"
-      }`}
-    >
-      {TIER_LABEL[tier]}
-    </span>
-  );
-}
 
 export function CompletedSection({ groups }: { groups: CompletedReviewGroup[] }) {
   if (groups.length === 0) {
@@ -75,7 +58,7 @@ export function CompletedSection({ groups }: { groups: CompletedReviewGroup[] })
                       версия {c.revisionNumber}
                     </span>
                   </span>
-                  {c.verifiedTier && <TierChip tier={c.verifiedTier} />}
+                  {c.verifiedTier && <VerifiedChip size="sm" tier={c.verifiedTier} />}
                 </Link>
               </li>
             ))}

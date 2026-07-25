@@ -21,6 +21,8 @@ import { formatRelativeTime } from "@/lib/format";
 import { notificationLabel, notificationTone } from "@/lib/notification-text";
 import { IconBookOpen, IconEdit } from "@/components/icons";
 import { ReviewRequestCards } from "./review-request-cards";
+import { ExpertInvitePanel } from "./expert-invite-panel";
+import type { AuthorInviteView } from "@/lib/queries/expert-invites";
 
 const RECRUIT_META: Record<RecruitStatus, { label: string; cls: string }> = {
   pending: { label: "На рассмотрении", cls: "bg-[var(--warning-bg)] text-[var(--warning)]" },
@@ -410,6 +412,7 @@ export function AuthorCabinet({
   pinnedBlogId,
   recruitRequests,
   reviewRequests,
+  expertInvites,
   now,
   portfolio,
   events,
@@ -419,6 +422,7 @@ export function AuthorCabinet({
   recruitRequests: RecruitStatusItem[];
   /** Ф14: живые заявки на ревью (open|claimed) — их таймер считает от серверного `now`. */
   reviewRequests: AuthorRequestView[];
+  expertInvites: AuthorInviteView[];
   now: number;
   portfolio: AuthorPortfolio | null;
   events: NotificationView[];
@@ -452,6 +456,7 @@ export function AuthorCabinet({
 
         <aside className="flex flex-col gap-7 lg:border-l lg:border-[var(--border)] lg:pl-8">
           <ReviewRequestCards requests={reviewRequests} now={now} />
+          <ExpertInvitePanel invites={expertInvites} now={now} />
 
           {recruitRequests.length > 0 && (
             <section aria-label="Запросы ревьюеров">

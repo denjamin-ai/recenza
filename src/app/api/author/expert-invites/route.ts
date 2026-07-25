@@ -5,13 +5,13 @@
 
 import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { blogs, chapters, expertInvites } from "@/lib/db/schema";
 import { getCurrentUser, requireAuthor } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { hitActionRate } from "@/lib/rate-limit";
-import { INVITE_TTL_DAYS, MAX_ACTIVE_INVITES, countActiveInvites } from "@/lib/queries/expert-invites";
+import { INVITE_TTL_DAYS, MAX_ACTIVE_INVITES } from "@/lib/queries/expert-invites";
 
 const DAY = 86_400;
 
@@ -59,25 +59,43 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
 
   const now = Math.floor(Date.now() / 1000);
-  if ((await countActiveInvites(user.handle, now)) >= MAX_ACTIVE_INVITES) {
-    return NextResponse.json(
-      { error: `Одновременно активных ссылок не больше ${MAX_ACTIVE_INVITES}. Отзовите ненужные.` },
-      { status: 409 },
-    );
+  const token = randomBytes(24).toString("base64url");
+  const expiresAt = now + INVITE_TTL_DAYS * DAY;
+
+  // Лимит считается ВНУТРИ транзакции: раздельные count+insert позволяли двум параллельным
+  // запросам обойти квоту (находка security-ревью, low — влияет только на свою квоту автора).
+  class QuotaExceeded extends Error {}
+  try {
+    await db.transaction(async (tx) => {
+      const active = await tx
+        .select({ id: expertInvites.id })
+        .from(expertInvites)
+        .where(
+          and(
+            eq(expertInvites.byHandle, user.handle),
+            eq(expertInvites.status, "pending"),
+            gt(expertInvites.expiresAt, now),
+          ),
+        );
+      if (active.length >= MAX_ACTIVE_INVITES) throw new QuotaExceeded();
+      await tx.insert(expertInvites).values({
+        token,
+        byHandle: user.handle,
+        chapterId,
+        status: "pending",
+        expiresAt,
+        createdAt: now,
+      });
+    });
+  } catch (e) {
+    if (e instanceof QuotaExceeded) {
+      return NextResponse.json(
+        { error: `Одновременно активных ссылок не больше ${MAX_ACTIVE_INVITES}. Отзовите ненужные.` },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json({ error: "Не удалось создать ссылку." }, { status: 500 });
   }
 
-  const token = randomBytes(24).toString("base64url");
-  await db.insert(expertInvites).values({
-    token,
-    byHandle: user.handle,
-    chapterId,
-    status: "pending",
-    expiresAt: now + INVITE_TTL_DAYS * DAY,
-    createdAt: now,
-  });
-
-  return NextResponse.json(
-    { ok: true, token, url: `/invite/${token}`, expiresAt: now + INVITE_TTL_DAYS * DAY },
-    { status: 201 },
-  );
+  return NextResponse.json({ ok: true, token, url: `/invite/${token}`, expiresAt }, { status: 201 });
 }

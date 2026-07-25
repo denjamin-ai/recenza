@@ -71,16 +71,27 @@ export async function POST(
             chapterTitle: chapters.title,
             chapterSlug: chapters.slug,
             blogSlug: blogs.slug,
+            blogHidden: blogs.hidden,
             authorId: blogs.authorId,
+            authorBlocked: users.isBlocked,
+            authorCanAuthor: users.canAuthor,
           })
           .from(reviewRequests)
           .innerJoin(chapters, eq(chapters.id, reviewRequests.chapterId))
           .innerJoin(blogs, eq(blogs.id, chapters.blogId))
+          .innerJoin(users, eq(users.id, blogs.authorId))
           .where(eq(reviewRequests.id, requestId))
           .limit(1)
       )[0];
       if (!row) throw new ClaimError("Заявка не найдена.", 404);
       if (row.status !== "open") throw new ClaimError("Заявку уже взяли.", 409);
+      // Видимость автора перепроверяется ЗДЕСЬ, а не только в листинге очереди: `requestId` мог
+      // остаться в открытой вкладке, а автора успели забанить или снять ему `can_author` — тогда
+      // весь его контент скрыт, и назначать на него ревьюера нельзя (инвариант дублируется
+      // на каждом уровне, как и в остальных ридер-путях). Ответ 404 — не раскрываем причину.
+      if (row.authorBlocked || !row.authorCanAuthor || row.blogHidden) {
+        throw new ClaimError("Заявка не найдена.", 404);
+      }
       // Свой блог рецензировать нельзя — иначе автор с возможностью ревьюера выдал бы бейдж сам себе.
       if (row.authorId === user.id) {
         throw new ClaimError("Нельзя рецензировать собственный блог.", 403);
@@ -108,7 +119,12 @@ export async function POST(
         throw new ClaimError("Заявка устарела — у главы есть новая версия.", 409);
       }
 
-      await tx
+      // ⚠️ Захват — УСЛОВНЫЙ UPDATE с проверкой затронутых строк (паттерн из invite/apply).
+      // Раньше здесь стоял безусловный UPDATE, и «взял первым» решалось прочитанным ранее статусом:
+      // два параллельных claim'а оба проходили проверку, оба писали свою строку в `chapter_reviewers`
+      // (PK различает по handle) и оба инкрементили `review_load`, а `claimed_by` оставался у
+      // последнего — «потерянный» ревьюер навсегда выпадал из SLA-свипа с зависшим слотом.
+      const claimed = await tx
         .update(reviewRequests)
         .set({
           status: "claimed",
@@ -116,7 +132,9 @@ export async function POST(
           claimedAt: now,
           dueAt: dueAtFrom(now, SLA_SILENT_DAYS),
         })
-        .where(eq(reviewRequests.id, row.id));
+        .where(and(eq(reviewRequests.id, row.id), eq(reviewRequests.status, "open")))
+        .returning({ id: reviewRequests.id });
+      if (claimed.length === 0) throw new ClaimError("Заявку уже взяли.", 409);
 
       // Ревью стартует ровно здесь (idempotent по PK — гонка двух claim'ов уже отсечена статусом).
       await tx
@@ -127,10 +145,16 @@ export async function POST(
           handle: user.handle,
         })
         .onConflictDoNothing();
-      await tx
+      // Инкремент тоже условный: между чтением `load/capacity` и записью параллельный claim
+      // другой заявки мог исчерпать лимит. `WHERE review_load < review_capacity` закрывает окно.
+      const loaded = await tx
         .update(users)
         .set({ reviewLoad: sql`${users.reviewLoad} + 1` })
-        .where(eq(users.handle, user.handle));
+        .where(and(eq(users.handle, user.handle), sql`${users.reviewLoad} < ${users.reviewCapacity}`))
+        .returning({ handle: users.handle });
+      if (loaded.length === 0) {
+        throw new ClaimError("Вы уже загружены до предела — завершите текущие ревью.", 409);
+      }
 
       await tx
         .update(chapterRevisions)

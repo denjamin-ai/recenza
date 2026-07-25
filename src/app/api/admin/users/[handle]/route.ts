@@ -131,6 +131,28 @@ export async function PATCH(
             eq(chapterReviewers.handle, handle),
           ),
         );
+      // Не осталось назначенных — ось ревью возвращается в «ждём ревьюера». Иначе глава показывала бы
+      // «Ревью пройдено»/«На ревью» без единого живого ревьюера (паритет с SLA-возвратом).
+      const rest = await tx
+        .select({ handle: chapterReviewers.handle })
+        .from(chapterReviewers)
+        .where(
+          and(
+            eq(chapterReviewers.chapterId, a.chapterId),
+            eq(chapterReviewers.revisionNumber, a.revisionNumber),
+          ),
+        );
+      if (rest.length === 0) {
+        await tx
+          .update(chapterRevisions)
+          .set({ reviewStatus: "requested" })
+          .where(
+            and(
+              eq(chapterRevisions.chapterId, a.chapterId),
+              eq(chapterRevisions.number, a.revisionNumber),
+            ),
+          );
+      }
     }
     // Пересчёт вместо декремента: счётчик мог разъехаться, а здесь мы знаем точную правду.
     await tx.update(users).set({ reviewLoad: 0 }).where(eq(users.handle, handle));

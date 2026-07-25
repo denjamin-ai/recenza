@@ -58,6 +58,18 @@ export async function POST(
   if (!isReviewOpen(session.revision.reviewStatus, session.revision.reviewClosedAt)) {
     return NextResponse.json({ error: "Глава не на активном ревью." }, { status: 409 });
   }
+  // ⚠️ Ф14, находка security-ревью (HIGH). Apply-and-close правит блоки ревизии IN-PLACE. До Ф14
+  // это было безопасно по построению: `isReviewOpen` возвращал false для published, и роут просто
+  // не мог сюда дойти. Теперь ревью опубликованной главы — штатный сценарий, и без этой проверки
+  // автор мог бы подменить текст ЖИВОЙ опубликованной версии, минуя версионирование, — и, что хуже,
+  // подменить уже одобренный текст до закрытия сессии, получив бейдж на то, чего ревьюеры не видели.
+  // Путь для правок опубликованной главы один: редактор заводит ревизию-черновик поверх (PATCH).
+  if (session.revision.status === "published") {
+    return NextResponse.json(
+      { error: "Нельзя править опубликованную версию. Отредактируйте главу — правки уйдут в новую версию." },
+      { status: 409 },
+    );
+  }
 
   const suggestion = parseJson<Suggestion | null>(thread.suggestion, null);
   let appliedText = false;

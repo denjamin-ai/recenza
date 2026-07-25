@@ -3,6 +3,7 @@ import { AuthorCabinet } from "@/app/author/_components/author-cabinet";
 import { getCurrentUser } from "@/lib/auth";
 import { getAuthorCabinet, getPortfolioForAuthor, getRecruitRequests } from "@/lib/queries/author";
 import { getAuthorReviewRequests } from "@/lib/queries/review-requests";
+import { getAuthorExpertInvites } from "@/lib/queries/expert-invites";
 import { getNotifications } from "@/lib/queries/notifications";
 
 export const dynamic = "force-dynamic";
@@ -20,21 +21,23 @@ export default async function AuthorPage() {
   const user = await getCurrentUser(); // гарантированно автор (гард в layout)
   // Ф14: оценки ревьюеров и «навыки не совпадают» сняты вместе с приглашениями —
   // их место в aside заняли ЗАЯВКИ на ревью с таймером SLA.
-  const [cabinet, recruitRequests, reviewRequests, portfolio, notifications] = user
+  const [cabinet, recruitRequests, reviewRequests, expertInvites, portfolio, notifications] = user
     ? await Promise.all([
         getAuthorCabinet(user.id),
         getRecruitRequests(user.id),
         getAuthorReviewRequests(user.id),
+        getAuthorExpertInvites(user.handle),
         getPortfolioForAuthor(user.id),
         getNotifications(user.id),
       ])
-    : [{ blogs: [], pinnedBlogId: null }, [], [], null, { unread: 0, items: [] }];
+    : [{ blogs: [], pinnedBlogId: null }, [], [], [], null, { unread: 0, items: [] }];
   return (
     <AuthorCabinet
       blogs={cabinet.blogs}
       pinnedBlogId={cabinet.pinnedBlogId}
       recruitRequests={recruitRequests}
       reviewRequests={reviewRequests}
+      expertInvites={expertInvites}
       // Точка отсчёта таймеров считается на сервере: клиентский Date.now() дал бы расхождение при гидрации.
       now={nowSeconds()}
       portfolio={portfolio}
