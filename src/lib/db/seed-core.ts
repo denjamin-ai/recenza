@@ -817,7 +817,10 @@ export async function seedAll(db: Db): Promise<void> {
       channel: "queue",
       status: "claimed",
       claimedBy: "reviewer",
-      claimedAt: ago(22 * DAY),
+      // ⚠️ claim ПОЗЖЕ всей активности ревьюера по этой главе (тред `thr_open_1` — ago(4d),
+      // сообщения чата — тоже раньше): иначе крон засчитал бы их как «признак работы» и ушёл
+      // в ветку продления, а свип автовозврата остался бы непокрытым (находка тест-агента).
+      claimedAt: ago(2 * DAY),
       dueAt: ago(1 * DAY),
       createdAt: ago(23 * DAY),
     },

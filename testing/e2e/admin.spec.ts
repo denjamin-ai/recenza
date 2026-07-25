@@ -1,15 +1,20 @@
 // TC-ADMIN — админ-портал (Фаза 11.3): логин/логаут, полноэкранный shell, дашборд,
-// модерация пользователей, жалобы, ревью-очередь (смена ведущего / force-approve / снятие
-// ревьюера), recruit/заявки, баннеры, пожертвования + негативные инварианты доступа.
+// модерация пользователей, жалобы, ревью-очередь (force-approve / снятие ревьюера),
+// recruit/заявки, баннеры, пожертвования + негативные инварианты доступа.
 //
-// Файл МУТИРУЕТ seed-состояние (публикация chp_under_review, разбор pcr_1/rec_pending/app_user,
+// ⚠️ Фаза 14 («Ревью 2.0») сняла с админ-портала три механики:
+//   • «ведущий» — TC-ADMIN-10 («Утвердить смену» по pcr_1) УДАЛЁН вместе с роутами
+//     `/api/admin/review/{id}/primary` и `/api/review/{id}/primary-change` (оба 404, TC-ADMIN-26);
+//     из карточки очереди пропал блок «Запрос смены ведущего», из чипов — метка «ведущий»;
+//   • рейтинг ревьюеров — ★-пилюли в карточке пользователя больше нет;
+//   • плитка дашборда «Смена ведущего» заменена на «Заявки без ревьюера» (просроченные/
+//     эскалированные заявки — именно они теперь требуют человека).
+//
+// Файл МУТИРУЕТ seed-состояние (публикация chp_under_review, разбор rec_pending/app_user,
 // rpt_1 и т.д.) → serial + reseed() в beforeAll И afterAll (admin.spec идёт первым по алфавиту —
 // восстанавливаем baseline для следующих файлов).
 //
 // Отступления от TC-дока (обоснование — MCP-FINDINGS и исходники):
-// • TC-ADMIN-10 выполняется ДО TC-ADMIN-09: после force-approve глава уходит из очереди и
-//   pcr_1 разобрать негде (баг №2 MCP-FINDINGS §6) — в обратном порядке оба кейса проверяют
-//   рабочее поведение, а не сломанное.
 // • TC-ADMIN-06: «блог появился в каталоге» недостижимо на seed — blog_ghost не имеет
 //   published-глав, а каталог/страница блога требуют ≥1 (src/app/(reader)/blog/[slug]/page.tsx:46).
 //   Эффект разбана проверяется через возможность входа ghost + self-heal сессии после бана.
@@ -99,7 +104,9 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
       for (const label of [
         "Открытые жалобы",
         "Главы на ревью",
-        "Смена ведущего",
+        // ⚠️ Ф14: плитка «Смена ведущего» снята вместе с ролью — вместо неё заявки, которые
+        // никто не взял (channel=editorial / просроченные): именно они требуют разбора.
+        "Заявки без ревьюера",
         "Запросы подбора",
         "Заявки ревьюеров",
         "Заблокированные",
@@ -108,6 +115,7 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
       ] as const) {
         await expect(main.getByText(label, { exact: true })).toBeVisible();
       }
+      await expect(main.getByText("Смена ведущего", { exact: true })).toHaveCount(0);
       await expect(main.getByText("Требует внимания")).toBeVisible();
     });
 
@@ -221,6 +229,9 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
     await expect(asAdmin.page.getByRole("button", { name: "Запретить комментарии" })).toBeVisible();
     await expect(asAdmin.page.getByText("Ёмкость ревью:")).toBeVisible();
     await expect(asAdmin.page.getByRole("button", { name: "Уменьшить ёмкость" })).toBeVisible();
+    // ⚠️ Ф14: рейтинг ревьюеров снесён целиком — ★-пилюли в карточке быть не должно.
+    await expect(asAdmin.page.getByText("★")).toHaveCount(0);
+    await expect(asAdmin.page.getByText(/Рейтинг/i)).toHaveCount(0);
 
     // Hard-delete отсутствует как класс (FK ревью-таблиц на users.handle)
     await expect(asAdmin.page.getByRole("button", { name: /удалить/i })).toHaveCount(0);
@@ -253,32 +264,20 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
     });
   });
 
-  // ⚠️ Выполняется ДО TC-ADMIN-09: после force-approve глава уходит из очереди и pcr_1
-  // разобрать через UI негде (баг №2 MCP-FINDINGS §6).
-  test("TC-ADMIN-10 @regression: «Утвердить смену» по pcr_1 — чип «ведущий» переходит к lena_review", async ({ asAdmin }) => {
-    const admin = new AdminPage(asAdmin.page);
-    await asAdmin.goto("/admin/review");
-    const card = reviewCard(asAdmin.page, CHAPTERS.underReview.title);
-
-    await test.step("Запрос pcr_1 виден на карточке главы", async () => {
-      await expect(card.getByText("Запрос смены ведущего: @reviewer → @lena_review")).toBeVisible();
-    });
-
-    await test.step("«Утвердить смену» → блок исчезает, ведущий — Лена Базы", async () => {
-      await admin.approvePrimaryChange().click();
-      await expect(asAdmin.page.getByText("Запрос смены ведущего")).toHaveCount(0);
-
-      const lenaRow = card.locator("li").filter({ hasText: "Лена Базы" });
-      await expect(lenaRow.getByText("ведущий", { exact: true })).toBeVisible();
-      const raisaRow = card.locator("li").filter({ hasText: "Раиса Ревьюер" });
-      await expect(raisaRow.getByText("ведущий", { exact: true })).toHaveCount(0);
-    });
-  });
+  // ⚠️ TC-ADMIN-10 (смена ведущего по pcr_1) УДАЛЁН в Ф14: роли «ведущий», таблицы
+  // primary_change_requests и обоих роутов больше нет. Негативы на роуты — TC-ADMIN-26.
 
   test("TC-ADMIN-09 @critical: force-approve «Промисы изнутри» — публикация в обход гейта, глава видна гостю", async ({ asAdmin, asGuest }) => {
     const admin = new AdminPage(asAdmin.page);
     await asAdmin.goto("/admin/review");
     const card = reviewCard(asAdmin.page, CHAPTERS.underReview.title);
+
+    await test.step("Ф14: на карточке очереди нет разбора смены ведущего", async () => {
+      await expect(card).toHaveCount(1);
+      await expect(asAdmin.page.getByText(/Запрос смены ведущего/)).toHaveCount(0);
+      await expect(asAdmin.page.getByRole("button", { name: "Утвердить смену" })).toHaveCount(0);
+      await expect(card.getByText("ведущий")).toHaveCount(0);
+    });
 
     await test.step("«Отмена» в инлайн-подтверждении не публикует", async () => {
       await card.getByRole("button", { name: "Force-approve (опубликовать)" }).click();
@@ -313,10 +312,9 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
     // Команда обновилась: Лена снята, Раиса осталась.
     await expect(card.getByText("Лена Базы")).toHaveCount(0);
     await expect(card.getByText("Раиса Ревьюер")).toBeVisible();
-    // Фаза 12 (P1-фикс бага №3): снят ведущий → primary детерминированно переходит к оставшемуся.
-    await expect(
-      card.locator("li").filter({ hasText: "Раиса Ревьюер" }).getByText("ведущий", { exact: true }),
-    ).toBeVisible();
+    // ⚠️ Ф14: переназначения primary больше нет — иерархии внутри команды не существует,
+    // метка «ведущий» не должна появиться ни у кого.
+    await expect(card.getByText("ведущий")).toHaveCount(0);
   });
 
   test("TC-ADMIN-12+13 @regression: recruit-запрос — «Одобрить» публикует направление на /board; «Отклонить с причиной» disabled без причины", async ({ asAdmin, asGuest, api }) => {
@@ -781,6 +779,36 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
       await expect(titleField).toHaveAttribute("maxlength", "90");
       await expect(asAdmin.page.getByRole("textbox", { name: "Надзаголовок" })).toHaveAttribute("maxlength", "40");
       await expect(asAdmin.page.getByRole("textbox", { name: "Текст кнопки" })).toHaveAttribute("maxlength", "30");
+    });
+  });
+
+  // ── TC-ADMIN-26 — НЕГАТИВ: роуты «ведущего», снесённые Ф14 (прецедент Ф13 — 404) ──
+
+  test("TC-ADMIN-26 @critical: роуты «ведущего» удалены — /api/admin/review/{id}/primary и /api/review/{id}/primary-change → 404", async ({ api }) => {
+    const adminApi = await api("admin");
+
+    await test.step("админский роут назначения ведущего → 404", async () => {
+      const res = await adminApi.post(`/api/admin/review/${CHAPTERS.underReview.id}/primary`, {
+        data: { handle: USERS.lena.handle },
+      });
+      expect(res.status()).toBe(404);
+    });
+
+    await test.step("авторский запрос смены ведущего → 404", async () => {
+      const authorApi = await api("author");
+      const res = await authorApi.post(`/api/review/${CHAPTERS.underReview.id}/primary-change`, {
+        data: { handle: USERS.lena.handle, reason: "e2e" },
+      });
+      expect(res.status()).toBe(404);
+    });
+
+    await test.step("контроль: живой admin-роут отвечает не 404 (иначе шаги выше проходили бы «по совпадению»)", async () => {
+      // Немутирующая проверка: заведомо невалидное тело → 400 от валидатора, но роут существует.
+      const res = await adminApi.post("/api/admin/banners", {
+        data: { action: "external", target: "javascript:alert(1)" },
+      });
+      expect(res.status()).not.toBe(404);
+      expect([400, 429]).toContain(res.status());
     });
   });
 });

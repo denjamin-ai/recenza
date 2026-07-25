@@ -344,12 +344,20 @@ test.describe("Читатель", () => {
 
   // ── TC-READER-18/19/20 — негативы матрицы ролей ─────────────────────────────
 
-  test("TC-READER-18 @critical: читатель не создаёт блоги и не отправляет на ревью → 403", async ({ api }) => {
+  test("TC-READER-18 @critical: читатель не создаёт блоги и не оставляет заявку на ревью → 403; снесённый /submit → 404", async ({
+    api,
+  }) => {
     const ctx = await api("reader");
     const blog = await ctx.post("/api/author/blogs", { data: { title: "Блог читателя", description: "нет" } });
     expect(blog.status()).toBe(403);
+    // Ф14: отправку на ревью заменила ЗАЯВКА; гейт тот же — `requireAuthor()`.
+    const request = await ctx.post(`/api/author/chapters/${CHAPTERS.draft.id}/review-request`, {
+      data: { skills: ["Генераторы"] },
+    });
+    expect(request.status()).toBe(403);
+    // Старый роут с пикером ревьюеров удалён — сегмента App Router нет (прецедент Ф13).
     const submit = await ctx.post(`/api/author/chapters/${CHAPTERS.draft.id}/submit`, { data: {} });
-    expect(submit.status()).toBe(403);
+    expect(submit.status()).toBe(404);
   });
 
   test("TC-READER-19 @critical: protected-страницы чужих ролей читателю → 307 на /", async ({ api }) => {
@@ -394,6 +402,41 @@ test.describe("Читатель", () => {
       await page.waitForURL(/\/\?view=all/);
       await expect(reader.homeHeading("Все блоги")).toBeVisible();
       await expect(reader.blogCard(BLOG.title)).toBeVisible();
+    });
+  });
+
+  // ── TC-READER-22 — бейдж проверки виден и вошедшему читателю (Ф14) ──────────
+  // Гостевая проекция бейджа — TC-GUEST-17/18; здесь фиксируем, что для читателя он тот же
+  // (бейдж не персонализирован) и что архивный режим гасит именно ЕГО инструменты.
+
+  test("TC-READER-22 @regression: «Проверено на Recenza» в ленте и у h1 главы; в архиве `?v=1` композер и реакции скрыты", async ({
+    asReader,
+  }) => {
+    const { page } = asReader;
+    const reader = new ReaderPage(page, USERS.reader.handle);
+    const comments = new CommentsPage(page, USERS.reader.handle);
+
+    await test.step("«Ваша лента»: чип уровня на карточке блога из «Подписок»", async () => {
+      await reader.gotoFeed();
+      await expect(reader.blogCard(BLOG.title).getByText("Проверено на Recenza")).toBeVisible();
+    });
+
+    await test.step("страница главы: бейдж в ряду метаданных под h1; композер и реакции на месте", async () => {
+      await reader.gotoChapter(BLOG.slug, CHAPTERS.published.slug);
+      await expect(
+        page.locator("article > div").filter({ hasText: "Проверено на Recenza" }),
+      ).toHaveCount(1);
+      await expect(page.locator('[aria-label="Реакции"]')).toHaveCount(1);
+      await expect(comments.composer).toBeVisible();
+    });
+
+    await test.step("`?v=1`: архивная версия read-only — ни композера, ни реакций", async () => {
+      await page.goto(`/blog/${BLOG.slug}/${CHAPTERS.published.slug}?v=1`);
+      await expect(
+        page.getByRole("complementary", { name: "Вы читаете архивную версию главы" }),
+      ).toBeVisible();
+      await expect(page.locator('[aria-label="Реакции"]')).toHaveCount(0);
+      await expect(comments.composer).toHaveCount(0);
     });
   });
 });

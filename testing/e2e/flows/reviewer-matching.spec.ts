@@ -1,31 +1,28 @@
-// MATCH-INVITE / decline / flag / MATCH-RECRUIT / MATCH-BOARD — подбор ревьюеров, согласие,
-// приватная оценка, recruit-запрос и заявка с доски. TC-док: TC-FLOWS.md; проход — sections/05.
-// Мутирует seed и роли → serial + reseed() в beforeAll; MATCH-BOARD меняет роль reader → reseed в конце теста.
+// MATCH-* — подбор ревьюеров ПОСЛЕ Фазы 14.
+//
+// ⚠️ Что здесь больше не проверяется и почему: приглашений (`review_invitations`), согласия,
+// отказа, флага «навыки не совпадают», роли «ведущего» и приватной оценки ★ в модели НЕТ.
+// Автор не выбирает исполнителя — он оставляет заявку, а ревьюер берёт её сам (это канал 1,
+// его сквозной флоу живёт в flows/review-queue.spec.ts). Здесь остались:
+//   · MATCH-QUEUE   — как очередь ранжируется под компетенции конкретного ревьюера;
+//   · MATCH-RECRUIT — канал 3: запрос в редакцию, когда очередь не помогла (одобрение → доска);
+//   · MATCH-BOARD   — публичная доска и отклик на неё (вход новых ревьюеров).
+//
+// Мутирует seed и возможности аккаунтов → serial + reseed в beforeAll И afterAll.
 
+import type { Page } from "@playwright/test";
 import { test, expect } from "../fixtures";
 import { reseed } from "../helpers/db";
 import { newApiContext } from "../helpers/auth";
-import { BLOG, CHAPTERS, PASSWORD, USERS } from "../helpers/seed";
-import { EditorPage } from "../pages/editor.page";
-import { ReviewPage } from "../pages/review.page";
+import { CHAPTERS, DUO_BLOG, PASSWORD, USERS } from "../helpers/seed";
+import { throttleMutation } from "../helpers/throttle";
 import { AdminPage } from "../pages/admin.page";
 
 test.describe.configure({ mode: "serial" });
 
-// Готовит «Генераторы» к отправке: ≥3 содержательных блока (гейт чек-листа).
-async function prepareDraftBlocks(api: (role?: "author") => Promise<import("@playwright/test").APIRequestContext>) {
-  const ctx = await api("author");
-  const res = await ctx.patch(`/api/author/chapters/${CHAPTERS.draft.id}`, {
-    data: {
-      blocks: [
-        { type: "h2", text: "Генераторы e2e" },
-        { type: "p", text: "Первый содержательный абзац для готовности." },
-        { type: "p", text: "Второй содержательный абзац для готовности." },
-        { type: "p", text: "Третий содержательный абзац для готовности." },
-      ],
-    },
-  });
-  expect(res.ok()).toBe(true);
+/** Панель активного таба кабинета ревьюера (скрытые панели в a11y-дерево не попадают). */
+function queueItems(page: Page) {
+  return page.getByRole("tabpanel", { name: /Очередь/ }).getByRole("listitem");
 }
 
 test.describe("Подбор ревьюеров (MATCH-*)", () => {
@@ -33,179 +30,100 @@ test.describe("Подбор ревьюеров (MATCH-*)", () => {
     reseed();
   });
 
-  // Меняет роль reader и публикует главы — восстанавливаем seed, чтобы grep-срез был самодостаточен.
+  // Меняет возможности аккаунтов и публикует направления — возвращаем seed, чтобы grep-срез
+  // оставался самодостаточным.
   test.afterAll(() => {
     reseed();
   });
 
-  // ── MATCH-INVITE — навыки → приглашение → accept → approve → publish → оценка ─
+  // ── MATCH-QUEUE — очередь ранжируется по компетенциям смотрящего ─────────────
 
-  test("MATCH-INVITE @critical: подбор → приглашение sergey → accept → одобрение → публикация → приватная оценка", async ({
-    asAuthor,
-    asGuest,
+  test("MATCH-QUEUE @critical: очередь отсортирована по совпадению компетенций ревьюера", async ({
     api,
     loginAs,
   }) => {
-    const editor = new EditorPage(asAuthor.page);
+    const author = await api("author");
 
-    await test.step("подбор: под навыки «Генераторы, Итераторы» матчей нет (0% у всех) — вкладка «По навыкам» пуста", async () => {
-      await prepareDraftBlocks(api);
-      await editor.goto(BLOG.slug, CHAPTERS.draft.slug);
-      await editor.openSubmitSheet();
-      await editor.reviewersFilterTab("По навыкам").click();
-      await expect(editor.submitSheet.getByText("Ревьюеры под эти навыки не найдены.")).toBeVisible();
+    await test.step("автор оставляет заявку с навыками из компетенций Сергея (Безопасность)", async () => {
+      await throttleMutation(USERS.author.handle);
+      const res = await author.post(
+        `/api/author/chapters/${CHAPTERS.changesRequested.id}/review-request`,
+        { data: { skills: ["Безопасность"] } },
+      );
+      expect(res.status()).toBe(201);
     });
 
-    await test.step("приглашаем Сергея (Простая, ведущий) → submit", async () => {
-      await editor.submitSheet.getByRole("button", { name: /^Простая/ }).click();
-      await editor.reviewersFilterTab("Все").click();
-      await editor.reviewerCheckbox(/Сергей Секьюрити/).check();
-      await editor.makePrimary(/Сергей Секьюрити/);
-      await expect(editor.readyFooter).toBeVisible();
-      await editor.submit(BLOG.slug);
-    });
-
-    const sergey = await loginAs(USERS.sergey.handle);
-    const review = new ReviewPage(sergey.page);
-
-    await test.step("Сергей принимает приглашение и одобряет главу", async () => {
+    await test.step("в очереди Сергея его заявка первая (100%), непрофильные — ниже (0%)", async () => {
+      // Компетенции sergey_review — «Безопасность/Криптография»; сидовые заявки
+      // («Генераторы/Итераторы», «Тайм-менеджмент») не пересекаются с ними вовсе.
+      const sergey = await loginAs(USERS.sergey.handle);
       await sergey.goto("/reviewer");
-      await expect(async () => {
-        await sergey.page.getByRole("button", { name: "Принять" }).first().click();
-        await expect(sergey.page.getByRole("link", { name: new RegExp(CHAPTERS.draft.title) })).toBeVisible({
-          timeout: 3_000,
-        });
-      }).toPass({ timeout: 20_000 });
-      await review.gotoAsReviewer(CHAPTERS.draft.id);
-      await review.approve();
+
+      const items = queueItems(sergey.page);
+      await expect(items.first()).toBeVisible();
+      expect(await items.count()).toBeGreaterThanOrEqual(2);
+
+      const first = items.first();
+      await expect(first).toContainText(CHAPTERS.changesRequested.title);
+      await expect(first).toContainText("совпадение 100%");
+
+      // Непрофильная заявка в очереди есть, но с нулевым совпадением и ниже профильной.
+      const offTopic = items.filter({ hasText: DUO_BLOG.chapter.title });
+      await expect(offTopic).toContainText("совпадение 0%");
+      expect(await items.filter({ hasText: "совпадение 100%" }).count()).toBe(1);
     });
 
-    await test.step("автор публикует и ставит приватную оценку 4★", async () => {
-      const authorReview = new ReviewPage(asAuthor.page);
-      await authorReview.gotoAsAuthor(BLOG.slug, CHAPTERS.draft.slug);
-      await expect(authorReview.publishButton).toBeVisible();
-      await authorReview.publish();
-
-      await asAuthor.goto("/author");
-      const ratingCard = asAuthor.page.getByRole("heading", { name: "Оцените ревьюеров" });
-      await expect(ratingCard).toBeVisible();
-      // Клик по звезде ретраим (потеря до гидрации); успех — секция исчезает после refresh.
-      await expect(async () => {
-        await asAuthor.page.getByRole("button", { name: "4 — Хорошо" }).first().click();
-        await expect(ratingCard).toBeHidden({ timeout: 4_000 });
-      }).toPass({ timeout: 25_000 });
-    });
-
-    await test.step("приватность: на /u/sergey-review нет ни агрегата, ни индивидуальной оценки", async () => {
-      await asGuest.page.goto(`/u/${USERS.sergey.slug}`);
-      // ⚠️ Ф13.5 (З-41): рейтинг ушёл из профиля целиком — наружу не течёт даже агрегат.
-      await expect(asGuest.page.getByText(/★ \d\.\d/)).toHaveCount(0);
-      // «Оценка приватная …» — подпись только в кабинете автора, не на публичном профиле
-      await expect(asGuest.page.getByText("Оценка приватная")).toHaveCount(0);
-    });
-  });
-
-  // ── MATCH-DECLINE — отклонение приглашения ──────────────────────────────────
-
-  test("MATCH-DECLINE @critical: ревьюер отклоняет приглашение → автор уведомлён", async ({
-    asAuthor,
-    api,
-    loginAs,
-  }) => {
-    reseed();
-    const editor = new EditorPage(asAuthor.page);
-
-    await test.step("автор приглашает Макса на «Генераторы»", async () => {
-      await prepareDraftBlocks(api);
-      await editor.goto(BLOG.slug, CHAPTERS.draft.slug);
-      await editor.openSubmitSheet();
-      await editor.submitSheet.getByRole("button", { name: /^Простая/ }).click();
-      await editor.reviewersFilterTab("Все").click();
-      await editor.reviewerCheckbox(/Макс Девопс/).check();
-      await editor.makePrimary(/Макс Девопс/);
-      await expect(editor.readyFooter).toBeVisible();
-      await editor.submit(BLOG.slug);
-    });
-
-    await test.step("Макс отклоняет → его инбокс пуст", async () => {
+    await test.step("ревьюеру с другими компетенциями та же заявка не выигрывает сортировку", async () => {
+      // У max_review компетенции DevOps/Docker/CI-CD — «Безопасность» ему не подходит,
+      // значит порядок очереди зависит от СМОТРЯЩЕГО, а не от самой заявки.
       const max = await loginAs(USERS.max.handle);
       await max.goto("/reviewer");
-      await expect(async () => {
-        await max.page.getByRole("button", { name: "Отклонить" }).first().click();
-        await expect(max.page.getByText("Новых приглашений нет.")).toBeVisible({ timeout: 3_000 });
-      }).toPass({ timeout: 20_000 });
-    });
-
-    await test.step("автор видит уведомление об отказе", async () => {
-      await asAuthor.goto("/author");
-      await asAuthor.page.reload();
-      await asAuthor.page.getByRole("button", { name: /^Уведомления/ }).click();
-      await expect(asAuthor.page.getByRole("menu", { name: "Уведомления" }).getByText(/отклонил/i)).toBeVisible();
+      const items = queueItems(max.page);
+      await expect(items.first()).toBeVisible();
+      await expect(items.filter({ hasText: CHAPTERS.changesRequested.title })).toContainText(
+        "совпадение 0%",
+      );
+      await expect(items.filter({ hasText: "совпадение 100%" })).toHaveCount(0);
     });
   });
 
-  // ── MATCH-FLAG — «навыки не совпадают» ──────────────────────────────────────
+  // ── MATCH-RECRUIT — канал 3: запрос в редакцию → одобрение → доска ───────────
 
-  test("MATCH-FLAG @critical: flag «навыки не совпадают» (match<50%) → глава снята с ревью", async ({
-    asAuthor,
-    loginAs,
-  }) => {
-    reseed();
-    // Сидовое pending-приглашение inv_pending: sergey → «Промисы изнутри» (0% совпадение).
-    const sergey = await loginAs(USERS.sergey.handle);
-    await sergey.goto("/reviewer");
-    await expect(async () => {
-      await sergey.page.getByRole("button", { name: "Навыки не совпадают" }).first().click();
-      // Приглашение исчезает из входящих
-      await expect(sergey.page.getByText("Новых приглашений нет.")).toBeVisible({ timeout: 3_000 });
-    }).toPass({ timeout: 20_000 });
-
-    await test.step("автор: в кабинете секция «Навыки не совпадают» (глава снята с ревью)", async () => {
-      // Секция flag-алерта — в кабинете /author, не на детали блога (MCP-FINDINGS §2).
-      await asAuthor.goto("/author");
-      await asAuthor.page.reload();
-      await expect(asAuthor.page.getByRole("heading", { name: "Навыки не совпадают" })).toBeVisible();
-    });
-  });
-
-  // ── MATCH-RECRUIT — запрос админу → одобрение → доска ────────────────────────
-
-  test("MATCH-RECRUIT @critical: нет совпадений → запрос админу → одобрение → направление на доске", async ({
-    asAuthor,
+  test("MATCH-RECRUIT @critical: очередь не помогла → запрос админу → направление на доске", async ({
+    api,
     asAdmin,
     asGuest,
-    api,
   }) => {
     reseed();
-    const editor = new EditorPage(asAuthor.page);
+    const DIRECTION = "Промисы и асинхронность";
+    const author = await api("author");
 
-    await test.step("автор: пустой подбор → «Запросить ревьюеров у админа»", async () => {
-      await prepareDraftBlocks(api);
-      await editor.goto(BLOG.slug, CHAPTERS.draft.slug);
-      await editor.openSubmitSheet();
-      await editor.reviewersFilterTab("По навыкам").click();
-      await expect(async () => {
-        await editor.submitSheet.getByRole("button", { name: "Запросить ревьюеров у админа" }).click();
-        await expect(asAuthor.page.getByText(/Запрос отправлен админу/)).toBeVisible({ timeout: 3_000 });
-      }).toPass({ timeout: 20_000 });
+    await test.step("автор просит редакцию подобрать ревьюеров под главу", async () => {
+      await throttleMutation(USERS.author.handle);
+      const res = await author.post("/api/author/recruit-requests", {
+        data: { chapterId: CHAPTERS.underReview.id, skills: ["Промисы", "Событийный цикл"] },
+      });
+      expect(res.status()).toBe(200);
+      expect(((await res.json()) as { ok?: boolean }).ok).toBe(true);
     });
 
-    await test.step("админ одобряет запрос → публикует направление на доске", async () => {
+    await test.step("админ видит запрос и одобряет его, публикуя направление", async () => {
       const admin = new AdminPage(asAdmin.page);
       await asAdmin.goto("/admin/recruit");
-      const row = asAdmin.page.locator("li", { hasText: "Генераторы" }).first();
-      await admin.approveRecruit(row, "Генераторы и итераторы");
+      const row = asAdmin.page.getByRole("listitem").filter({ hasText: CHAPTERS.underReview.title });
+      await expect(row).toBeVisible();
+      await admin.approveRecruit(row, DIRECTION);
     });
 
-    await test.step("гость видит направление на /board", async () => {
-      await asGuest.page.goto("/board");
-      await expect(asGuest.page.getByRole("heading", { name: /Генераторы/ })).toBeVisible();
+    await test.step("гость видит направление на публичной доске", async () => {
+      await asGuest.goto("/board");
+      await expect(asGuest.page.getByRole("heading", { name: DIRECTION })).toBeVisible();
     });
   });
 
-  // ── MATCH-BOARD — заявка с доски → выдача роли (ПОСЛЕДНИЙ: меняет роль reader) ─
+  // ── MATCH-BOARD — отклик с доски → возможность «ревьюер» (ПОСЛЕДНИЙ: меняет аккаунт) ─
 
-  test("MATCH-BOARD @critical: заявка с доски → админ принимает → reader становится ревьюером", async ({
+  test("MATCH-BOARD @critical: заявка с доски → админ принимает → читатель становится ревьюером", async ({
     asReader,
     asAdmin,
   }) => {
@@ -227,7 +145,7 @@ test.describe("Подбор ревьюеров (MATCH-*)", () => {
       await expect(asReader.page.getByText("Заявка отправлена! Администратор её рассмотрит.")).toBeVisible();
     });
 
-    await test.step("админ принимает заявку с выдачей роли", async () => {
+    await test.step("админ принимает заявку с выдачей возможности", async () => {
       await asAdmin.goto("/admin/recruit");
       const row = asAdmin.page.locator("li", { hasText: "Рина Читатель" }).first();
       await expect(async () => {
@@ -236,9 +154,11 @@ test.describe("Подбор ревьюеров (MATCH-*)", () => {
       }).toPass({ timeout: 20_000 });
     });
 
-    await test.step("аккаунт получил ВОЗМОЖНОСТЬ «ревьюер» и доступ к кабинету", async () => {
+    await test.step("аккаунт получил ВОЗМОЖНОСТЬ «ревьюер» и доступ к кабинету с очередью", async () => {
       const ctx = await newApiContext();
-      const login = await ctx.post("/api/auth/user", { data: { handle: USERS.reader.handle, password: PASSWORD } });
+      const login = await ctx.post("/api/auth/user", {
+        data: { handle: USERS.reader.handle, password: PASSWORD },
+      });
       expect(login.ok()).toBe(true);
       const me = await ctx.get("/api/auth/user");
       const body = (await me.json()) as { user?: { isReviewer?: boolean; canAuthor?: boolean } };
@@ -249,6 +169,10 @@ test.describe("Подбор ревьюеров (MATCH-*)", () => {
       // Гейт кабинета читает возможность из БД — редиректа на / больше нет.
       const cabinet = await ctx.get("/reviewer", { maxRedirects: 0 });
       expect(cabinet.status()).toBe(200);
+      // Ф14: новый ревьюер сразу видит общую очередь — чужие открытые заявки ему доступны.
+      const html = await (await ctx.get("/reviewer")).text();
+      expect(html).toContain(DUO_BLOG.title);
+      expect(html).toContain(DUO_BLOG.chapter.title);
       await ctx.dispose();
     });
 

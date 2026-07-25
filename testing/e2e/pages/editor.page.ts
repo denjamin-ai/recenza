@@ -104,9 +104,13 @@ export class EditorPage {
     await this.submitSheet.getByRole("button", { name: `Удалить «${skill}»` }).click();
   }
 
-  /** Состояние уже поданной заявки (вместо формы): «В очереди» / «В работе» + срок SLA. */
+  /**
+   * Состояние уже поданной заявки (вместо формы): «В очереди» / «В работе» + срок SLA.
+   * ⚠️ Роль именно `region`: приложение рендерит `<section aria-label>`, что по HTML-AAM даёт
+   * `region`, а не `group`. Первая редакция POM искала `group` и не находила элемент никогда.
+   */
   get requestState(): Locator {
-    return this.submitSheet.getByRole("group", { name: "Состояние заявки" });
+    return this.submitSheet.getByRole("region", { name: "Состояние заявки" });
   }
 
   get withdrawButton(): Locator {

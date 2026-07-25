@@ -68,6 +68,7 @@ export function SubmitSheet({
 }) {
   const router = useRouter();
   const [skills, setSkills] = useState<string[]>(initialSkills);
+  const [recruitSent, setRecruitSent] = useState(false);
   const [complexity, setComplexity] = useState<Complexity>(initialComplexity);
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -126,6 +127,29 @@ export function SubmitSheet({
         ? `Не закрыто: ${data.failedChecks.join("; ")}`
         : (data.error ?? "Не удалось подать заявку."),
     );
+  }
+
+  /**
+   * Канал 3: попросить редакцию подобрать ревьюера. Заявка при этом ОСТАЁТСЯ в очереди —
+   * редакция подключается, а не отбирает: тот же смысл, что у автоэскалации по SLA, только
+   * инициатива автора. Одобренный запрос уходит направлением на публичную доску.
+   */
+  async function requestEditorial() {
+    setSubmitting(true);
+    setError(null);
+    const res = await fetch("/api/author/recruit-requests", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chapterId, skills }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    setSubmitting(false);
+    if (res.ok) {
+      setRecruitSent(true);
+      startTransition(() => router.refresh());
+      return;
+    }
+    setError(data.error ?? "Не удалось отправить запрос редакции.");
   }
 
   async function withdraw() {
@@ -221,14 +245,30 @@ export function SubmitSheet({
             )}
 
             {live.status === "open" && (
-              <button
-                type="button"
-                onClick={withdraw}
-                disabled={submitting}
-                className="min-h-9 self-start rounded-[var(--radius-sm)] border border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-2 text-[length:var(--type-small)] text-[var(--danger)] transition-opacity hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--danger)]"
-              >
-                {submitting ? "Отзываем…" : "Отозвать заявку"}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Ф14, канал 3. Точка входа в него была потеряна вместе с пикером ревьюеров:
+                    роут `recruit-requests` жил, а вызвать его из интерфейса стало неоткуда.
+                    Место выбрано по смыслу — предлагаем редакцию ровно тогда, когда очередь молчит,
+                    и только пока заявку никто не взял. */}
+                {live.channel === "queue" && (
+                  <button
+                    type="button"
+                    onClick={requestEditorial}
+                    disabled={submitting}
+                    className="min-h-9 rounded-[var(--radius-sm)] border border-[var(--border)] px-4 py-2 text-[length:var(--type-small)] text-[var(--foreground)] transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  >
+                    {recruitSent ? "Запрос отправлен" : "Запросить ревьюера у редакции"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={withdraw}
+                  disabled={submitting}
+                  className="min-h-9 rounded-[var(--radius-sm)] border border-[var(--danger-border)] bg-[var(--danger-bg)] px-4 py-2 text-[length:var(--type-small)] text-[var(--danger)] transition-opacity hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--danger)]"
+                >
+                  {submitting ? "Отзываем…" : "Отозвать заявку"}
+                </button>
+              </div>
             )}
           </div>
         ) : (

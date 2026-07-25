@@ -1,18 +1,22 @@
 /**
- * Сквозные флоу публикации (TC-FLOWS.md: PUB-GATE/PUB-DRAFT/PUB-CHAPTER-V2/PUB-ARTICLE/
+ * Сквозные флоу публикации (TC-FLOWS.md: PUB-FREE/PUB-DRAFT/PUB-CHAPTER-V2/PUB-ARTICLE/
  * PUB-PORTFOLIO + REV-VERSIONS write-side).
  *
  * Спек тяжело мутирует seed (публикует promises и async-await v2, правит портфолио) →
  * serial + reseed в beforeAll; порядок тестов внутри файла значим:
- *   1. PUB-GATE — 409-гейт на ещё НЕопубликованной promises (до force-approve);
- *   2. PUB-DRAFT — админ force-approve публикует promises;
- *   3. PUB-CHAPTER-V2 — async-await: правка → v2 → approve всех → publish;
- *   4. PUB-ARTICLE — обе свежие публикации в ленте гостя (+fixme про уведомление);
+ *   1. PUB-FREE — публикация доступна при незакрытом ревью (гейта «все approve» больше нет);
+ *   2. PUB-DRAFT — админ force-approve публикует promises (кредита и бейджа при этом НЕТ);
+ *   3. PUB-CHAPTER-V2 — async-await: правка → v2 → approve всех → publish → бейдж;
+ *   4. PUB-ARTICLE — обе свежие публикации в ленте гостя (+уведомление подписчику);
  *   5. PUB-PORTFOLIO — портфолио минуя review-flow (show/hide самовосстанавливается).
  *
- * Факты поведения — MCP-FINDINGS §3б/§5 и sections/04: кнопка «Опубликовать» ОТСУТСТВУЕТ
- * в DOM до всех approve (сервер 409); carry-forward v2 требует approve КАЖДОГО перенесённого;
- * у async-await «Прошлых версий» нет (v1 не публиковалась) — эталон раскрытия — event-loop.
+ * Факты поведения — MCP-FINDINGS §3б/§5 и sections/04: carry-forward v2 требует approve КАЖДОГО
+ * перенесённого; у async-await «Прошлых версий» нет (v1 не публиковалась) — эталон раскрытия —
+ * event-loop.
+ *
+ * ⚠️ Ф13 сняла гейт «все approve» (публикация свободна), ⚠️ Ф14 — роль «ведущего» (в кредите и
+ * в TeamSheet метки больше нет) и добавила БЕЙДЖ: закрытие сессии выдаёт `verified_tier`
+ * (`independent`, если среди одобривших есть хоть один ревьюер, которого автор не приводил).
  */
 import { type Locator, type Page } from "@playwright/test";
 import { test, expect } from "../fixtures";
@@ -133,6 +137,9 @@ test.describe("Флоу публикации: гейт all-approve, force-approv
       // правки, а reviewer вердикта не ставил — значит публикация посреди ревью кредита не
       // фабрикует, и карточка «Эту версию проверяли» не появляется.
       await expect(reader.reviewersRegion.getByRole("heading", { name: "Эту версию проверяли" })).toHaveCount(0);
+      // ⚠️ Ф14: нет кредита — нет и бейджа: force-approve публикует, но не «проверяет».
+      await expect(asGuest.page.getByText("Проверено на Recenza")).toHaveCount(0);
+      await expect(asGuest.page.getByText("Проверено приглашённым экспертом")).toHaveCount(0);
     });
   });
 
@@ -178,7 +185,7 @@ test.describe("Флоу публикации: гейт all-approve, force-approv
       await expect(asAuthor.page.getByRole("button", { name: "Отправить v3" })).toBeVisible();
     });
 
-    await test.step("lena_review (carry-forward, ведущий): видит v2 с правкой → «Одобрить»; одного approve мало", async () => {
+    await test.step("lena_review (carry-forward): видит v2 с правкой → «Одобрить»; одного approve мало", async () => {
       const lena = await loginAs(USERS.lena.handle);
       const lenaReview = new ReviewPage(lena.page);
       await lenaReview.gotoAsReviewer(CHAPTERS.changesRequested.id);
@@ -212,7 +219,7 @@ test.describe("Флоу публикации: гейт all-approve, force-approv
       await authorReview.publish(); // ждёт «Глава опубликована.» — внутри POM
     });
 
-    await test.step("Гость: контент v2 и чипы ревьюеров текущей версии (Лена — ведущий, Раиса)", async () => {
+    await test.step("Гость: контент v2, чипы ревьюеров текущей версии (Лена, Раиса) и бейдж «Проверено на Recenza»", async () => {
       const reader = new ReaderPage(asGuest.page);
       await reader.gotoChapter(BLOG.slug, CHAPTERS.changesRequested.slug);
       await expect(asGuest.page.getByText(V2_TEXT)).toBeVisible();
@@ -220,8 +227,15 @@ test.describe("Флоу публикации: гейт all-approve, force-approv
       const region = reader.reviewersRegion;
       await expect(region.getByRole("heading", { name: "Эту версию проверяли" })).toBeVisible();
       await expect(region.getByRole("link", { name: "Лена Базы" })).toBeVisible();
-      await expect(region.locator("li", { hasText: "Лена Базы" }).getByText("ведущий")).toBeVisible();
       await expect(region.getByRole("link", { name: "Раиса Ревьюер" })).toBeVisible();
+      // ⚠️ Ф14: метки «ведущий» в кредите больше нет; вместо неё — уровень проверки. Ни Лена,
+      // ни Раиса не приведены автором (`introduced_by` пуст) → уровень `independent`.
+      await expect(region.getByText("ведущий")).toHaveCount(0);
+      await expect(region.getByText("Проверено на Recenza")).toBeVisible();
+      // Бейдж дублируется у h1 главы (ряд метаданных) — читатель видит его до контента.
+      await expect(
+        asGuest.page.locator("article > div").filter({ hasText: "Проверено на Recenza" }),
+      ).toHaveCount(1);
       // Write-side REV-VERSIONS: у async-await v1 НЕ публиковалась → «Прошлых версий» нет
       // (фантомный кредит за неопубликованную ревизию не появился) — MCP sections/04.
       await expect(reader.pastVersions).toHaveCount(0);

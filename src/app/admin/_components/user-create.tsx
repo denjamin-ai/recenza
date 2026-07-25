@@ -23,6 +23,10 @@ export function UserCreate() {
   // (решение владельца), ревьюерство выдаётся явно.
   const [canAuthor, setCanAuthor] = useState(true);
   const [isReviewer, setIsReviewer] = useState(false);
+  // Ф14: кто привёл человека. От этого поля зависит УРОВЕНЬ БЕЙДЖА его ревью: приведённый автором
+  // эксперт даёт «Проверено приглашённым экспертом», независимый — «Проверено на Recenza».
+  // Заполняется при разборе анкеты с инвайт-ссылки (там же указан handle пригласившего).
+  const [introducedBy, setIntroducedBy] = useState("");
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -35,6 +39,7 @@ export function UserCreate() {
         password,
         canAuthor,
         isReviewer,
+        introducedBy: introducedBy.trim() ? introducedBy.trim() : undefined,
       });
       if (!res.ok) {
         setError(res.error ?? "Не удалось создать пользователя.");
@@ -46,6 +51,7 @@ export function UserCreate() {
       setPassword("");
       setCanAuthor(true);
       setIsReviewer(false);
+      setIntroducedBy("");
       router.refresh();
     });
   }
@@ -105,6 +111,22 @@ export function UserCreate() {
                 autoComplete="off"
                 className={inputCls}
               />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+                Кто пригласил (необязательно)
+              </span>
+              <input
+                value={introducedBy}
+                onChange={(e) => setIntroducedBy(e.target.value)}
+                placeholder="handle автора"
+                autoComplete="off"
+                className={inputCls}
+              />
+              <span className="mt-1 block text-[0.7rem] text-[var(--muted-foreground)] [text-wrap:pretty]">
+                Заполняется для эксперта, пришедшего по инвайт-ссылке: его ревью получит пометку
+                «Проверено приглашённым экспертом».
+              </span>
             </label>
             <label className="block">
               <span className="mb-1 block text-[length:var(--type-small)] text-[var(--muted-foreground)]">Пароль (мин. 8 символов)</span>

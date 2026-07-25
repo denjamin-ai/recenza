@@ -1,8 +1,8 @@
 /**
  * REV-SESSION-CHAT / REV-PRESENCE — чат ревью-сессии (TC-FLOWS.md).
  *
- * Глава chp_under_review (promises): команда — reviewer (ведущий, online) + lena_review;
- * seed-чат rch_1–rch_3. Чат (`review_chat`) не смешивается с тредами (`threads/thread_replies`).
+ * Глава chp_under_review (promises): команда — reviewer + lena_review (Ф14: «ведущего» больше нет,
+ * оба взяли заявку сами); seed-чат rch_1–rch_3. Чат (`review_chat`) не смешивается с тредами.
  * Кросс-экранный sync — поллинг 30 с: в тестах проверяем через reload, не ожиданием.
  *
  * Спек мутирует seed (добавляет 2 сообщения в review_chat) → serial + reseed в beforeAll.
@@ -131,9 +131,11 @@ test.describe("REV-SESSION-CHAT: чат ревью-сессии — участн
     await test.step("До heartbeat: у автора вся команда «был недавно»", async () => {
       await review.gotoAsAuthor(BLOG.slug, CHAPTERS.underReview.slug);
       const team = review.team;
-      await expect(team.locator('span[title="@reviewer · ведущий · был недавно"]')).toBeVisible();
+      // ⚠️ Ф14: title аватара — «@handle · онлайн|был недавно»; сегмента «· ведущий» больше нет.
+      await expect(team.locator('span[title="@reviewer · был недавно"]')).toBeVisible();
       await expect(team.locator('span[title="@lena_review · был недавно"]')).toBeVisible();
-      // sergey_review лишь приглашён (inv_pending) — ревью не стартовало, в команде его нет.
+      await expect(team.locator('span[title*="ведущий"]')).toHaveCount(0);
+      // sergey_review заявку не брал (приглашений в Ф14 нет вовсе) — в команде его нет.
       await expect(team.locator('span[title*="@sergey_review"]')).toHaveCount(0);
     });
 
@@ -150,7 +152,7 @@ test.describe("REV-SESSION-CHAT: чат ревью-сессии — участн
     await test.step("Автор после reload видит @reviewer онлайн; lena по-прежнему «был недавно»", async () => {
       await review.gotoAsAuthor(BLOG.slug, CHAPTERS.underReview.slug);
       const team = review.team;
-      await expect(team.locator('span[title="@reviewer · ведущий · онлайн"]')).toBeVisible();
+      await expect(team.locator('span[title="@reviewer · онлайн"]')).toBeVisible();
       await expect(team.locator('span[title="@lena_review · был недавно"]')).toBeVisible();
     });
   });

@@ -12,8 +12,8 @@
 //
 // Дисциплина файла — A/S (additive/self-restoring), БЕЗ reseed:
 //   - заявка НИКОГДА не подаётся и не отзывается отсюда — это делают flows/* со своим reseed;
-//   - гейт навыков (TC-AUTHOR-08) проверяется на chp_changes БЕЗ отправки (у chp_draft в сиде уже
-//     висит живая заявка req_open, и шторка показала бы её состояние вместо формы);
+//   - гейт навыков (TC-AUTHOR-08) проверяется на chp_draft БЕЗ отправки: сид намеренно держит эту
+//     главу чистой (`review_status='none'`, живой заявки нет), иначе редактор был бы заблокирован;
 //   - новые блоги-песочницы создаются с уникальными title и НЕ удаляются (additive);
 //   - reorder (TC-AUTHOR-12) и видимость портфолио (TC-AUTHOR-14+15) — toggle туда-обратно.
 // Локаторы и точные тексты — testing/mcp/MCP-FINDINGS.md §2/§5; известные баги §6 не ассертим как рабочие.
@@ -71,11 +71,13 @@ test.describe("Автор (author)", () => {
     await expect(page.getByRole("region", { name: "События" })).toBeVisible();
 
     // Ф14: секции «Оцените ревьюеров» (рейтинг снесён) и «Навыки не совпадают» (приглашения
-    // снесены) заменены на список живых ЗАЯВОК с таймером SLA (seed: req_open + req_silent).
+    // снесены) заменены на список живых ЗАЯВОК с таймером SLA. У `author` живая заявка одна —
+    // req_silent (claimed на «Промисы изнутри»); req_open уехал к duo, req_stale — к ghost.
     const requests = page.getByRole("region", { name: "Заявки на ревью" });
     await expect(requests).toBeVisible();
-    await expect(requests.getByText(CHAPTERS.draft.title)).toBeVisible();
-    await expect(requests.getByText("В очереди", { exact: true })).toBeVisible();
+    await expect(requests.getByText(CHAPTERS.underReview.title)).toBeVisible();
+    await expect(requests.getByText("В работе", { exact: true })).toBeVisible();
+    await expect(requests.getByText(/Взял в работу/)).toBeVisible();
     await expect(page.getByRole("region", { name: "Оцените ревьюеров" })).toHaveCount(0);
     await expect(page.getByRole("region", { name: "Навыки не совпадают" })).toHaveCount(0);
   });
@@ -264,9 +266,9 @@ test.describe("Автор (author)", () => {
   });
 
   // ── TC-AUTHOR-08 — гейт навыков в шторке «Заявка на ревью» (БЕЗ отправки!) ───
-  // ⚠️ Ф14: цель кейса — chp_changes (async-await), а НЕ chp_draft: у последней в сиде висит
-  // живая заявка req_open, и шторка показала бы её состояние вместо формы (см. TC-AUTHOR-29).
-  // Пикер ревьюеров снят целиком — гейтом остаются только 5 пунктов готовности.
+  // Мишень — chp_draft (generators): сид намеренно держит её без живой заявки и в `review_status
+  // = 'none'`, поэтому редактор открыт, а шторка показывает ФОРМУ (состояние заявки — TC-AUTHOR-29).
+  // Ф14: пикер ревьюеров снят целиком — гейтом остаются только 5 пунктов готовности.
 
   test("TC-AUTHOR-08 @critical: шторка «Заявка на ревью» — без навыков «Оставить заявку» заблокирована; навыки возвращаем и закрываем шторку без отправки", async ({
     asAuthor,
@@ -276,14 +278,12 @@ test.describe("Автор (author)", () => {
     const skillsCheckItem = editor.submitSheet.locator("li", { hasText: "Ключевые навыки статьи" });
     const submitBtn = editor.submitSheet.getByRole("button", { name: "Оставить заявку", exact: true });
 
-    await test.step("открываем шторку на async-await: чек-лист «Готовность N/5», чипы навыков на месте, пикера ревьюеров нет", async () => {
-      await editor.goto(BLOG.slug, CHAPTERS.changesRequested.slug);
+    await test.step("открываем шторку на seed-черновике generators: чек-лист «Готовность N/5», чипы навыков на месте, пикера ревьюеров нет", async () => {
+      await editor.goto(BLOG.slug, CHAPTERS.draft.slug);
       await editor.openSubmitSheet();
       await expect(editor.readinessHeading).toBeVisible();
-      await expect(editor.submitSheet.getByRole("button", { name: "Удалить «Async/Await»" })).toBeVisible();
-      await expect(
-        editor.submitSheet.getByRole("button", { name: "Удалить «Обработка ошибок»" }),
-      ).toBeVisible();
+      await expect(editor.submitSheet.getByRole("button", { name: "Удалить «Генераторы»" })).toBeVisible();
+      await expect(editor.submitSheet.getByRole("button", { name: "Удалить «Итераторы»" })).toBeVisible();
       await expect(skillsCheckItem).toContainText("✓");
       // Ф14: вкладок «Все»/«По навыкам», поиска и чекбоксов ревьюеров в шторке больше нет.
       await expect(editor.submitSheet.getByRole("tab")).toHaveCount(0);
@@ -295,8 +295,8 @@ test.describe("Автор (author)", () => {
     });
 
     await test.step("удаляем все навыки → пункт чек-листа открыт, футер «Закройте все пункты», «Оставить заявку» disabled", async () => {
-      await editor.removeSkill("Async/Await");
-      await editor.removeSkill("Обработка ошибок");
+      await editor.removeSkill("Генераторы");
+      await editor.removeSkill("Итераторы");
       await expect(skillsCheckItem).toContainText("○");
       await expect(editor.readyFooter).toHaveCount(0);
       await expect(editor.submitSheet.getByText("Закройте все пункты")).toBeVisible();
@@ -307,51 +307,60 @@ test.describe("Автор (author)", () => {
       ).toBeVisible();
     });
 
-    await test.step("возвращаем навыки «Async/Await», «Обработка ошибок» → пункт снова закрыт", async () => {
-      await editor.addSkill("Async/Await");
-      await editor.addSkill("Обработка ошибок");
-      await expect(editor.submitSheet.getByRole("button", { name: "Удалить «Async/Await»" })).toBeVisible();
-      await expect(
-        editor.submitSheet.getByRole("button", { name: "Удалить «Обработка ошибок»" }),
-      ).toBeVisible();
+    await test.step("возвращаем навыки «Генераторы», «Итераторы» → пункт снова закрыт", async () => {
+      await editor.addSkill("Генераторы");
+      await editor.addSkill("Итераторы");
+      await expect(editor.submitSheet.getByRole("button", { name: "Удалить «Генераторы»" })).toBeVisible();
+      await expect(editor.submitSheet.getByRole("button", { name: "Удалить «Итераторы»" })).toBeVisible();
       await expect(skillsCheckItem).toContainText("✓");
     });
 
-    await test.step("закрываем шторку Escape БЕЗ отправки — статус главы не изменился", async () => {
+    await test.step("закрываем шторку Escape БЕЗ отправки — глава остаётся чистым черновиком", async () => {
       await page.keyboard.press("Escape");
       await expect(editor.submitSheet).toBeHidden();
       await asAuthor.goto(`/author/blog/${BLOG.slug}`);
-      const row = page.locator("li", { hasText: CHAPTERS.changesRequested.title });
+      const row = page.locator("li", { hasText: CHAPTERS.draft.title });
       await expect(row.getByText("Черновик", { exact: true })).toBeVisible();
-      await expect(row.getByText("Нужны правки", { exact: true })).toBeVisible();
       // Заявка не подана: пилюли «Ждёт ревьюера» у главы нет.
       await expect(row.getByText("Ждёт ревьюера", { exact: true })).toHaveCount(0);
     });
   });
 
   // ── TC-AUTHOR-29 — шторка на главе с ЖИВОЙ заявкой (Ф14, read-only) ──────────
+  // Мишень — chp_under_review (req_silent, статус `claimed`): у аккаунта `author` это единственная
+  // живая заявка. Отзыв в этом состоянии ЗАПРЕЩЁН (ревьюер уже потратил время) — кнопки быть не
+  // должно, сервер тоже отвечает 409. Ветку `open` + активный отзыв держит flows/* со своим reseed.
 
-  test("TC-AUTHOR-29 @critical: у главы с живой заявкой шторка показывает «Состояние заявки» и «Отозвать заявку» вместо формы", async ({
+  test("TC-AUTHOR-29 @critical: у главы с взятой заявкой шторка показывает «Состояние заявки» вместо формы, «Отозвать заявку» недоступна", async ({
     asAuthor,
+    api,
   }) => {
     const { page } = asAuthor;
     const editor = new EditorPage(page);
 
-    await test.step("chp_draft (seed req_open): вместо формы — группа «Состояние заявки»", async () => {
-      await editor.goto(BLOG.slug, CHAPTERS.draft.slug);
+    await test.step("chp_under_review (seed req_silent, claimed): вместо формы — группа «Состояние заявки»", async () => {
+      await editor.goto(BLOG.slug, CHAPTERS.underReview.slug);
       await editor.openSubmitSheet();
       await expect(editor.requestState).toBeVisible();
-      await expect(editor.requestState.getByText("Заявка в очереди")).toBeVisible();
+      await expect(editor.requestState.getByText(/Взял в работу/)).toBeVisible();
       await expect(editor.requestState.getByText(/^Срок:/)).toBeVisible();
       // Формы подачи нет: ни чек-листа готовности, ни кнопки «Оставить заявку».
       await expect(editor.readinessHeading).toHaveCount(0);
       await expect(editor.submitSheet.getByRole("button", { name: "Оставить заявку" })).toHaveCount(0);
     });
 
-    await test.step("«Отозвать заявку» доступна, пока заявку не взяли — но НЕ нажимаем (A/S-дисциплина)", async () => {
-      await expect(editor.withdrawButton).toBeEnabled();
+    await test.step("взятую заявку отозвать нельзя: кнопки нет в UI, DELETE в обход → 409", async () => {
+      await expect(editor.withdrawButton).toHaveCount(0);
       await page.keyboard.press("Escape");
       await expect(editor.submitSheet).toBeHidden();
+
+      const ctx = await api("author");
+      await throttleMutation(USERS.author.handle);
+      const res = await ctx.delete(`/api/author/chapters/${CHAPTERS.underReview.id}/review-request`);
+      expect(res.status()).toBe(409);
+      expect(((await res.json()) as { error?: string }).error).toBe(
+        "Заявку уже взяли в работу — отозвать нельзя.",
+      );
     });
   });
 
@@ -723,5 +732,42 @@ test.describe("Автор (author)", () => {
     await expect(dialog.getByRole("link", { name: /Кабинет автора/ })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
+  });
+
+  // ── TC-AUTHOR-30 — НЕГАТИВ: снесённые Ф14 роуты автора отвечают 404 ─────────
+  // Прецедент Ф13: удалённый роут = отсутствующий сегмент App Router → 404, и спека это фиксирует,
+  // чтобы «воскрешение» старого API не прошло незамеченным.
+
+  test("TC-AUTHOR-30 @critical: удалённые роуты Ф14 — POST …/submit и POST /api/author/ratings → 404", async ({
+    api,
+  }) => {
+    const ctx = await api("author");
+
+    await test.step("пикер ревьюеров снят: POST /api/author/chapters/{id}/submit → 404", async () => {
+      await throttleMutation(USERS.author.handle);
+      const res = await ctx.post(`/api/author/chapters/${CHAPTERS.draft.id}/submit`, {
+        data: { skills: ["Генераторы"], reviewers: [USERS.reviewer.handle], complexity: "simple" },
+      });
+      expect(res.status()).toBe(404);
+    });
+
+    await test.step("рейтинг ревьюеров снесён целиком: POST /api/author/ratings → 404", async () => {
+      await throttleMutation(USERS.author.handle);
+      const res = await ctx.post("/api/author/ratings", {
+        data: { chapterId: CHAPTERS.published.id, handle: USERS.reviewer.handle, stars: 5 },
+      });
+      expect(res.status()).toBe(404);
+    });
+
+    await test.step("живой преемник на месте: OPTIONS-совместимый POST review-request не 404 (гейт готовности, а не отсутствие роута)", async () => {
+      // Тело намеренно невалидное (пустые навыки) → 400 «Не все пункты готовности выполнены»,
+      // но НИКОГДА не 404: иначе тест выше проходил бы «по совпадению».
+      await throttleMutation(USERS.author.handle);
+      const res = await ctx.post(`/api/author/chapters/${CHAPTERS.changesRequested.id}/review-request`, {
+        data: { skills: [] },
+      });
+      expect(res.status()).not.toBe(404);
+      expect([400, 409, 429]).toContain(res.status());
+    });
   });
 });

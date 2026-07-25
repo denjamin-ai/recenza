@@ -446,6 +446,8 @@ export interface AdminApplicationRow {
   message: string | null;
   status: ApplicationStatus;
   createdAt: number;
+  /** Ф14: handle автора, приславшего инвайт-ссылку. null — обычный отклик с доски. */
+  invitedBy: string | null;
 }
 
 export interface AdminRecruitData {
@@ -510,6 +512,7 @@ export async function getAdminRecruit(): Promise<AdminRecruitData> {
       message: reviewerApplications.message,
       status: reviewerApplications.status,
       createdAt: reviewerApplications.createdAt,
+      invitedBy: reviewerApplications.invitedBy,
     })
     .from(reviewerApplications)
     .leftJoin(users, eq(users.handle, reviewerApplications.byHandle))
@@ -526,6 +529,7 @@ export async function getAdminRecruit(): Promise<AdminRecruitData> {
     message: a.message,
     status: a.status,
     createdAt: a.createdAt,
+    invitedBy: a.invitedBy,
   }));
 
   return { requests, applications };
