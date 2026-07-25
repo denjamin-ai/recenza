@@ -33,6 +33,21 @@ export function ProfileTabs({
   const [tab, setTab] = useState<TabId>("about");
   const active = tabs.some((t) => t.id === tab) ? tab : "about";
 
+  /** Стрелки ←/→ и Home/End — пара к roving tabindex (без них неактивные табы недостижимы). */
+  function onTabKey(e: React.KeyboardEvent, id: string) {
+    const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
+    if (!keys.includes(e.key)) return;
+    e.preventDefault();
+    const i = tabs.findIndex((t) => t.id === id);
+    const next =
+      e.key === "Home"
+        ? 0
+        : e.key === "End"
+          ? tabs.length - 1
+          : (i + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+    setTab(tabs[next].id);
+  }
+
   const tabCls = (isActive: boolean) =>
     `min-h-9 border-b-2 px-1 pb-2 text-[length:var(--type-small)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
       isActive
@@ -52,6 +67,9 @@ export function ProfileTabs({
             key={t.id}
             type="button"
             role="tab"
+            // Roving tabindex (backlog Ф14 P3): Tab заходит только в активный таб, между табами — стрелки.
+            tabIndex={active === t.id ? 0 : -1}
+            onKeyDown={(e) => onTabKey(e, t.id)}
             id={`profile-tab-${t.id}`}
             aria-controls={`profile-panel-${t.id}`}
             aria-selected={active === t.id}

@@ -122,7 +122,7 @@ export function PromoCarousel({ banners, donation }: { banners: FeedBanner[]; do
               type="button"
               aria-label="Предыдущий баннер"
               onClick={() => setIndex((i) => (i - 1 + count) % count)}
-              className="absolute left-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-[var(--radius-pill)] border border-[var(--border)] bg-[var(--bg-elevated)]/85 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              className="absolute left-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-[var(--radius-pill)] border border-[var(--border)] bg-[var(--bg-elevated)]/85 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             >
               <IconChevronLeft className="h-4 w-4" />
             </button>
@@ -130,7 +130,7 @@ export function PromoCarousel({ banners, donation }: { banners: FeedBanner[]; do
               type="button"
               aria-label="Следующий баннер"
               onClick={() => setIndex((i) => (i + 1) % count)}
-              className="absolute right-2 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-[var(--radius-pill)] border border-[var(--border)] bg-[var(--bg-elevated)]/85 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              className="absolute right-2 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-[var(--radius-pill)] border border-[var(--border)] bg-[var(--bg-elevated)]/85 text-[var(--muted-foreground)] transition-colors hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             >
               <IconChevronRight className="h-4 w-4" />
             </button>

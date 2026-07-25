@@ -11,7 +11,8 @@
 // Вёрстка на токенах DS (без теней/raw-цветов); мобильный bottom-sheet; Esc/оверлей закрывают.
 // Админ шапку сайта не видит — admin-варианта нет намеренно.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { useModalA11y } from "@/lib/use-modal-a11y";
 import Link from "next/link";
 import { IconBookOpen, IconCheck, IconEdit } from "@/components/icons";
 import { capabilitiesLabel, capabilitiesOf, type CapabilityHolder } from "@/lib/roles";
@@ -72,7 +73,8 @@ const GUIDE_CONTENT: Record<GuideSectionKey, GuideSection> = {
 
 export function GuideButton({ user }: { user: CapabilityHolder | null }) {
   const [open, setOpen] = useState(false);
-  const dialogRef = useRef<HTMLDivElement>(null);
+  // Escape/автофокус/focus-trap/возврат фокуса — общий хук; здесь остаётся только блокировка скролла.
+  const dialogRef = useModalA11y<HTMLDivElement>(open, () => setOpen(false));
 
   // Ф15: разделы по ВОЗМОЖНОСТЯМ. Базовый уровень есть у всех, поэтому «reader» — всегда;
   // аккаунт с обеими возможностями видит оба кабинетных раздела (раньше — только авторский).
@@ -86,16 +88,9 @@ export function GuideButton({ user }: { user: CapabilityHolder | null }) {
 
   useEffect(() => {
     if (!open) return;
-    // Initial focus в диалог (паттерн donate-modal) — иначе Tab гуляет под оверлеем при aria-modal.
-    dialogRef.current?.focus();
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
-      document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
   }, [open]);

@@ -46,11 +46,25 @@ export async function resolveReportSubject(
 }
 
 async function resolveComment(commentId: string, reporter: Reporter): Promise<ReportSubject | null> {
+  // ⚠️ Видимость РОДИТЕЛЬСКОГО блога проверяется так же, как в `resolveBlog`: жалоба на
+  // комментарий к уже скрытому блогу бессмысленна (модерация по нему уже проведена), а сам
+  // блог не должен «просвечивать» через комментарии. `public_comments` связан с блогом по
+  // slug без FK, поэтому джойн идёт по нему.
   const row = (
     await db
       .select({ id: publicComments.id, authorId: publicComments.authorId })
       .from(publicComments)
-      .where(and(eq(publicComments.id, commentId), isNull(publicComments.deletedAt)))
+      .innerJoin(blogs, eq(blogs.slug, publicComments.blogSlug))
+      .innerJoin(users, eq(users.id, blogs.authorId))
+      .where(
+        and(
+          eq(publicComments.id, commentId),
+          isNull(publicComments.deletedAt),
+          eq(blogs.hidden, false),
+          eq(users.isBlocked, false),
+          eq(users.canAuthor, true),
+        ),
+      )
       .limit(1)
   )[0];
   if (!row) return null;

@@ -7,6 +7,12 @@
 //
 // Третий уровень — человеческая подпись раздела, а не сегмент URL: ULID в крошке нечитаем.
 
+/** Крошка: подпись + href (последняя — текущая страница, без ссылки). */
+export interface Crumb {
+  label: string;
+  href?: string;
+}
+
 export interface CrumbSource {
   /** Метка группы сайдбара («Модерация» / «Люди» / «Платформа»); null — для «Сводки». */
   group: string | null;
@@ -28,16 +34,18 @@ function detailLabel(href: string, tail: string): string {
  * Крошки для текущего пути. Первый уровень — группа (если она есть), затем раздел,
  * затем — подпись детальной страницы, если путь глубже раздела.
  */
-export function adminCrumbs(pathname: string, active: CrumbSource | null): string[] {
-  if (!active) return ["Админка"];
-
-  const crumbs: string[] = [];
-  if (active.group) crumbs.push(active.group);
-  crumbs.push(active.section);
+export function adminCrumbs(pathname: string, active: CrumbSource | null): Crumb[] {
+  if (!active) return [{ label: "Админка" }];
 
   const tail = pathname.startsWith(active.href + "/") ? pathname.slice(active.href.length + 1) : "";
   const first = tail.split("/")[0];
-  if (first) crumbs.push(detailLabel(active.href, decodeURIComponent(first)));
+
+  const crumbs: Crumb[] = [];
+  // Группа — не страница, ссылки у неё нет (в сайдбаре это заголовок, а не пункт).
+  if (active.group) crumbs.push({ label: active.group });
+  // Раздел кликабелен, только если мы глубже него: иначе это ссылка на саму себя.
+  crumbs.push({ label: active.section, href: first ? active.href : undefined });
+  if (first) crumbs.push({ label: detailLabel(active.href, decodeURIComponent(first)) });
 
   return crumbs;
 }

@@ -141,9 +141,20 @@ export function AdminShell({ children }: { children: ReactNode }) {
         <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--bg-elevated)] px-6 py-3">
           <nav aria-label="Хлебные крошки" className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">
             {crumbs.map((c, i) => (
-              <span key={c}>
+              <span key={c.label}>
                 {i > 0 && <span aria-hidden="true"> · </span>}
-                <span className={i === crumbs.length - 1 ? "text-[var(--foreground)]" : undefined}>{c}</span>
+                {/* Ф15.1: раздел кликабелен, когда мы глубже него — как крошки ридера
+                    (backlog Ф15: интерактивность крошек была непоследовательной). */}
+                {c.href ? (
+                  <Link
+                    href={c.href}
+                    className="rounded-[var(--radius-sm)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  >
+                    {c.label}
+                  </Link>
+                ) : (
+                  <span className={i === crumbs.length - 1 ? "text-[var(--foreground)]" : undefined}>{c.label}</span>
+                )}
               </span>
             ))}
           </nav>
