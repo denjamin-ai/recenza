@@ -94,9 +94,102 @@ function ThemeToggle({ theme, setTheme }) {
 }
 
 // -----------------------------------------------------------------------------
+// AlphaBadge — persistent "ALPHA" pill next to the wordmark. Click opens a small
+// popover explaining the alpha status + a feedback link. Used in Nav + login.
+// -----------------------------------------------------------------------------
+const ALPHA_COPY = "Recenza активно разрабатывается и тестируется, новые изменения на подходе.";
+
+function AlphaBadge({ withPopover = true, tone = "amber" }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+
+  const pill = (
+    <span
+      className="inline-flex items-center gap-1 rounded-full border px-1.5 py-[2px] text-[9.5px] font-bold uppercase tracking-[0.14em] leading-none select-none"
+      style={{ background: "var(--warning-bg)", color: "var(--warning)", borderColor: "var(--warning-border)" }}
+    >
+      <span className="w-1 h-1 rounded-full" style={{ background: "currentColor" }} />
+      Alpha
+    </span>
+  );
+  if (!withPopover) return pill;
+
+  return (
+    <span className="relative inline-flex" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label="О статусе альфа-версии"
+        aria-expanded={open}
+        className="inline-flex rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] hover:opacity-80 transition-opacity"
+      >
+        {pill}
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          className="absolute left-0 top-full mt-2 z-50 w-[264px] max-w-[calc(100vw-2rem)] rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] shadow-lg p-3.5 text-left"
+        >
+          <p className="text-[10.5px] uppercase tracking-wider font-semibold mb-1.5" style={{ color: "var(--warning)" }}>Альфа-версия</p>
+          <p className="text-[12.5px] leading-relaxed text-[var(--foreground)]">{ALPHA_COPY}</p>
+        </div>
+      )}
+    </span>
+  );
+}
+
+// -----------------------------------------------------------------------------
+// AlphaNotice — dismissible thin strip under the nav. Remembers dismissal in
+// localStorage so it only nags on first visit.
+// -----------------------------------------------------------------------------
+const ALPHA_NOTICE_KEY = "recenza-alpha-notice-dismissed-v1";
+
+function AlphaNotice() {
+  const [dismissed, setDismissed] = useState(() => {
+    try { return localStorage.getItem(ALPHA_NOTICE_KEY) === "1"; } catch (e) { return false; }
+  });
+  if (dismissed) return null;
+  const close = () => {
+    try { localStorage.setItem(ALPHA_NOTICE_KEY, "1"); } catch (e) {}
+    setDismissed(true);
+  };
+  return (
+    <div className="border-b" style={{ background: "var(--warning-bg)", borderColor: "var(--warning-border)" }} role="status">
+      <div className="max-w-6xl mx-auto px-4 py-2 flex items-center gap-2.5 text-[12.5px] leading-snug" style={{ color: "var(--warning)" }}>
+        <span className="shrink-0 inline-flex items-center rounded-full border px-1.5 py-[2px] text-[9px] font-bold uppercase tracking-[0.14em] leading-none" style={{ borderColor: "currentColor" }}>Alpha</span>
+        <p className="min-w-0 flex-1">{ALPHA_COPY}</p>
+        <button onClick={close} aria-label="Скрыть уведомление" className="shrink-0 w-7 h-7 -mr-1 inline-flex items-center justify-center rounded-md hover:bg-[color-mix(in_srgb,currentColor_14%,transparent)] transition-colors">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------------
 // Nav — mirrors blog/src/components/nav.tsx
 // -----------------------------------------------------------------------------
 const ROLE_RU = { reader: "Читатель", author: "Автор", reviewer: "Ревьюер", admin: "Администратор" };
+
+// One account, many roles (new model). `user.roles` is canonical; `user.role`
+// stays as the legacy single-role fallback. "reader" is the baseline — it is
+// never a кабинет, so rolesOf() returns only working roles.
+const ROLE_ORDER = ["author", "reviewer", "admin"];
+function rolesOf(user) {
+  if (!user) return [];
+  const raw = Array.isArray(user.roles) ? user.roles : (user.role ? [user.role] : []);
+  return ROLE_ORDER.filter(r => raw.includes(r));
+}
+function hasRole(user, role) { return rolesOf(user).includes(role); }
+Object.assign(window, { rolesOf, hasRole, ROLE_ORDER });
 
 // ─── Notifications (A5) ────────────────────────────────────────
 // Derived per session from real state: new chapters in followed series,
@@ -237,45 +330,44 @@ function NotificationBell({ session, onOpenItem }) {
   );
 }
 
-function Nav({ theme, setTheme, session, onNavigate, currentPage, onLogout, onLogin, onOpenGuide, onOpenProfile, onOpenReviewer, onOpenAdmin, onOpenAuthor, onOpenBookmarks, onOpenNotification }) {
+function Nav({ theme, setTheme, session, onNavigate, currentPage, onLogout, onLogin, onOpenGuide, onOpenProfile, onOpenReviewer, onOpenAdmin, onOpenAuthor, onOpenBookmarks, onOpenNotification, onOpenWorkspace }) {
   const isLoggedIn = !!session;
   const [mobileOpen, setMobileOpen] = useState(false);
   const blogActive = currentPage === "blog" || currentPage === "article" || currentPage === "home";
 
   // Active-state per role for the mobile menu. A portal entry is only
   // highlighted when we're actually on one of that role's pages.
-  const portalPages = session?.role === "author"   ? ["author", "blogdetail", "editor"]
-                    : session?.role === "reviewer" ? ["reviewer", "review"]
-                    : session?.role === "admin"    ? ["admin"]
-                    : [];
+  const portalPages = ["workspace", "author", "blogdetail", "editor", "reviewer", "review", "admin"];
   const portalActive   = portalPages.includes(currentPage);
+  const myRoles = rolesOf(session);
   const profileActive  = currentPage === "profile";
   const bookmarksActive = currentPage === "bookmarks";
   const mItem = (active) => `text-left px-2 py-2.5 rounded-md text-[15px] min-h-[44px] transition-colors ${
     active ? "text-[var(--foreground)] font-medium bg-[var(--muted)]/50" : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/40"
   }`;
 
-  // Role-aware portal entry for the mobile sheet.
-  const portal = !session ? null
-    : session.role === "admin"    ? { label: "Кабинет администратора", fn: onOpenAdmin }
-    : session.role === "reviewer" ? { label: "Кабинет ревьюера", fn: onOpenReviewer }
-    : session.role === "author"   ? { label: "Кабинет автора", fn: onOpenAuthor }
-    : null;
+  // Single private entry point for every role — the «Рабочее место» hub.
+  const portal = (!session || myRoles.length === 0) ? null
+    : { label: "Рабочее место", fn: onOpenWorkspace };
 
   return (
+    <>
     <nav
       className="sticky top-0 z-40 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--background)_80%,transparent)] backdrop-blur-md"
       data-screen-label="Nav"
     >
       <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-        <a
-          href="#"
-          onClick={(e) => { e.preventDefault(); onNavigate("home"); }}
-          className="font-[var(--font-display)] hover:opacity-80 transition-opacity inline-flex items-baseline gap-1.5"
-          aria-label="Recenza — главная"
-        >
-          <span className="font-extrabold text-xl leading-none tracking-tight">Recenza</span>
-        </a>
+        <div className="flex items-center gap-2">
+          <a
+            href="#"
+            onClick={(e) => { e.preventDefault(); onNavigate("home"); }}
+            className="font-[var(--font-display)] hover:opacity-80 transition-opacity inline-flex items-baseline gap-1.5"
+            aria-label="Recenza — главная"
+          >
+            <span className="font-extrabold text-xl leading-none tracking-tight">Recenza</span>
+          </a>
+          <AlphaBadge />
+        </div>
 
         {/* Desktop cluster */}
         <div className="hidden sm:flex items-center gap-5">
@@ -286,6 +378,16 @@ function Nav({ theme, setTheme, session, onNavigate, currentPage, onLogout, onLo
           >
             Лента
           </a>
+          {isLoggedIn && myRoles.length > 0 && (
+            <button
+              onClick={() => onOpenWorkspace?.()}
+              className={`inline-flex items-center gap-1.5 text-sm transition-colors ${portalActive ? "text-[var(--foreground)] font-medium" : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"}`}
+              title="Приватная страница — видите только вы"
+            >
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--private)]"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              Рабочее место
+            </button>
+          )}
           <button
             onClick={() => onOpenGuide?.()}
             className="w-9 h-9 flex items-center justify-center rounded-md hover:bg-[var(--muted)] transition-colors text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
@@ -298,7 +400,7 @@ function Nav({ theme, setTheme, session, onNavigate, currentPage, onLogout, onLo
           {isLoggedIn ? (
             <>
               <NotificationBell session={session} onOpenItem={onOpenNotification} />
-              <AvatarMenu session={session} onLogout={onLogout} onOpenProfile={onOpenProfile} onOpenReviewer={onOpenReviewer} onOpenAdmin={onOpenAdmin} onOpenAuthor={onOpenAuthor} onOpenBookmarks={onOpenBookmarks} />
+              <AvatarMenu session={session} onLogout={onLogout} onOpenProfile={onOpenProfile} onOpenReviewer={onOpenReviewer} onOpenAdmin={onOpenAdmin} onOpenAuthor={onOpenAuthor} onOpenBookmarks={onOpenBookmarks} onOpenWorkspace={onOpenWorkspace} />
             </>
           ) : (
             <a
@@ -362,12 +464,10 @@ function Nav({ theme, setTheme, session, onNavigate, currentPage, onLogout, onLo
                 onClick={() => { setMobileOpen(false); onOpenProfile?.(session.handle); }}
                 className={mItem(profileActive)}
               >Мой профиль</button>
-              {session.role === "reader" && (
-                <button
-                  onClick={() => { setMobileOpen(false); onOpenBookmarks?.(); }}
-                  className={mItem(bookmarksActive)}
-                >Закладки</button>
-              )}
+              <button
+                onClick={() => { setMobileOpen(false); onOpenBookmarks?.(); }}
+                className={mItem(bookmarksActive)}
+              >Закладки</button>
 
               {/* Secondary group */}
               <div className="my-1 border-t border-[var(--border)]" />
@@ -395,6 +495,8 @@ function Nav({ theme, setTheme, session, onNavigate, currentPage, onLogout, onLo
         </div>
       )}
     </nav>
+    <AlphaNotice />
+    </>
   );
 }
 
@@ -402,7 +504,8 @@ function Nav({ theme, setTheme, session, onNavigate, currentPage, onLogout, onLo
 // AvatarMenu — avatar chip on the right of the nav; click opens profile menu.
 // Replaces the previous inline name + "Выйти" text pattern.
 // -----------------------------------------------------------------------------
-function AvatarMenu({ session, onLogout, onOpenProfile, onOpenReviewer, onOpenAdmin, onOpenAuthor, onOpenBookmarks }) {
+function AvatarMenu({ session, onLogout, onOpenProfile, onOpenReviewer, onOpenAdmin, onOpenAuthor, onOpenBookmarks, onOpenWorkspace }) {
+  const myRoles = rolesOf(session);
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -437,7 +540,7 @@ function AvatarMenu({ session, onLogout, onOpenProfile, onOpenReviewer, onOpenAd
         >
           <div className="px-3 py-2 border-b border-[var(--border)]">
             <div className="text-sm font-medium text-[var(--foreground)]">{session.name}</div>
-            <div className="text-xs text-[var(--muted-foreground)]">{ROLE_RU[session.role] || "Читатель"}</div>
+            <div className="text-xs text-[var(--muted-foreground)]">{myRoles.length ? myRoles.map(r => ROLE_RU[r]).join(" · ") : "Читатель"}</div>
           </div>
           <button
             role="menuitem"
@@ -446,7 +549,17 @@ function AvatarMenu({ session, onLogout, onOpenProfile, onOpenReviewer, onOpenAd
           >
             Мой профиль
           </button>
-          {session.role === "reader" && (
+          {myRoles.length > 0 && (
+            <button
+              role="menuitem"
+              onClick={() => { setOpen(false); onOpenWorkspace?.(); }}
+              className="w-full text-left px-3 py-2 text-sm text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)] transition-colors inline-flex items-center gap-2"
+            >
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--private)]"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              Рабочее место
+            </button>
+          )}
+          {true && (
             <button
               role="menuitem"
               onClick={() => { setOpen(false); onOpenBookmarks?.(); }}
@@ -455,7 +568,7 @@ function AvatarMenu({ session, onLogout, onOpenProfile, onOpenReviewer, onOpenAd
               Закладки
             </button>
           )}
-          {(session.role === "author" || session.role === "admin") && (
+          {myRoles.includes("author") && (
             <button
               role="menuitem"
               onClick={() => { setOpen(false); onOpenAuthor?.(); }}
@@ -464,7 +577,7 @@ function AvatarMenu({ session, onLogout, onOpenProfile, onOpenReviewer, onOpenAd
               Кабинет автора
             </button>
           )}
-          {session.role === "reviewer" && (
+          {myRoles.includes("reviewer") && (
             <button
               role="menuitem"
               onClick={() => { setOpen(false); onOpenReviewer?.(); }}
@@ -473,7 +586,7 @@ function AvatarMenu({ session, onLogout, onOpenProfile, onOpenReviewer, onOpenAd
               Кабинет ревьюера
             </button>
           )}
-          {session.role === "admin" && (
+          {myRoles.includes("admin") && (
             <button
               role="menuitem"
               onClick={() => { setOpen(false); onOpenAdmin?.(); }}
@@ -1449,7 +1562,7 @@ function fmtDateAuthor(unix) {
 }
 
 Object.assign(window, {
-  Icon, ThemeToggle, Nav, Footer,
+  Icon, ThemeToggle, AlphaBadge, AlphaNotice, Nav, Footer,
   DifficultyBadge, BookmarkButton, ArticleVoting, ShareRow,
   ScrollProgress, CoverPlaceholder,
   Avatar, CommentsSection, formatRelativeTime,

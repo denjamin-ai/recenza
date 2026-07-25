@@ -309,6 +309,7 @@ function App() {
   const openArticle = (slug) => { setCurrentSlug(slug); navigate("article"); };
   const openBlog    = () => navigate("blog");
   const openLogin   = () => navigate("login");
+  const openAdminLogin = () => navigate("adminlogin");
   // "Home" is role-aware now — Reviewer→Inbox, Author→Portal, Admin→Admin,
   // Reader→public feed, Guest→public feed.
   const goHome      = () => navigate(roleHomeFor(session));
@@ -335,6 +336,7 @@ function App() {
     navigate("editor");
   };
   const openAuthorPortal = () => navigate("author");
+  const openWorkspace = () => navigate("workspace");
   const [blogDetailSlug, setBlogDetailSlug] = useState(null);
   const openBlogDetail = (blogSlug) => { setBlogDetailSlug(blogSlug); navigate("blogdetail"); };
   const openReviewerInbox = () => navigate("reviewer");
@@ -416,7 +418,7 @@ function App() {
         }}
       >К основному содержимому</a>
       <KitTweaksPanel theme={theme} setTheme={setTheme} />
-      {page !== "admin" && <Nav
+      {page !== "admin" && page !== "adminlogin" && <Nav
         theme={theme} setTheme={setTheme}
         session={session}
         currentPage={page}
@@ -434,6 +436,7 @@ function App() {
         onOpenAdmin={() => navigate("admin")}
         onOpenAuthor={openAuthorPortal}
         onOpenBookmarks={() => navigate("bookmarks")}
+        onOpenWorkspace={openWorkspace}
         onOpenNotification={(it) => { if (it?.blogSlug) { if (session?.role === "author" || session?.role === "reviewer") { openReviewPage(it.blogSlug, it.chapterSlug || null, { povHandle: session?.handle }); } else { openArticle(it.blogSlug); } } }}
       />}
 
@@ -467,7 +470,9 @@ function App() {
           {page === "blogdetail" && <BlogDetailScreen        session={session} blogSlug={blogDetailSlug} onBack={openAuthorPortal} onOpenChapter={(b) => openArticle(b)} onOpenReview={openReviewPage} onOpenEditor={openEditor} onPreview={(b) => openArticle(b)} />}
           {page === "editor"  && <EditorScreen              session={session} blogSlug={editorBlogSlug} chapterSlug={editorChapterSlug} portfolioMode={editorPortfolio} onBack={editorPortfolio ? (() => openProfile(session?.handle)) : openAuthorPortal} onOpenReview={openReviewPage} />}
           {page === "review"  && <ReviewPage                session={session} blogSlug={reviewSlug} chapterSlug={reviewChapterSlug} onOpenAuthor={openAuthorPortal} onOpenAdmin={() => navigate("admin")} onOpenProfile={openProfile} onBack={openBlog} />}
-          {page === "login"   && <LoginScreen          onLogin={completeLogin} returnNote={loginReturnRef.current?.blogSlug ? (window.__blogData?.getBlogBySlug(loginReturnRef.current.blogSlug)?.title || null) : null} />}
+          {page === "login"   && <LoginScreen          onLogin={completeLogin} onAdminLogin={openAdminLogin} onReadFeed={openBlog} returnNote={loginReturnRef.current?.blogSlug ? (window.__blogData?.getBlogBySlug(loginReturnRef.current.blogSlug)?.title || null) : null} />}
+          {page === "adminlogin" && <AdminLoginScreen  onLogin={completeLogin} onBackToMain={openLogin} />}
+          {page === "workspace" && <WorkspaceScreen    session={session} onOpenAuthor={openAuthorPortal} onOpenReviewer={openReviewerInbox} onOpenAdmin={() => navigate("admin")} onOpenProfile={openProfile} onOpenReview={(b, c) => openReviewPage(b, c, { povHandle: session?.handle })} onOpenEditor={openEditor} onOpenBookmarks={() => navigate("bookmarks")} onBack={openBlog} />}
         </main>
 
         <Footer />
@@ -496,6 +501,8 @@ if (new URLSearchParams(location.search).get("smoke") === "1") {
       ["Blog",            () => window.__nav?.("blog")],
       ["Article",         () => window.__nav?.("article")],
       ["Login",           () => window.__nav?.("login")],
+      ["AdminLogin",      () => window.__nav?.("adminlogin")],
+      ["Workspace",       () => window.__nav?.("workspace")],
       ["AuthorPortal",    () => window.__nav?.("author")],
       ["Editor",          () => window.__nav?.("editor")],
       ["ReviewerInbox",   () => window.__nav?.("reviewer")],
