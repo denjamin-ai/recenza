@@ -500,21 +500,27 @@ export async function seedAll(db: Db): Promise<void> {
       chapterId: "chp_duo",
       number: 1,
       status: "published",
-      reviewStatus: "none",
       title: "Как я совмещаю",
       skills: stringifyJson(["Тайм-менеджмент"]),
       summary: "Первая заметка.",
       blocks: stringifyJson(duoBlocks),
       publishedAt: ago(18 * DAY),
-      // Опубликовано без ревью: сессия закрыта публикацией, бейджа нет.
-      reviewClosedAt: ago(18 * DAY),
+      // ⚠️ Ф14, флагманский случай (З-03): глава ОПУБЛИКОВАНА, и на неё оставлена заявка на ревью.
+      // Сессия снова открыта (`reviewClosedAt: null`) — именно так делает роут заявки. Бейджа нет:
+      // ревью ещё впереди. Это и есть «ревью — награда на выходе, а не барьер на входе».
+      reviewStatus: "requested",
+      reviewClosedAt: null,
     },
     {
       id: "rev_ghost_1",
       chapterId: "chp_ghost",
       number: 1,
       status: "draft",
-      reviewStatus: "none",
+      // Ф14: под просроченную заявку `req_stale` — открытая заявка ОБЯЗАНА идти с `requested`
+      // (иначе claim оставил бы главу с назначенным ревьюером и статусом «ревью не запрашивали»).
+      reviewStatus: "requested",
+      title: "Вступление",
+      skills: stringifyJson(["Введение"]),
       blocks: stringifyJson(ghostBlocks),
     },
   ]);
@@ -774,12 +780,14 @@ export async function seedAll(db: Db): Promise<void> {
   await db.insert(reviewRequests).values([
     // Открытая заявка, срок ЕЩЁ НЕ вышел — мишень claim-флоу в e2e.
     {
+      // На ОПУБЛИКОВАННУЮ главу (З-03). `chp_draft` намеренно оставлен чистым: живая заявка
+      // перевела бы его в `requested`, а это блокирует редактор — на нём стоят все editor-спеки.
       id: "req_open",
-      chapterId: "chp_draft",
+      chapterId: "chp_duo",
       revisionNumber: 1,
-      byHandle: "author",
-      skills: stringifyJson(["Генераторы", "Итераторы"]),
-      note: "Интересует корректность примеров.",
+      byHandle: "duo",
+      skills: stringifyJson(["Тайм-менеджмент"]),
+      note: "Интересует структура и практические примеры.",
       channel: "queue",
       status: "open",
       dueAt: ahead(9 * DAY),
@@ -787,11 +795,13 @@ export async function seedAll(db: Db): Promise<void> {
     },
     // Открытая заявка, срок ВЫШЕЛ — мишень свипа 1 (эскалация в редакцию).
     {
+      // Просрочена → мишень свипа 1 (эскалация в редакцию). Автор заблокирован, поэтому в очереди
+      // заявка не видна — но cron про видимость не знает и обязан её эскалировать.
       id: "req_stale",
-      chapterId: "chp_duo",
+      chapterId: "chp_ghost",
       revisionNumber: 1,
-      byHandle: "duo",
-      skills: stringifyJson(["Тайм-менеджмент"]),
+      byHandle: "ghost",
+      skills: stringifyJson(["Введение"]),
       channel: "queue",
       status: "open",
       dueAt: ago(1 * DAY),

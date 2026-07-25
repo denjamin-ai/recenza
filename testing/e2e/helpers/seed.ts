@@ -37,7 +37,8 @@ export const BLOG = {
 
 export const HIDDEN_BLOG = { id: "blog_ghost", slug: "hidden-blog", title: "Скрытый блог" } as const;
 
-/** Ф13: блог аккаунта с обеими возможностями — опубликован БЕЗ ревью (review_status='none'). */
+/** Ф13: блог аккаунта с обеими возможностями. ⚠️ Ф14: на его главу подана заявка на ревью
+ * (`REVIEW_REQUESTS.open`), поэтому ревизия опубликована и одновременно `review_status='requested'`. */
 export const DUO_BLOG = {
   id: "blog_duo",
   slug: "duo-notes",
@@ -58,7 +59,7 @@ export const CHAPTERS = {
   changesRequested: { id: "chp_changes", slug: "async-await", title: "Async/await на практике" },
   /** draft + none, ревьюеров нет — отправная точка сквозных флоу и свободной публикации */
   draft: { id: "chp_draft", slug: "generators", title: "Генераторы и итераторы" },
-  /** draft + none в скрытом блоге ghost — мишень негативов ownership */
+  /** draft + requested в скрытом блоге ghost — мишень негативов ownership и просроченной заявки */
   ghost: { id: "chp_ghost", slug: "intro", title: "Вступление" },
 } as const;
 
@@ -89,15 +90,26 @@ export const COMMENTS = {
  * Сроки подобраны под три свипа `/api/cron/review-sla`.
  */
 export const REVIEW_REQUESTS = {
-  /** open, срок не вышел — мишень claim-флоу */
+  /**
+   * open, срок не вышел — мишень claim-флоу. Живёт на ОПУБЛИКОВАННОЙ главе `DUO_BLOG.chapter`
+   * (флагманский случай Ф14: ревью после публикации). ⚠️ `CHAPTERS.draft` намеренно оставлен без
+   * заявки: живая заявка перевела бы его в `requested`, а это блокирует редактор — на нём стоят
+   * все editor-спеки.
+   */
   open: "req_open",
-  /** open, срок ВЫШЕЛ — мишень эскалации в редакцию */
+  /** open, срок ВЫШЕЛ — мишень эскалации; на главе заблокированного автора (в очереди не видна) */
   stale: "req_stale",
-  /** claimed reviewer'ом, срок ВЫШЕЛ, признаков работы нет — мишень автовозврата */
+  /** claimed ревьюером `USERS.reviewer` на `CHAPTERS.underReview`, срок вышел, признаков работы нет */
   silent: "req_silent",
   /** исполненная (история; в очереди не показывается) */
   done: "req_done",
 } as const;
+
+/**
+ * ⚠️ ИНВАРИАНТ сида Ф14: у каждой ЖИВОЙ заявки (`open`/`claimed`) ревизия обязана нести
+ * `review_status` = `requested`/`in-review`. Состояние «открытая заявка + none» в системе
+ * недостижимо, и claim оставил бы главу с назначенным ревьюером и статусом «ревью не запрашивали».
+ */
 
 /** Ф14: инвайт-ссылки эксперта (канал 2). Токены детерминированы только в сиде. */
 export const EXPERT_INVITES = {
