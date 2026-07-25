@@ -90,7 +90,15 @@ export async function GET(req: Request): Promise<NextResponse> {
         await tx
           .update(reviewRequests)
           .set({ channel: "editorial", dueAt: dueAtFrom(now, SLA_UNCLAIMED_DAYS) })
-          .where(and(eq(reviewRequests.id, row.id), eq(reviewRequests.status, "open")));
+          .where(
+            and(
+              eq(reviewRequests.id, row.id),
+              eq(reviewRequests.status, "open"),
+              // `channel` в условии — чтобы повторный тик (или второй раннер) не переписал `dueAt`
+              // у уже эскалированной заявки: смена канала и есть токен «эскалация состоялась».
+              eq(reviewRequests.channel, "queue"),
+            ),
+          );
         await createNotifications(tx, [
           {
             isAdminRecipient: true,

@@ -17,6 +17,9 @@ import { isReviewOpen } from "@/lib/review-status";
 import { closeReviewSession, recomputeBlogVerified } from "@/lib/queries/review-session";
 import { VERDICTS, type ReviewStatus, type Verdict, type VerifiedTier } from "@/types";
 
+/** Сессия закрылась между гейтом и записью вердикта → 409 (голос не должен теряться молча). */
+class SessionClosed extends Error {}
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ chapterId: string }> },
@@ -65,6 +68,20 @@ export async function POST(
 
   try {
     await db.transaction(async (tx) => {
+      // TOCTOU: гейт выше проверен по кэшу сессии (`resolveReviewAccess` читает её в начале запроса).
+      // Автор мог опубликовать ревизию и закрыть сессию, пока ревьюер держал форму открытой — тогда
+      // вердикт записался бы в `chapter_reviewers` с ответом 200, но кредит по этой сессии уже
+      // посчитан без него и повторно `closeReviewSession` не сработает (идемпотентность). То есть
+      // голос молча терялся бы. Перечитываем токен в транзакции и честно отвечаем 409.
+      const stillOpen = (
+        await tx
+          .select({ reviewClosedAt: chapterRevisions.reviewClosedAt })
+          .from(chapterRevisions)
+          .where(eq(chapterRevisions.id, session.revision.id))
+          .limit(1)
+      )[0];
+      if (!stillOpen || stillOpen.reviewClosedAt !== null) throw new SessionClosed();
+
       await tx
         .update(chapterReviewers)
         .set({ verdict, verdictAt: now })
@@ -125,7 +142,10 @@ export async function POST(
         ]);
       }
     });
-  } catch {
+  } catch (e) {
+    if (e instanceof SessionClosed) {
+      return NextResponse.json({ error: "Ревью по этой версии уже завершено." }, { status: 409 });
+    }
     return NextResponse.json({ error: "Не удалось сохранить вердикт." }, { status: 500 });
   }
 

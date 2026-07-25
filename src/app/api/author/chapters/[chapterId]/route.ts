@@ -105,6 +105,16 @@ export async function PATCH(
     );
   }
 
+  // ⚠️ Ф14, находка code-review (P2): раньше пустой PATCH был no-op, потому что набор полей ревизии
+  // мог оказаться пустым. Теперь снапшот `title`/`skills` пишется ВСЕГДА, и пустой автосейв на
+  // опубликованной ревизии заводил бы черновик-форк без единого изменения — засоряя историю версий
+  // и «занимая» номер, на который потом сошлётся заявка на ревью. Пустое тело отсекаем до транзакции.
+  const touchesContent =
+    blocksJson !== undefined || summary !== undefined || set.title !== undefined || set.skills !== undefined;
+  if (!touchesContent) {
+    return NextResponse.json({ ok: true, revisionNumber: rev.number, savedAt: null, forked: false });
+  }
+
   // Правка опубликованной заводит НОВУЮ ревизию поверх; правка черновика идёт in place.
   const forkFromPublished = rev.status === "published";
   const now = Math.floor(Date.now() / 1000);
