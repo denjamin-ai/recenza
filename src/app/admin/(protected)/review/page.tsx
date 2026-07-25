@@ -18,8 +18,18 @@ import { skillMatch } from "@/lib/reviewer-match";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Момент рендера в Unix seconds — база для SLA-чипов очереди.
+ * ⚠️ Вынесено из тела компонента: `react-hooks/purity` запрещает звать `Date.now()` прямо в
+ * рендере (тот же приём, что в кабинете ревьюера). Страница `force-dynamic`, значение честно
+ * пересчитывается на каждый запрос.
+ */
+function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
 export default async function AdminReviewPage() {
-  const now = Math.floor(Date.now() / 1000);
+  const now = nowSeconds();
   const [items, requests, removed, reviewers] = await Promise.all([
     getAdminReviewQueue(),
     getAdminRequestQueue(now),
