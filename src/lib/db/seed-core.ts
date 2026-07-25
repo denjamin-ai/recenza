@@ -136,6 +136,13 @@ const ghostBlocks: Block[] = [
   { id: "blk_gh_p_1", type: "p", text: "Содержимое скрытого блога заблокированного автора." },
 ];
 
+/** Ф13: контент блога аккаунта с обеими возможностями (опубликован без ревью). */
+const duoBlocks: Block[] = [
+  { id: "blk_duo_h2_1", type: "h2", text: "Две стороны одного аккаунта" },
+  { id: "blk_duo_p_1", type: "p", text: "Пишу свои главы и рецензирую чужие — это один профиль." },
+  { id: "blk_duo_p_2", type: "p", text: "Ревью запрашиваю по желанию, публикую когда готово." },
+];
+
 const portfolioBlocks: Block[] = [
   { id: "blk_pf_h2_1", type: "h2", text: "Об авторе" },
   { id: "blk_pf_p_1", type: "p", text: "Пишу про асинхронность и внутренности JavaScript-движков." },
@@ -328,6 +335,21 @@ export async function seedAll(db: Db): Promise<void> {
       bookmarkCount: 1,
     },
     {
+      // Ф13: блог аккаунта с ОБЕИМИ возможностями — чтобы его профиль показывал и «Блоги», и «Ревью».
+      id: "blog_duo",
+      slug: "duo-notes",
+      title: "Заметки универсала",
+      authorId: "usr_duo",
+      tags: stringifyJson(["Тестирование"]),
+      complexity: "simple",
+      summary: "Короткий блог аккаунта, который и пишет, и рецензирует.",
+      publishedAt: ago(18 * DAY),
+      lastActivityAt: ago(18 * DAY),
+      viewCount: 42,
+      rating: 0,
+      bookmarkCount: 0,
+    },
+    {
       id: "blog_ghost",
       slug: "hidden-blog",
       title: "Скрытый блог",
@@ -380,6 +402,14 @@ export async function seedAll(db: Db): Promise<void> {
       order: 4,
       primaryHandle: null,
       skills: stringifyJson(["Генераторы", "Итераторы"]),
+    },
+    {
+      id: "chp_duo",
+      blogId: "blog_duo",
+      slug: "hello",
+      title: "Как я совмещаю",
+      order: 1,
+      skills: stringifyJson(["Тестирование"]),
     },
     {
       id: "chp_ghost",
@@ -451,6 +481,17 @@ export async function seedAll(db: Db): Promise<void> {
       blocks: stringifyJson(generatorsBlocks),
     },
     {
+      // Ф13: опубликовано БЕЗ ревью (review_status='none') — штатный случай свободной публикации.
+      id: "rev_duo_1",
+      chapterId: "chp_duo",
+      number: 1,
+      status: "published",
+      reviewStatus: "none",
+      summary: "Первая заметка.",
+      blocks: stringifyJson(duoBlocks),
+      publishedAt: ago(18 * DAY),
+    },
+    {
       id: "rev_ghost_1",
       chapterId: "chp_ghost",
       number: 1,
@@ -483,6 +524,8 @@ export async function seedAll(db: Db): Promise<void> {
   await db.insert(reviewerHistory).values([
     { chapterId: "chp_published", revisionNumber: 1, handle: "reviewer" },
     { chapterId: "chp_published", revisionNumber: 1, handle: "lena_review" },
+    // Ф13: duo рецензировал v1 — его профиль обязан показывать ОБЕ стороны (блоги + ревью).
+    { chapterId: "chp_published", revisionNumber: 1, handle: "duo" },
     { chapterId: "chp_published", revisionNumber: 2, handle: "reviewer" },
     { chapterId: "chp_published", revisionNumber: 2, handle: "max_review" },
   ]);

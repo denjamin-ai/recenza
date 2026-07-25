@@ -123,7 +123,9 @@ export default async function ProfilePage({ params }: { params: Params }) {
           { k: "В закладках", v: formatCompact(profile.stats.bookmarks) },
         ]
       : []),
-    ...(user.isReviewer ? [{ k: "Отрецензировано", v: profile.reviewed.length }] : []),
+    // ⚠️ По ФАКТУ ревью, а не по возможности (тот же принцип, что в sitemap, З-45): кредит —
+    // иммутабельная история; отзыв `is_reviewer` админом не должен стирать её из профиля.
+    ...(profile.reviewed.length > 0 ? [{ k: "Отрецензировано", v: profile.reviewed.length }] : []),
   ];
 
   return (
@@ -197,13 +199,14 @@ export default async function ProfilePage({ params }: { params: Params }) {
 
       <ProfileSections
         bio={user.bio}
+        competencies={user.competencies}
         blogs={profile.blogs}
         portfolio={isOwner ? (ownerPortfolio?.blocks ?? null) : profile.portfolio}
         portfolioVisible={isOwner ? (ownerPortfolio?.isVisible ?? false) : true}
         isOwner={isOwner}
         pinnedBlogId={profile.pinnedBlogId}
         reviewed={profile.reviewed}
-        showReviewTab={user.isReviewer}
+        showReviewTab={user.isReviewer || profile.reviewed.length > 0}
       />
     </div>
   );

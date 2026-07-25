@@ -9,6 +9,7 @@ import { getAuthorCabinet } from "./author";
 import { getReviewerQueue } from "./review";
 import { getReviewerInbox } from "./invitations";
 import { getReviewedChapters } from "./profile";
+import { plural } from "@/lib/plural";
 import type { Capability } from "@/lib/roles";
 
 export interface WorkspaceStat {
@@ -70,11 +71,17 @@ export async function getWorkspace(
     const chapters = cabinet.blogs.flatMap((b) =>
       b.chapterStatuses.map((c) => ({ blog: b, ...c })),
     );
-    const drafts = chapters.filter((c) => c.status === "draft" && c.reviewStatus === "none").length;
+    // ⚠️ Две оси: «Черновики» считаем так же, как кабинет автора (ВСЕ `status==='draft'`), иначе
+    // одна глава давала бы разные цифры на /workspace и /author. Отдельно выделяем состояние
+    // «одобрено, ждёт публикации» — именно оно требует действия автора и без него было невидимо.
+    const drafts = chapters.filter((c) => c.status === "draft").length;
     const onReview = chapters.filter(
       (c) => c.reviewStatus === "requested" || c.reviewStatus === "in-review",
     ).length;
     const published = chapters.filter((c) => c.status === "published").length;
+    const readyToPublish = chapters.filter(
+      (c) => c.status === "draft" && c.reviewStatus === "reviewed",
+    );
     const needFix = chapters.filter((c) => c.reviewStatus === "changes-requested");
 
     cards.push({
@@ -85,16 +92,27 @@ export async function getWorkspace(
       stats: [
         { label: "Черновики", value: drafts },
         { label: "На ревью", value: onReview },
+        { label: "Готовы к публикации", value: readyToPublish.length, alert: readyToPublish.length > 0 },
         { label: "Опубликовано", value: published },
       ],
       footer:
         needFix.length > 0
           ? {
-              text: `${needFix.length} ${needFix.length === 1 ? "глава ждёт" : "главы ждут"} ваших правок`,
+              text: `${needFix.length} ${plural(needFix.length, "глава ждёт", "главы ждут", "глав ждут")} ваших правок`,
               tone: "warning",
             }
           : null,
     });
+
+    for (const c of readyToPublish.slice(0, MAX_FIX)) {
+      attention.push({
+        id: `pub-${c.blog.slug}-${c.order}`,
+        source: "автор",
+        title: `«${c.blog.title}» · глава ${c.order}`,
+        body: "Ревью пройдено — можно публиковать",
+        href: `/author/blog/${c.blog.slug}`,
+      });
+    }
 
     // Точный адрес главы в chapterStatuses не хранится — ведём в кабинет блога, где она видна.
     for (const c of needFix.slice(0, MAX_FIX)) {
@@ -123,7 +141,7 @@ export async function getWorkspace(
       footer:
         invitations.length > 0
           ? {
-              text: `${invitations.length} ${invitations.length === 1 ? "новое приглашение" : "новых приглашения"} на ревью`,
+              text: `${invitations.length} ${plural(invitations.length, "новое приглашение", "новых приглашения", "новых приглашений")} на ревью`,
               tone: "accent",
             }
           : null,

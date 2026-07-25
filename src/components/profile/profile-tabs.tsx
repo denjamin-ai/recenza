@@ -53,7 +53,7 @@ export function ProfileTabs({
             type="button"
             role="tab"
             id={`profile-tab-${t.id}`}
-            aria-controls="profile-panel"
+            aria-controls={`profile-panel-${t.id}`}
             aria-selected={active === t.id}
             onClick={() => setTab(t.id)}
             className={tabCls(active === t.id)}
@@ -67,14 +67,22 @@ export function ProfileTabs({
           </button>
         ))}
       </div>
-      <div
-        role="tabpanel"
-        id="profile-panel"
-        aria-labelledby={`profile-tab-${active}`}
-        className="mt-6"
-      >
-        {active === "about" ? about : active === "blogs" ? blogs : review}
-      </div>
+      {/* ⚠️ Все панели рендерятся в разметку, неактивные скрыты `hidden`. Условный рендер оставлял
+          бы в HTML только активную — и ссылки на блоги автора исчезали бы из первичной разметки
+          (профили лежат в sitemap, краулер приходил бы на страницу без единой ссылки на контент).
+          Заодно у каждой панели свой id и корректная связка с кнопкой таба. */}
+      {tabs.map((t) => (
+        <div
+          key={t.id}
+          role="tabpanel"
+          id={`profile-panel-${t.id}`}
+          aria-labelledby={`profile-tab-${t.id}`}
+          hidden={active !== t.id}
+          className="mt-6"
+        >
+          {t.id === "about" ? about : t.id === "blogs" ? blogs : review}
+        </div>
+      ))}
     </div>
   );
 }

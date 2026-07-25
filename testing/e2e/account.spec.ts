@@ -8,7 +8,7 @@
 
 import { test, expect } from "./fixtures";
 import { apiLoginUser } from "./helpers/auth";
-import { USERS } from "./helpers/seed";
+import { DUO_BLOG, USERS } from "./helpers/seed";
 import { reseed } from "./helpers/db";
 import { throttleMutation } from "./helpers/throttle";
 
@@ -136,14 +136,19 @@ test.describe("Аккаунт: рабочее место, настройки, п
       }
     });
 
-    await test.step("ссылка не http(s) отклоняется", async () => {
+    await test.step("ссылка не http(s) и «https://» без хоста отклоняются с 400", async () => {
       const ctx = await apiLoginUser(USERS.reader.handle);
       try {
         await throttleMutation(USERS.reader.handle);
-        const res = await ctx.patch("/api/profile", {
+        const xss = await ctx.patch("/api/profile", {
           data: { links: [{ label: "x", url: "javascript:alert(1)" }] },
         });
-        expect(res.status()).toBe(400);
+        expect(xss.status()).toBe(400);
+
+        // Префикс проходит регулярку, но хоста нет — должен быть 400, не 500.
+        await throttleMutation(USERS.reader.handle);
+        const noHost = await ctx.patch("/api/profile", { data: { links: [{ url: "https://" }] } });
+        expect(noHost.status()).toBe(400);
       } finally {
         await ctx.dispose();
       }
@@ -183,6 +188,27 @@ test.describe("Аккаунт: рабочее место, настройки, п
       const xml = await (await guest.get("/sitemap.xml")).text();
       expect(xml).toContain(`/u/${USERS.author.slug}`);
       expect(xml).not.toContain(`/u/${USERS.reader.slug}`);
+    });
+  });
+
+  test("PROF-03 @critical: профиль аккаунта с ОБЕИМИ возможностями показывает и блоги, и ревью", async ({
+    asGuest,
+  }) => {
+    // Флагманский сценарий фазы: до Ф13 профиль был либо авторским, либо ревьюерским.
+    await asGuest.goto(`/u/${USERS.duo.slug}`);
+    const { page } = asGuest;
+
+    await expect(page.getByText("Автор", { exact: true })).toBeVisible();
+    await expect(page.getByText("Ревьюер", { exact: true })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /^Блоги/ })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /^Ревью/ })).toBeVisible();
+    // Обе группы метрик в шапке одновременно.
+    await expect(page.getByText("Отрецензировано", { exact: true })).toBeVisible();
+    await expect(page.getByText("Блог", { exact: true })).toBeVisible();
+
+    await test.step("панель блогов есть в разметке даже до клика (SEO/без JS)", async () => {
+      const html = await page.content();
+      expect(html).toContain(DUO_BLOG.title);
     });
   });
 

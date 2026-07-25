@@ -358,10 +358,12 @@ test.describe("Роль «Ревьюер»: кабинет, ReviewPage, проф
       expect(body.error).toBe("Вы рецензировали эту главу — публичное обсуждение недоступно.");
     });
 
-    await test.step("возможность «ревьюер» сама по себе не блокирует: duo комментирует ту же главу", async () => {
-      const ctx = await apiLoginUser(USERS.duo.handle);
+    await test.step("возможность «ревьюер» сама по себе не блокирует: sergey комментирует ту же главу", async () => {
+      // sergey_review — ревьюер БЕЗ строк chapter_reviewers/reviewer_history по этой главе
+      // (у него только pending/flagged приглашения), значит конфликта интересов нет.
+      const ctx = await apiLoginUser(USERS.sergey.handle);
       try {
-        await throttleMutation(USERS.duo.handle);
+        await throttleMutation(USERS.sergey.handle);
         const res = await ctx.post("/api/comments", {
           data: {
             blogSlug: BLOG.slug,

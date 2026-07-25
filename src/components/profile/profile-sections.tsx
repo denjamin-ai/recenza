@@ -13,6 +13,7 @@ import type { ReviewedChapterView } from "@/lib/queries/profile";
 
 export function ProfileSections({
   bio,
+  competencies,
   blogs,
   portfolio,
   portfolioVisible,
@@ -22,6 +23,7 @@ export function ProfileSections({
   showReviewTab,
 }: {
   bio: string | null;
+  competencies: string[];
   blogs: BlogCardView[];
   portfolio: Block[] | null;
   portfolioVisible: boolean;
@@ -31,8 +33,10 @@ export function ProfileSections({
   showReviewTab: boolean;
 }) {
   const hasPortfolio = !!portfolio && portfolio.length > 0;
+  // Компетенции показываем только у ревьюера (таб «Ревью» = тот же признак).
+  const showCompetencies = showReviewTab && competencies.length > 0;
 
-  // «О себе»: био (переехало сюда из шапки) + портфолио «Об авторе» для тех, у кого оно есть.
+  // «О себе»: био (переехало сюда из шапки) + компетенции + портфолио «Об авторе».
   const about = (
     <section aria-label="О себе">
       {bio ? (
@@ -41,7 +45,26 @@ export function ProfileSections({
         </p>
       ) : (
         !hasPortfolio &&
+        !showCompetencies &&
         !isOwner && <p className="text-[var(--muted-foreground)]">Пользователь пока ничего о себе не написал.</p>
+      )}
+
+      {showCompetencies && (
+        <div className="mb-6">
+          <h3 className="mb-2 text-[0.7rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+            Рецензирует
+          </h3>
+          <ul className="flex flex-wrap gap-1.5">
+            {competencies.map((c) => (
+              <li
+                key={c}
+                className="rounded-[var(--radius-pill)] border border-[var(--border)] bg-[var(--bg-secondary)] px-2.5 py-1 text-[length:var(--type-small)] text-[var(--muted-foreground)]"
+              >
+                {c}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {isOwner && (

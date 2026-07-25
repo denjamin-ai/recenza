@@ -25,21 +25,34 @@ const MAX_LABEL = 40;
 const MAX_URL = 200;
 const MAX_COMPETENCY = 40;
 
+const BAD_URL = "Ссылка должна начинаться с http:// или https:// и содержать адрес.";
+
 /** Ссылки принимаем только http(s) — `javascript:`/`data:` отсекаются до записи в БД. */
 function parseLinks(raw: unknown): LinkItem[] | { error: string } {
   if (!Array.isArray(raw)) return { error: "links: ожидается массив." };
   if (raw.length > MAX_LINKS) return { error: `Ссылок не больше ${MAX_LINKS}.` };
   const out: LinkItem[] = [];
+  const seen = new Set<string>();
   for (const item of raw) {
     if (typeof item !== "object" || item === null) return { error: "links: элемент — объект." };
     const { label, url } = item as { label?: unknown; url?: unknown };
     const u = typeof url === "string" ? url.trim() : "";
     if (!u) continue; // пустая строка формы — просто пропускаем
-    if (!/^https?:\/\//i.test(u) || u.length > MAX_URL) {
-      return { error: "Ссылка должна начинаться с http:// или https://" };
+    if (!/^https?:\/\//i.test(u) || u.length > MAX_URL) return { error: BAD_URL };
+    // ⚠️ Префикс проходит и у строки «https://» — без хоста. `new URL()` на ней бросает,
+    // поэтому разбираем в try/catch и отвечаем 400, а не необработанным 500.
+    let host = "";
+    try {
+      host = new URL(u).hostname;
+    } catch {
+      return { error: BAD_URL };
     }
+    if (!host) return { error: BAD_URL };
+    // Дедуп: одинаковые адреса дали бы дублирующийся React-key в SocialLinks.
+    if (seen.has(u)) continue;
+    seen.add(u);
     const l = typeof label === "string" ? label.trim().slice(0, MAX_LABEL) : "";
-    out.push({ label: l || new URL(u).hostname, url: u });
+    out.push({ label: l || host, url: u });
   }
   return out;
 }
