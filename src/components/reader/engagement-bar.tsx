@@ -2,7 +2,8 @@
 
 // Панель реакций БЛОГА (ui-feedback-5): голос ±1 за блог, закладка (по блогу), подписка (на автора).
 // Рендерится ОДИН раз на страницу: в whole-режиме — наверху под шапкой блога, в режиме главы —
-// после контента. Показывается только гостю (login-intent) и читателю — рендер-гейт у родителя.
+// после контента. Ф13 (реверс uif-5 П4): бар видят гость и ЛЮБОЙ аккаунт; скрыт только у админа —
+// рендер-гейт у родителя (`canEngage`).
 // Оптимистичные апдейты; гость → редирект на /login?next=…&intent=… (реплей после входа).
 // Все мутации — авторизованный API (server-side: CSRF same-origin + reader-only + rate-limit).
 
@@ -23,12 +24,15 @@ export function EngagementBar({
   authorId,
   initial,
   isAuthed,
+  isOwnBlog = false,
   className = "mt-8",
 }: {
   blogId: string;
   authorId: string;
   initial: InitialState;
   isAuthed: boolean;
+  /** Зритель — автор этого блога: подписка на себя не предлагается (Ф13). */
+  isOwnBlog?: boolean;
   className?: string;
 }) {
   const pathname = usePathname();
@@ -163,15 +167,19 @@ export function EngagementBar({
         <span>{bookmarkCount}</span>
       </button>
 
-      <button
-        type="button"
-        onClick={toggleFollow}
-        disabled={busy}
-        aria-pressed={following}
-        className={`${btn} ${following ? pressed : "text-[var(--foreground)]"}`}
-      >
-        {following ? "Вы подписаны" : "Подписаться на автора"}
-      </button>
+      {/* Ф13: бар видят и авторы — на СВОЁМ блоге подписку не предлагаем (сервер её всё равно
+          отклоняет как «Нельзя подписаться на себя»), голос и закладка остаются. */}
+      {!isOwnBlog && (
+        <button
+          type="button"
+          onClick={toggleFollow}
+          disabled={busy}
+          aria-pressed={following}
+          className={`${btn} ${following ? pressed : "text-[var(--foreground)]"}`}
+        >
+          {following ? "Вы подписаны" : "Подписаться на автора"}
+        </button>
+      )}
     </div>
   );
 }

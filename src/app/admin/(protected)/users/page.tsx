@@ -17,7 +17,11 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
 
   return (
     <div>
-      <ScreenHead eyebrow="Люди" title="Пользователи" description="Роли, баны и ограничение комментирования. Роль меняется только через приём заявки с доски." />
+      <ScreenHead
+        eyebrow="Люди"
+        title="Пользователи"
+        description="Возможности, баны и ограничение комментирования. Возможности «автор» и «ревьюер» выдаёт и отзывает администратор в карточке пользователя."
+      />
 
       <UserCreate />
 
@@ -33,7 +37,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
           <thead className="sticky top-0 bg-[var(--bg-secondary)]">
             <tr className="text-left text-[var(--muted-foreground)]">
               <th className="px-3 py-2 font-medium">Пользователь</th>
-              <th className="px-3 py-2 font-medium">Роль</th>
+              <th className="px-3 py-2 font-medium">Возможности</th>
               <th className="px-3 py-2 font-medium">Статус</th>
               <th className="px-3 py-2 font-medium">Нагрузка</th>
             </tr>

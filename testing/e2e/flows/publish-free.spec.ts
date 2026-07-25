@@ -68,6 +68,7 @@ test.describe("Свободная публикация (Фаза 13)", () => {
     const guest = await api();
     const editor = new EditorPage(asAuthor.page);
     const NEW_TITLE = "Генераторы и итераторы — версия 2";
+    const DRAFT_ONLY_TEXT = "ЧЕРНОВИК-V2-НЕ-ДЛЯ-ЧИТАТЕЛЯ";
 
     await test.step("редактор опубликованной главы открыт и предупреждает о новой версии", async () => {
       await editor.goto(BLOG.slug, CHAPTERS.draft.slug);
@@ -80,7 +81,10 @@ test.describe("Свободная публикация (Фаза 13)", () => {
     await test.step("PATCH опубликованной → 200 forked:true, номер ревизии вырос", async () => {
       await throttleMutation(USERS.author.handle);
       const res = await author.patch(`/api/author/chapters/${CHAPTERS.draft.id}`, {
-        data: { title: NEW_TITLE },
+        data: {
+          title: NEW_TITLE,
+          blocks: [{ id: "b1", type: "p", text: DRAFT_ONLY_TEXT }],
+        },
       });
       expect(res.status()).toBe(200);
       const body = (await res.json()) as { forked: boolean; revisionNumber: number };
@@ -88,13 +92,14 @@ test.describe("Свободная публикация (Фаза 13)", () => {
       expect(body.revisionNumber).toBe(2);
     });
 
-    await test.step("читатель всё ещё видит ОПУБЛИКОВАННУЮ версию, а не черновик поверх", async () => {
+    await test.step("КОНТЕНТ черновика читателю НЕ протекает — в ридере остаётся текст v1", async () => {
       const res = await guest.get(`/blog/${BLOG.slug}/${CHAPTERS.draft.slug}`);
       expect(res.status()).toBe(200);
       const html = await res.text();
-      // Заголовок главы живёт в chapters (общий для ревизий) — сверяем содержимое ревизии:
-      // черновик v2 ещё не опубликован, поэтому в ридере остаётся текст v1.
-      expect(html).toContain(CHAPTERS.draft.slug);
+      // Ключевое утверждение DoD: блоки неопубликованной ревизии не видны читателю.
+      expect(html).not.toContain(DRAFT_ONLY_TEXT);
+      // Текст опубликованной v1 на месте (первый блок seed-черновика «Генераторы и итераторы»).
+      expect(html).toContain("Генератор");
     });
 
     await test.step("в кабинете автора у главы два бейджа: «Опубликовано» и «Черновик» новой версии", async () => {
@@ -111,7 +116,9 @@ test.describe("Свободная публикация (Фаза 13)", () => {
 
       const pub = await guest.get(`/blog/${BLOG.slug}/${CHAPTERS.draft.slug}`);
       expect(pub.status()).toBe(200);
-      expect(await pub.text()).toContain(NEW_TITLE);
+      const html = await pub.text();
+      expect(html).toContain(NEW_TITLE);
+      expect(html).toContain(DRAFT_ONLY_TEXT);
     });
   });
 

@@ -49,13 +49,15 @@ export function capabilitiesLabel(user: CapabilityHolder | null | undefined): st
 }
 
 /**
- * Куда вести пользователя после входа: обе возможности → «Рабочее место», одна → её кабинет,
- * ни одной → лента. Общий источник для login-редиректа и меню аватара.
+ * Куда вести пользователя после входа: одна возможность → её кабинет, ни одной → лента.
+ *
+ * ⚠️ Аккаунт с ОБЕИМИ возможностями пока ведём в кабинет автора: приватное «Рабочее место»
+ * (`/workspace`) появляется в подфазе 13.6 (PR-B). До этого возврат `/workspace` дал бы 404
+ * ровно на флагманском сценарии фазы — аккаунте с двумя возможностями.
  */
 export function homeForCapabilities(user: CapabilityHolder | null | undefined): string {
   const caps = capabilitiesOf(user);
-  if (caps.length > 1) return "/workspace";
-  if (caps[0] === "author") return "/author";
-  if (caps[0] === "reviewer") return "/reviewer";
+  if (caps.includes("author")) return "/author";
+  if (caps.includes("reviewer")) return "/reviewer";
   return "/";
 }

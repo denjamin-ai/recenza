@@ -129,8 +129,10 @@ test.describe("Флоу публикации: гейт all-approve, force-approv
       await expect(
         asGuest.page.getByRole("heading", { name: CHAPTERS.underReview.title, level: 1 }),
       ).toBeVisible();
-      // Кредит команды зафиксирован публикацией (force-approve пишет reviewer_history).
-      await expect(reader.reviewersRegion.getByRole("heading", { name: "Эту версию проверяли" })).toBeVisible();
+      // ⚠️ Ф13: кредит выдаётся ТОЛЬКО за фактический approve. У этой ревизии lena запросила
+      // правки, а reviewer вердикта не ставил — значит публикация посреди ревью кредита не
+      // фабрикует, и карточка «Эту версию проверяли» не появляется.
+      await expect(reader.reviewersRegion.getByRole("heading", { name: "Эту версию проверяли" })).toHaveCount(0);
     });
   });
 

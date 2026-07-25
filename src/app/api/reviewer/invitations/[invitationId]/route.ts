@@ -250,6 +250,14 @@ export async function POST(
         .update(users)
         .set({ reviewLoad: sql`${users.reviewLoad} + 1` })
         .where(eq(users.handle, user.handle));
+      // Ось ревью: «приглашения разосланы» → «ревью идёт». Первый accept и переводит статус
+      // (последующие ничего не меняют — оператор идемпотентен по условию).
+      if (latestRev.reviewStatus === "requested") {
+        await tx
+          .update(chapterRevisions)
+          .set({ reviewStatus: "in-review" })
+          .where(eq(chapterRevisions.id, latestRev.id));
+      }
       await createNotifications(tx, [
         { recipientId: ctx.authorId, type: REVIEW_NOTIFY.inviteAccepted, payload: authorPayload },
       ]);

@@ -106,7 +106,7 @@ export function BlogReaderView({
   isAuthed: boolean;
   /** Блоговое engagement-состояние (голос/закладка/подписка) — один бар на страницу. */
   engagement: ReaderEngagement;
-  /** true — гость (login-intent) или reader; author/reviewer/admin бар не видят (ui-feedback-5 П4). */
+  /** true — гость (login-intent) или любой аккаунт; бар не видит только админ (Ф13, З-60). */
   canEngage: boolean;
   singleHref: string;
   wholeHref: string;
@@ -123,6 +123,7 @@ export function BlogReaderView({
       blogId={blog.id}
       authorId={blog.author.id}
       isAuthed={isAuthed}
+      isOwnBlog={viewer?.id === blog.author.id}
       className="mt-5"
       initial={{
         score: engagement.score,

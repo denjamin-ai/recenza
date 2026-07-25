@@ -113,6 +113,12 @@ export async function PATCH(
 
         if (latest.status === "published") {
           revisionNumber = latest.number + 1;
+          // План отложенной публикации предыдущей ревизии (если был) гасим: поверх неё уже
+          // лежит черновик, публиковать старую версию по расписанию нельзя.
+          await tx
+            .update(chapterRevisions)
+            .set({ scheduledAt: null })
+            .where(eq(chapterRevisions.id, rev.id));
           await tx.insert(chapterRevisions).values({
             chapterId,
             number: revisionNumber,

@@ -6,7 +6,7 @@
 
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { and, eq, isNotNull, lte } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lte } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { blogs, chapterRevisions, chapters } from "@/lib/db/schema";
 import { REVIEW_NOTIFY } from "@/lib/review-links";
@@ -51,9 +51,32 @@ export async function GET(req: Request): Promise<NextResponse> {
       ),
     );
 
+  // Страховка: публикуем только ПОСЛЕДНЮЮ ревизию главы. Плановые записи гасятся при появлении
+  // новой ревизии (submit-revision и fork в PATCH), но условие дешёвое и снимает целый класс
+  // ошибок «cron опубликовал устаревшую версию».
+  const maxNumber = new Map<string, number>();
+  if (due.length > 0) {
+    const all = await db
+      .select({ chapterId: chapterRevisions.chapterId, number: chapterRevisions.number })
+      .from(chapterRevisions)
+      .where(inArray(chapterRevisions.chapterId, [...new Set(due.map((d) => d.chapterId))]));
+    for (const r of all) {
+      const prev = maxNumber.get(r.chapterId);
+      if (prev == null || r.number > prev) maxNumber.set(r.chapterId, r.number);
+    }
+  }
+
   let published = 0;
   let failed = 0;
   for (const row of due) {
+    if (maxNumber.get(row.chapterId) !== row.revisionNumber) {
+      // Поверх запланированной ревизии уже есть новая — снимаем план молча.
+      await db
+        .update(chapterRevisions)
+        .set({ scheduledAt: null })
+        .where(eq(chapterRevisions.id, row.revisionId));
+      continue;
+    }
     try {
       await publishRevision({
         chapterId: row.chapterId,

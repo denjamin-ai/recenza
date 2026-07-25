@@ -85,6 +85,12 @@ export async function POST(
         prevBlocks,
         submittedAt: now,
       });
+      // Отложенная публикация ПРЕДЫДУЩЕЙ ревизии теряет смысл: cron опубликовал бы устаревший
+      // текст (и выдал кредит/декремент reviewLoad не за ту версию). Гасим план.
+      await tx
+        .update(chapterRevisions)
+        .set({ scheduledAt: null })
+        .where(eq(chapterRevisions.id, session.revision.id));
       // Переносим назначения на новую ревизию с обнулёнными вердиктами.
       for (const r of session.reviewers) {
         await tx.insert(chapterReviewers).values({

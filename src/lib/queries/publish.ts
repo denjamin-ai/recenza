@@ -75,7 +75,7 @@ export async function publishRevision(
     // Состав ревьюеров этой ревизии — внутри tx (не доверяем кэшу сессии).
     // Пусто — штатная ситуация Фазы 13 (публикация без ревью): кредита и reviewLoad просто нет.
     const verdictRows = await tx
-      .select({ handle: chapterReviewers.handle })
+      .select({ handle: chapterReviewers.handle, verdict: chapterReviewers.verdict })
       .from(chapterReviewers)
       .where(
         and(
@@ -83,7 +83,13 @@ export async function publishRevision(
           eq(chapterReviewers.revisionNumber, target.revisionNumber),
         ),
       );
-    const handles = verdictRows.map((r) => r.handle);
+    // Назначенные — освобождаются (reviewLoad −1) в любом случае: ревью этой ревизии закончилось.
+    const assigned = verdictRows.map((r) => r.handle);
+    // ⚠️ Ф13: КРЕДИТ — только за фактическое одобрение. Раньше публикация была возможна лишь при
+    // all-approve, поэтому «назначен» и «одобрил» совпадали. Теперь автор может опубликовать главу
+    // посреди ревью — и ревьюер, запросивший правки, получил бы публичную строчку «проверил это»,
+    // которую не может отозвать. Кредитуем только `approve`.
+    const credited = verdictRows.filter((r) => r.verdict === "approve").map((r) => r.handle);
 
     await tx
       .update(chapterRevisions)
@@ -99,7 +105,7 @@ export async function publishRevision(
           eq(reviewerHistory.revisionNumber, target.revisionNumber),
         ),
       );
-    for (const h of handles) {
+    for (const h of credited) {
       await tx.insert(reviewerHistory).values({
         chapterId: target.chapterId,
         revisionNumber: target.revisionNumber,
@@ -108,11 +114,12 @@ export async function publishRevision(
     }
 
     // Ревью завершено → освобождаем ревьюеров: reviewLoad −1 (accept делает +1; Фаза 9).
-    if (handles.length > 0) {
+    // Здесь именно `assigned`: слот занимает назначение, а не одобрение.
+    if (assigned.length > 0) {
       await tx
         .update(users)
         .set({ reviewLoad: sql`max(${users.reviewLoad} - 1, 0)` })
-        .where(inArray(users.handle, handles));
+        .where(inArray(users.handle, assigned));
     }
 
     // publishedAt блога — только при первой публикации (читаем внутри tx, race-safe).
@@ -152,12 +159,13 @@ export async function publishRevision(
       });
     }
 
-    // Ревьюерам — «глава опубликована» (кредит виден в ридере).
-    if (handles.length > 0) {
+    // Ревьюерам — «глава опубликована» (уведомляем всех назначенных, не только кредитованных:
+    // тот, кто запросил правки, тоже должен узнать, что главу опубликовали).
+    if (assigned.length > 0) {
       const idRows = await tx
         .select({ handle: users.handle, id: users.id })
         .from(users)
-        .where(inArray(users.handle, handles));
+        .where(inArray(users.handle, assigned));
       for (const r of idRows) {
         specs.push({
           recipientId: r.id,
@@ -169,22 +177,38 @@ export async function publishRevision(
 
     // P1(a): подписчикам автора — new_chapter (bell уже умеет этот тип: label по payload.title,
     // href по blogSlug/chapterSlug). Автор сам себе не уведомляется.
-    const followerRows = await tx
-      .select({ userId: follows.userId })
-      .from(follows)
-      .where(eq(follows.authorId, target.authorId));
-    for (const f of followerRows) {
-      if (f.userId === target.authorId) continue;
-      specs.push({
-        recipientId: f.userId,
-        type: REVIEW_NOTIFY.newChapter,
-        payload: {
-          href,
-          title: target.chapterTitle,
-          blogSlug: target.blogSlug,
-          chapterSlug: target.chapterSlug,
-        },
-      });
+    // ⚠️ Ф13: только при ПЕРВОЙ публикации главы. Раньше переиздание было редким (требовало
+    // полного круга ревью), теперь правка опубликованной главы — штатный сценарий, и без этого
+    // условия подписчики получали бы «новая глава» на каждую исправленную опечатку.
+    const publishedCount = (
+      await tx
+        .select({ number: chapterRevisions.number })
+        .from(chapterRevisions)
+        .where(
+          and(
+            eq(chapterRevisions.chapterId, target.chapterId),
+            eq(chapterRevisions.status, "published"),
+          ),
+        )
+    ).length;
+    if (publishedCount <= 1) {
+      const followerRows = await tx
+        .select({ userId: follows.userId })
+        .from(follows)
+        .where(eq(follows.authorId, target.authorId));
+      for (const f of followerRows) {
+        if (f.userId === target.authorId) continue;
+        specs.push({
+          recipientId: f.userId,
+          type: REVIEW_NOTIFY.newChapter,
+          payload: {
+            href,
+            title: target.chapterTitle,
+            blogSlug: target.blogSlug,
+            chapterSlug: target.chapterSlug,
+          },
+        });
+      }
     }
 
     await createNotifications(tx, specs);

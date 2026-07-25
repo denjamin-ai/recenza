@@ -1,5 +1,6 @@
-// Публичный профиль /u/[slug]. Автор → видимые блоги + портфолио «Об авторе» (если видимо).
-// Ревьюер → «что отрецензировал» (reviewer_history ∩ публично читаемые главы). Читатель/админ → нет профиля.
+// Публичный профиль /u/[slug]. Аккаунт с `canAuthor` → видимые блоги + портфолио «Об авторе»
+// (если видимо); `isReviewer` → «что отрецензировал» (reviewer_history ∩ публично читаемые главы).
+// Аккаунт без возможностей и админ → профиля пока нет (Ф13.5/PR-B сделает профиль всем + noindex).
 // Заблокированный пользователь — скрыт. passwordHash наружу не попадает (выбираем явные колонки).
 
 import { cache } from "react";
@@ -9,7 +10,7 @@ import { blogs, chapters, portfolios, reviewerHistory, users } from "@/lib/db/sc
 import { parseJson } from "@/lib/db/json";
 import { getReadableChapters, getVisibleBlogs } from "./feed";
 import type { BlogCardView } from "./types";
-import type { Block, LinkItem, Role } from "@/types";
+import type { Block, LinkItem } from "@/types";
 
 export interface ProfileUser {
   id: string;
@@ -18,7 +19,8 @@ export interface ProfileUser {
   displayName: string;
   bio: string | null;
   avatarUrl: string | null;
-  role: Role;
+  canAuthor: boolean;
+  isReviewer: boolean;
   links: LinkItem[];
   competencies: string[];
   reviewerRating: number | null;
@@ -62,7 +64,8 @@ export const getProfileBySlug = cache(async (slug: string): Promise<ProfileView 
         displayName: users.displayName,
         bio: users.bio,
         avatarUrl: users.avatarUrl,
-        role: users.role,
+        canAuthor: users.canAuthor,
+        isReviewer: users.isReviewer,
         links: users.links,
         competencies: users.competencies,
         reviewerRating: users.reviewerRating,
@@ -76,9 +79,13 @@ export const getProfileBySlug = cache(async (slug: string): Promise<ProfileView 
       .limit(1)
   )[0];
 
-  // Скрыт: нет пользователя / заблокирован / у роли нет публичного профиля (reader/admin).
+  // Скрыт: нет пользователя / заблокирован.
+  // ⚠️ Ф13 (промежуточный шаг): видимость профиля гейтится ВОЗМОЖНОСТЯМИ, а не legacy-ролью —
+  // иначе у аккаунта, которому админ выдал `canAuthor` (а `role` остался `reader`), профиля бы
+  // не было никогда, а пункт меню «Мой профиль» вёл бы в 404. Полное перепроектирование
+  // «профиль есть у ЛЮБОГО аккаунта, у пустого — noindex» (З-36/З-37) — подфаза 13.5, PR-B.
   if (!row || row.isBlocked) return null;
-  if (row.role !== "author" && row.role !== "reviewer") return null;
+  if (!row.canAuthor && !row.isReviewer) return null;
 
   const user: ProfileUser = {
     id: row.id,
@@ -87,7 +94,8 @@ export const getProfileBySlug = cache(async (slug: string): Promise<ProfileView 
     displayName: row.displayName,
     bio: row.bio,
     avatarUrl: row.avatarUrl,
-    role: row.role,
+    canAuthor: row.canAuthor,
+    isReviewer: row.isReviewer,
     links: parseJson<LinkItem[]>(row.links, []),
     competencies: parseJson<string[]>(row.competencies, []),
     reviewerRating: row.reviewerRating,
@@ -95,7 +103,9 @@ export const getProfileBySlug = cache(async (slug: string): Promise<ProfileView 
     createdAt: row.createdAt,
   };
 
-  if (row.role === "author") {
+  // Аккаунт с обеими возможностями показывается как авторский профиль (полноценные две секции —
+  // 13.5/PR-B). Порядок ветвления сохраняет поведение до Ф13 для «чистых» ролей.
+  if (row.canAuthor) {
     const allBlogs = await getVisibleBlogs();
     const authored = allBlogs.filter((b) => b.author.id === user.id);
     const pf = (
