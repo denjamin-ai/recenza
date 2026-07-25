@@ -75,6 +75,10 @@ export const getReadableChapters = cache(async (): Promise<BaseRow[]> => {
       and(
         eq(chapterRevisions.status, "published"),
         eq(users.isBlocked, false),
+        // ⚠️ Авторство — отзываемая возможность: сняли `can_author` → все блоги автора уходят
+        // из публичных поверхностей (лента/каталог/подписки/sitemap/feed/профиль). Скрытие
+        // ДЕРИВАЦИОННОЕ: данные не мутируются, возврат флага возвращает блоги как были.
+        eq(users.canAuthor, true),
         eq(blogs.hidden, false), // Фаза 10: блог скрыт админом → вон из ленты/каталога/подписок/sitemap/feed
       ),
     )) as BaseRow[];

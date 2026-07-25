@@ -32,7 +32,16 @@ export const getReadableBlog = cache(async (slug: string): Promise<ReadableBlog 
       })
       .from(blogs)
       .innerJoin(users, eq(blogs.authorId, users.id))
-      .where(and(eq(blogs.slug, slug), eq(users.isBlocked, false), eq(blogs.hidden, false))) // Фаза 10: скрытый блог → 404 в ридере
+      // Фаза 10: скрытый блог → 404 в ридере. Ф13-hotfix: снятый `can_author` — тоже 404
+      // (иначе блог оставался бы доступен по прямой ссылке в обход каталога).
+      .where(
+        and(
+          eq(blogs.slug, slug),
+          eq(users.isBlocked, false),
+          eq(users.canAuthor, true),
+          eq(blogs.hidden, false),
+        ),
+      )
       .limit(1)
   )[0];
 

@@ -167,6 +167,8 @@ export async function resolveCommentTarget(
         eq(blogs.slug, blogSlug),
         eq(chapters.slug, chapterSlug),
         eq(users.isBlocked, false),
+        // Блог скрытого автора не принимает новые комментарии (цель не резолвится → 404).
+        eq(users.canAuthor, true),
         eq(chapterRevisions.status, "published"),
       ),
     );

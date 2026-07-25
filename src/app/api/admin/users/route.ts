@@ -1,8 +1,9 @@
 // Создание пользователя админом (Фаза 12) — альфа-модель доступа: self-registration в приложении
 // нет, аккаунты выдаёт только админ и сообщает пароль лично.
 //
-// Фаза 13: вместо одной роли задаются ВОЗМОЖНОСТИ (`canAuthor`/`isReviewer`, обе опциональны и по
-// умолчанию false = читатель). Их можно менять и позже — PATCH /api/admin/users/[handle].
+// Фаза 13: вместо одной роли задаются ВОЗМОЖНОСТИ. `canAuthor` по умолчанию ВКЛЮЧЕН (снимается
+// явным `false`), `isReviewer` — выключен. Менять их можно и позже — PATCH /api/admin/users/[handle];
+// снятие `can_author` прячет все блоги автора из публичных поверхностей.
 // Колонка `role` notNull, поэтому пишется legacy-shim, отражающий «главную» возможность;
 // админ через этот эндпоинт не создаётся (админ — env-based, строки в users не имеет).
 
@@ -69,7 +70,11 @@ export async function POST(req: Request): Promise<NextResponse> {
   if (body.isReviewer !== undefined && typeof body.isReviewer !== "boolean") {
     return NextResponse.json({ error: "isReviewer: ожидается boolean." }, { status: 400 });
   }
-  const canAuthor = body.canAuthor === true;
+  // ⚠️ Авторство по умолчанию ВКЛЮЧЕНО (решение владельца): вести блог — базовая возможность
+  // нового аккаунта, админ снимает её точечно. Ревьюерство остаётся выдаваемым явно.
+  // Дефолт живёт здесь, а не в схеме: сменить DEFAULT колонки в SQLite = пересоздать таблицу
+  // `users`, на которую ссылаются FK ревью-таблиц (деструктивные миграции запрещены).
+  const canAuthor = body.canAuthor !== false;
   const isReviewer = body.isReviewer === true;
   // legacy-shim для notNull-колонки `role`: гейты её не читают (см. schema.ts).
   const role = isReviewer ? "reviewer" : canAuthor ? "author" : "reader";

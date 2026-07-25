@@ -573,7 +573,8 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
     api,
   }) => {
     // Фаза 12 (альфа-модель доступа): self-registration нет, аккаунты выдаёт админ.
-    // Ф13: вместо селекта роли — чекбоксы возможностей; без отметок аккаунт = читатель.
+    // Ф13: вместо селекта роли — чекбоксы возможностей. ⚠️ Авторство включено ПО УМОЛЧАНИЮ
+    // (решение владельца), поэтому «читателя» админ создаёт, СНЯВ отметку «Автор».
     const handle = "e2e_newbie";
     const password = "e2e-password-12";
 
@@ -588,9 +589,11 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
       await asAdmin.page.getByRole("textbox", { name: "Хэндл" }).fill(handle);
       await asAdmin.page.getByRole("textbox", { name: "Отображаемое имя" }).fill("Новичок E2E");
       await asAdmin.page.getByRole("textbox", { name: /Пароль/ }).fill(password);
-      // Возможности не отмечаем — создаётся читатель (базовый уровень).
-      await expect(asAdmin.page.getByRole("checkbox", { name: "Автор" })).not.toBeChecked();
+      // «Автор» предотмечен по умолчанию, «Ревьюер» — нет. Для читателя снимаем «Автора».
+      const authorBox = asAdmin.page.getByRole("checkbox", { name: "Автор" });
+      await expect(authorBox).toBeChecked();
       await expect(asAdmin.page.getByRole("checkbox", { name: "Ревьюер" })).not.toBeChecked();
+      await authorBox.uncheck();
       await asAdmin.page.getByRole("button", { name: "Создать пользователя" }).click();
 
       await expect(asAdmin.page.getByRole("status").filter({ hasText: `@${handle} создан` })).toBeVisible();
