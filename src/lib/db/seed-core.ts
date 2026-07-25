@@ -226,7 +226,7 @@ export async function seedAll(db: Db): Promise<void> {
       slug: "reviewer",
       bio: "Рецензирую статьи по фронтенду и архитектуре.",
       competencies: stringifyJson(["TypeScript", "React", "Архитектура", "Event Loop"]),
-      reviewLoad: 2, // 2/3 → busy (chp_under_review + chp_changes; см. §6/§22)
+      reviewLoad: 2, // 2/3 → busy (назначен на chp_under_review + chp_changes; см. §6)
       reviewCapacity: 3,
       createdAt: ago(100 * DAY),
     },
@@ -239,7 +239,7 @@ export async function seedAll(db: Db): Promise<void> {
       displayName: "Лена Базы",
       slug: "lena-review",
       competencies: stringifyJson(["Базы данных", "SQL", "Производительность"]),
-      reviewLoad: 2, // 2/2 → full (chp_under_review + chp_changes; см. §6/§22)
+      reviewLoad: 2, // 2/2 → full — мишень серверной проверки capacity при claim (З-06)
       reviewCapacity: 2,
       createdAt: ago(95 * DAY),
     },
@@ -267,7 +267,7 @@ export async function seedAll(db: Db): Promise<void> {
       displayName: "Сергей Секьюрити",
       slug: "sergey-review",
       competencies: stringifyJson(["Безопасность", "Криптография"]),
-      reviewLoad: 0, // 0/3 → free (только pending/flagged-приглашения, не в chapter_reviewers)
+      reviewLoad: 0, // 0/3 → free (ни одной взятой заявки — Ф14: приглашений больше нет)
       reviewCapacity: 3,
       createdAt: ago(85 * DAY),
     },
