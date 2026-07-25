@@ -32,6 +32,8 @@ export interface BlogCardView {
    */
   verifiedTier?: VerifiedTier | null;
   verifiedAt?: number | null;
+  /** Ф15: закрепление редакцией («Выбор редакции»). Опционально по той же причине, что и бейдж. */
+  featuredAt?: number | null;
 }
 
 /** Строка ленты глав (последняя published-ревизия главы). */
@@ -44,6 +46,9 @@ export interface FeedItemView {
   publishedAt: number | null;
   summary: string | null;
   author: AuthorView;
+  /** Ф15: бейдж ЭТОЙ ревизии — по нему `feed.xml` отбирает «только проверенное». */
+  verifiedAt: number | null;
+  verifiedTier: VerifiedTier | null;
 }
 
 /**
@@ -90,6 +95,12 @@ export interface ReadableBlog {
 export interface FeedFilter {
   tag?: string;
   complexity?: Complexity;
+  /**
+   * Ф15: оставить только главы с бейджем (`chapter_revisions.verified_at`). Питает `feed.xml`
+   * («RSS — только проверенное», решение владельца). ⚠️ `sitemap.xml` этим фильтром НЕ пользуется:
+   * там по тому же решению остаётся ВСЁ опубликованное.
+   */
+  verifiedOnly?: boolean;
   /**
    * Ролевая изоляция автора (binding, CLAUDE.md): если задан — показываем ТОЛЬКО блоги этого автора.
    * Пейджи передают viewer.id, когда роль зрителя = author (чужие блоги фильтруются из ленты/каталога).

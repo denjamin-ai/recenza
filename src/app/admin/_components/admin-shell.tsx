@@ -18,6 +18,7 @@ import {
   IconHeart,
   IconListLines,
   IconSearch,
+  IconStar,
 } from "@/components/icons";
 
 type NavItem = { href: string; label: string; Icon: (p: { className?: string }) => ReactNode };
@@ -35,6 +36,8 @@ const GROUPS: { label: string | null; items: NavItem[] }[] = [
   {
     label: "Платформа",
     items: [
+      // Ф15: витрина главной — подборка редакции (страховка от пустой главной, R-2).
+      { href: "/admin/featured", label: "Выбор редакции", Icon: IconStar },
       // «Доска ревьюеров» — вакансии публичной доски /board (ui-feedback-6 П5).
       { href: "/admin/board", label: "Доска ревьюеров", Icon: IconListLines },
       { href: "/admin/banners", label: "Баннеры", Icon: IconImage },

@@ -26,6 +26,8 @@ interface BaseRow {
   /** Ф14: денормализованный бейдж блога (`blogs.verified_*`) — чип на карточке каталога. */
   blogVerifiedAt: number | null;
   blogVerifiedTier: VerifiedTier | null;
+  /** Ф15: ручное закрепление блога редакцией («Выбор редакции»). */
+  blogFeaturedAt: number | null;
   authorId: string;
   authorHandle: string;
   authorSlug: string;
@@ -42,6 +44,13 @@ interface BaseRow {
   revSkills: string | null;
   revPublishedAt: number | null;
   revSummary: string | null;
+  /**
+   * Ф15: бейдж САМОЙ ревизии. Для RSS правда именно здесь: `blogs.verified_*` — исторический
+   * агрегат по всем проверенным ревизиям, и по нему в ленту попадали бы непроверенные главы
+   * проверенного блога.
+   */
+  revVerifiedAt: number | null;
+  revVerifiedTier: VerifiedTier | null;
 }
 
 /** Одна строка на главу = её последняя published-ревизия (видимый автор). Отсортировано по publishedAt desc. */
@@ -61,6 +70,7 @@ export const getReadableChapters = cache(async (): Promise<BaseRow[]> => {
       blogPublishedAt: blogs.publishedAt,
       blogVerifiedAt: blogs.verifiedAt,
       blogVerifiedTier: blogs.verifiedTier,
+      blogFeaturedAt: blogs.featuredAt,
       authorId: users.id,
       authorHandle: users.handle,
       authorSlug: users.slug,
@@ -76,6 +86,8 @@ export const getReadableChapters = cache(async (): Promise<BaseRow[]> => {
       revSkills: chapterRevisions.skills,
       revPublishedAt: chapterRevisions.publishedAt,
       revSummary: chapterRevisions.summary,
+      revVerifiedAt: chapterRevisions.verifiedAt,
+      revVerifiedTier: chapterRevisions.verifiedTier,
     })
     .from(chapterRevisions)
     .innerJoin(chapters, eq(chapterRevisions.chapterId, chapters.id))
@@ -118,6 +130,8 @@ function authorOf(row: BaseRow): AuthorView {
 function matchesFilter(row: BaseRow, filter?: FeedFilter): boolean {
   if (!filter) return true;
   if (filter.restrictAuthorId && row.authorId !== filter.restrictAuthorId) return false;
+  // Ф15: «только проверенное» для RSS — по бейджу САМОЙ ревизии (см. BaseRow.revVerifiedAt).
+  if (filter.verifiedOnly && row.revVerifiedAt === null) return false;
   if (filter.complexity && row.complexity !== filter.complexity) return false;
   if (filter.tag) {
     const tags = parseJson<string[]>(row.tags, []);
@@ -140,6 +154,8 @@ export async function getFeed(filter?: FeedFilter): Promise<FeedItemView[]> {
     publishedAt: r.revPublishedAt,
     summary: r.revSummary,
     author: authorOf(r),
+    verifiedAt: r.revVerifiedAt,
+    verifiedTier: r.revVerifiedTier,
   }));
 }
 
@@ -169,6 +185,7 @@ export async function getVisibleBlogs(filter?: FeedFilter): Promise<BlogCardView
       chapterCount: 1,
       verifiedTier: r.blogVerifiedTier,
       verifiedAt: r.blogVerifiedAt,
+      featuredAt: r.blogFeaturedAt,
     });
   }
   return [...byBlog.values()].sort(

@@ -17,6 +17,12 @@ export interface SitemapData {
   profiles: { slug: string; lastMod: number | null }[];
 }
 
+/**
+ * ⚠️ Ф15 (решение владельца, binding): sitemap отдаёт ВСЁ опубликованное — фильтр «только
+ * проверенное» сюда НЕ добавлять. Он живёт в `feed.xml` (`FeedFilter.verifiedOnly`) и на витрине
+ * главной (`queries/showcase.ts`). Блог без бейджа полностью работоспособен и живёт по прямой
+ * ссылке — это канал самопродвижения автора, и он обязан индексироваться.
+ */
 export async function getSitemapData(): Promise<SitemapData> {
   const rows = await getReadableChapters();
 

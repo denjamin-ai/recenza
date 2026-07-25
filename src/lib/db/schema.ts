@@ -54,6 +54,8 @@ export const REVIEW_STATUSES = [
 export const VERDICTS = ["approve", "request-changes"] as const;
 export const THREAD_STATUSES = ["open", "resolved"] as const;
 export const REPORT_STATUSES = ["open", "resolved"] as const;
+/** Ф15 (З-61): цель жалобы. До неё `reports.target_type` был свободной строкой, а поддержан — только "comment". */
+export const REPORT_TARGET_TYPES = ["comment", "blog", "review"] as const;
 export const COMPLEXITIES = ["simple", "medium", "complex"] as const;
 export const INVITATION_STATUSES = [
   "pending",
@@ -162,6 +164,12 @@ export const blogs = sqliteTable("blogs", {
   // `chapter_revisions.verified_at` привязан к номеру ревизии.
   verifiedAt: integer("verified_at"),
   verifiedTier: text("verified_tier", { enum: VERIFIED_TIERS }),
+  // «Выбор редакции» (Фаза 15) — ручное закрепление блога админом на витрине. Страховка R-2:
+  // пока проверенных блогов меньше SHOWCASE_MIN_VERIFIED, главную наполняет редакция, а не
+  // алгоритм. Ставится/снимается только через PATCH /api/admin/blogs/[blogId].
+  // Индекса нет намеренно: витрина считается поверх getVisibleBlogs() в памяти (объём мал),
+  // индекс появится вместе с переносом отбора на SQL-уровень.
+  featuredAt: integer("featured_at"),
 });
 
 export const chapters = sqliteTable(
@@ -440,16 +448,32 @@ export const portfolios = sqliteTable("portfolios", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+/**
+ * Жалобы модератору. Фаза 15: до неё жалобу было НЕВОЗМОЖНО создать — роута не существовало,
+ * единственный `insert` жил в сиде, и раздел админки работал на одной строке (З-51).
+ * Теперь цель полиморфна и типизирована (З-61): `target_id` указывает на комментарий, блог
+ * или главу (для приватной жалобы на ревью). FK на цель нет по построению — полиморфизм.
+ */
 export const reports = sqliteTable("reports", {
   id: id(),
   reporterId: text("reporter_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
-  targetType: text("target_type").notNull(),
+  // Ф15: был свободный text — печатался в админке «как есть», и поддержан был только "comment".
+  targetType: text("target_type", { enum: REPORT_TARGET_TYPES }).notNull(),
   targetId: text("target_id").notNull(),
   reason: text("reason").notNull(),
+  /** Комментарий модератору — необязательный (прототип §ReportDialog). */
+  note: text("note"),
+  /**
+   * «О ком» жалоба — только для `target_type='review'`: приватная жалоба автора на ревьюера,
+   * пришедшая на смену снесённому в Ф14 рейтингу (решение владельца). Для остальных типов NULL.
+   */
+  aboutHandle: text("about_handle").references(() => users.handle),
   status: text("status", { enum: REPORT_STATUSES }).notNull().default("open"),
   createdAt: integer("created_at").notNull(),
+  /** Когда админ закрыл жалобу — питает журнал разбора; NULL, пока `status='open'`. */
+  resolvedAt: integer("resolved_at"),
 });
 
 /**

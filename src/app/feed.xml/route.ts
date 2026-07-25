@@ -1,4 +1,9 @@
 // RSS 2.0 свежих published-глав (ручная сборка с экранированием, без новой зависимости). Публичная лента.
+//
+// ⚠️ Ф15 (решение владельца): в RSS уходит ТОЛЬКО проверенное, в `sitemap.xml` — ВСЁ опубликованное.
+// Правила расходятся намеренно: лента — редакционная витрина, карта сайта — полнота индексации.
+// Отбор идёт по бейджу САМОЙ ревизии (`chapter_revisions.verified_at`), а не по историческому
+// агрегату `blogs.verified_*`: иначе в ленту попадали бы непроверенные главы проверенного блога.
 
 import { getFeed } from "@/lib/queries/feed";
 import { absoluteUrl, siteUrl, truncate } from "@/lib/seo";
@@ -16,7 +21,7 @@ function esc(s: string): string {
 
 export async function GET(): Promise<Response> {
   const base = siteUrl();
-  const items = (await getFeed()).slice(0, 20);
+  const items = (await getFeed({ verifiedOnly: true })).slice(0, 20);
 
   const xmlItems = items
     .map((i) => {

@@ -31,6 +31,7 @@ import type {
   ReportStatus,
   ReviewStatus,
   RevisionStatus,
+  VerifiedTier,
 } from "@/types";
 
 // ───────────────────────────── Сводка (dashboard) ─────────────────────────────
@@ -541,6 +542,54 @@ export async function getRemovedReviewers(): Promise<
   { id: string; blogSlug: string; chapterSlug: string; handle: string; byAdmin: string; reason: string | null; createdAt: number }[]
 > {
   return db.select().from(removedReviewers).orderBy(desc(removedReviewers.createdAt));
+}
+
+// ───────────────────────────── Выбор редакции (Ф15) ─────────────────────────────
+
+export interface AdminFeaturedRow {
+  id: string;
+  slug: string;
+  title: string;
+  authorName: string;
+  authorSlug: string;
+  publishedAt: number | null;
+  verifiedAt: number | null;
+  verifiedTier: VerifiedTier | null;
+  featuredAt: number | null;
+  hidden: boolean;
+}
+
+/**
+ * Блоги для экрана «Выбор редакции»: закреплённые сверху, затем проверенные, затем остальные.
+ * Скрытые (`hidden`) остаются в списке — админ должен видеть, что закреплённый блог скрыт.
+ */
+export async function getAdminFeatured(): Promise<AdminFeaturedRow[]> {
+  const rows = await db
+    .select({
+      id: blogs.id,
+      slug: blogs.slug,
+      title: blogs.title,
+      authorName: users.displayName,
+      authorSlug: users.slug,
+      publishedAt: blogs.publishedAt,
+      verifiedAt: blogs.verifiedAt,
+      verifiedTier: blogs.verifiedTier,
+      featuredAt: blogs.featuredAt,
+      hidden: blogs.hidden,
+    })
+    .from(blogs)
+    .innerJoin(users, eq(blogs.authorId, users.id));
+
+  const rank = (r: AdminFeaturedRow): number =>
+    r.featuredAt != null ? 2 : r.verifiedTier === "independent" ? 1 : 0;
+
+  return rows.sort(
+    (a, b) =>
+      rank(b) - rank(a) ||
+      (b.featuredAt ?? 0) - (a.featuredAt ?? 0) ||
+      (b.verifiedAt ?? 0) - (a.verifiedAt ?? 0) ||
+      (b.publishedAt ?? 0) - (a.publishedAt ?? 0),
+  );
 }
 
 // ───────────────────────────── Монетизация (read) ─────────────────────────────
