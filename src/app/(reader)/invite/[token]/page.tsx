@@ -53,7 +53,10 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
           <p className="text-[length:var(--type-small)] font-bold uppercase tracking-wider text-[var(--accent)]">
             Приглашение эксперта
           </p>
-          <h1 className="mt-2 text-[length:var(--type-h1)]">
+          {/* На 375px «рецензировать» в кегле h1 не влезает в строку и уводило страницу вправо
+              на 9px; `break-words` рвал слово посередине. Поэтому на мобиле кегль h2, с sm — h1.
+              `break-words` оставлен страховкой: имя автора приходит извне и может быть длинным. */}
+          <h1 className="mt-2 break-words text-[length:var(--type-h2)] [text-wrap:balance] sm:text-[length:var(--type-h1)]">
             {invite.byName} приглашает вас рецензировать
           </h1>
           <p className="mt-3 text-[var(--muted-foreground)]">

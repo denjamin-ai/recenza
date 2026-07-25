@@ -72,7 +72,15 @@ export function QueueRequestCard({ item, now }: { item: QueueRequestItem; now: n
             · версия {item.revisionNumber}
           </p>
         </div>
-        <span className="shrink-0 rounded-[var(--radius-pill)] bg-[var(--accent-bg)] px-2 py-0.5 text-[length:var(--type-small)] tabular-nums text-[var(--accent)]">
+        {/* Тон зависит от величины: акцент — только когда совпадение реальное. Нулевое совпадение
+            в акцентном чипе читалось как «вам подходит», хотя означает ровно обратное. */}
+        <span
+          className={`shrink-0 rounded-[var(--radius-pill)] px-2 py-0.5 text-[length:var(--type-small)] tabular-nums ${
+            item.matchPct >= 50
+              ? "bg-[var(--accent-bg)] text-[var(--accent)]"
+              : "bg-[var(--muted)] text-[var(--muted-foreground)]"
+          }`}
+        >
           совпадение {item.matchPct}%
         </span>
       </div>

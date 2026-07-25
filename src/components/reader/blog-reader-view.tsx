@@ -126,8 +126,11 @@ function ArchiveNotice({ archive }: { archive: ArchiveView }) {
       className="mb-6 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--muted)] px-4 py-3 text-[length:var(--type-small)] text-[var(--muted-foreground)]"
     >
       <p>
+        {/* Русский формат даты уже оканчивается на «г.» — своя точка дала бы «2026 г..». */}
         Вы читаете проверенную версию {archive.version}
-        {date ? ` от ${date}` : ""}. Текущая версия — {archive.currentVersion}.
+        {date ? ` от ${date}` : ""}
+        {date ? " Текущая версия — " : ". Текущая версия — "}
+        {archive.currentVersion}.
       </p>
       <Link
         href={archive.currentHref}
