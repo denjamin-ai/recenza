@@ -250,10 +250,13 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
       await expect(admin.deleteCommentCloseReport()).toHaveCount(0);
     });
 
-    await test.step("«Оставить контент, закрыть жалобу» → редирект в список, открытых нет", async () => {
+    await test.step("«Оставить контент, закрыть жалобу» → редирект в список, эта жалоба ушла из открытых", async () => {
       await admin.keepContentCloseReport().click();
       await asAdmin.page.waitForURL((url) => url.pathname === "/admin/reports");
-      await expect(asAdmin.page.getByText("Открытых жалоб нет.")).toBeVisible();
+      // ⚠️ Ф15: в сиде теперь ТРИ жалобы (по одной на тип цели), поэтому «Открытых жалоб нет»
+      // после разбора одной уже не наступает — проверяем, что ушла именно она.
+      await expect(asAdmin.page.getByRole("link", { name: /Спам в комментариях/ })).toHaveCount(0);
+      await expect(asAdmin.page.getByRole("heading", { name: /Закрытые/ })).toBeVisible();
     });
 
     await test.step("Повторное открытие rpt_1 — «Закрыта», повторный разбор недоступен", async () => {

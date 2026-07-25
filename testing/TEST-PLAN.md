@@ -363,34 +363,43 @@ REV-BADGE (бейдж двух уровней и его привязка к но
 
 ### 9.7 Сводка распределения по spec-файлам
 
-⚠️ **Ресинк Фазы 13.9 (З-32).** Матрица §9.1–9.6 перечисляет TC-ID постановочных тест-кейсов
+⚠️ **Ресинк Фазы 15.9.** Матрица §9.1–9.6 перечисляет TC-ID постановочных тест-кейсов
 (`testing/test-cases/TC-*.md`) и отставала от кода: 116 записей против фактических автотестов.
 Ниже — ФАКТИЧЕСКОЕ распределение `test(...)` по файлам (источник — сами спеки, а не TC-документы).
 Расхождение TC-ID ↔ `test()` штатно: один спек может закрывать два TC (напр. `TC-AUTHOR-10+11`),
 а часть автотестов (`UPL-*`, `BLK-*`, `CRON-*`, `SEC-*`, `PUB-*`, `WS-*`, `SET-*`, `PROF-*`,
 `BLOG-MANAGE`) заводилась сразу спеками, без отдельной карточки TC.
 
-| Spec-файл | `test()` | Состав |
-|-----------|:--------:|--------|
-| `guest.spec.ts` | 16 | TC-GUEST-01…16 |
-| `reader.spec.ts` | 20 | TC-READER-01…20 |
-| `author.spec.ts` | 17 | TC-AUTHOR-01…28 (часть кейсов объединена) |
-| `reviewer.spec.ts` | 14 | TC-REVIEWER-01…19 |
-| `admin.spec.ts` | 19 | TC-ADMIN (кроме 02, 17 — в security.spec) |
-| `account.spec.ts` | 9 | **Ф13:** WS-01/02, SET-01/02, PROF-01/02/03, CAP-01/02 |
-| `security.spec.ts` | 9 | TC-READER-21, TC-ADMIN-02/17 + SEC-CSRF/XSS/HTTPONLY/HEADERS/CRON/TS |
-| `uploads.spec.ts` | 5 | UPL-01…05 |
-| `blocks-render.spec.ts` | 2 | BLK-* (рендер блоков ридер ⇄ ревью) |
-| `cron.spec.ts` | 2 | CRON-01/02 (отложенная публикация) |
-| `flows/review-chapter.spec.ts` | 4 | REV-CHAPTER, REV-PRIMARY |
-| `flows/review-whole-blog.spec.ts` | 4 | REV-WHOLE-BLOG |
-| `flows/session-chat.spec.ts` | 2 | REV-SESSION-CHAT (multi-context) |
-| `flows/publish.spec.ts` | 6 | PUB-FREE, PUB-DRAFT, PUB-CHAPTER-V2, PUB-ARTICLE, PUB-PORTFOLIO, REV-VERSIONS |
-| `flows/publish-free.spec.ts` | 4 | **Ф13:** PUB-FREE-01…04 (свободная публикация, фолк ревизий, З-05) |
-| `flows/comment-thread.spec.ts` | 5 | COM-THREAD, COM-STALE, COM-EDIT-WINDOW, COM-DEPTH, COM-GATING |
-| `flows/blog-manage.spec.ts` | 4 | BLOG-MANAGE (создание/переименование/удаление блога) |
-| `flows/reviewer-matching.spec.ts` | 5 | MATCH-INVITE, MATCH-RECRUIT, MATCH-BOARD, MATCH-DECLINE, MATCH-RATING |
-| **Итого** | **147** | полный прогон, 0 skip |
+| Spec-файл | Состав |
+|-----------|--------|
+| `guest.spec.ts` | TC-GUEST-01…18 (Ф15: главная = витрина, `/blog/[slug]` = оглавление, подвал) |
+| `reader.spec.ts` | TC-READER-01…22 |
+| `author.spec.ts` | TC-AUTHOR-01…30 (часть кейсов объединена) |
+| `reviewer.spec.ts` | TC-REVIEWER-01…19 |
+| `admin.spec.ts` | TC-ADMIN (кроме 02, 17 — в security.spec; 10 удалён в Ф14) |
+| `account.spec.ts` | **Ф13:** WS-01/02, SET-01/02, PROF-01/02/03, CAP-01/02 |
+| `security.spec.ts` | TC-READER-21, TC-ADMIN-02/17 + SEC-CSRF/XSS/HTTPONLY/HEADERS/CRON/TS |
+| `uploads.spec.ts` | UPL-01…05 |
+| `blocks-render.spec.ts` | BLK-* (рендер блоков ридер ⇄ ревью) |
+| `cron.spec.ts` | CRON-01/02 (отложенная публикация) |
+| `cron-sla.spec.ts` | **Ф14:** SLA-01…03 (три свипа сроков заявок) |
+| **`reader-nav.spec.ts`** | **Ф15:** NAV-01…04 — пейджер глав, оглавление блога, подвал, `/about` |
+| `flows/review-chapter.spec.ts` | REV-CHAPTER |
+| `flows/review-whole-blog.spec.ts` | REV-WHOLE-BLOG |
+| `flows/session-chat.spec.ts` | REV-SESSION-CHAT (multi-context) |
+| `flows/publish.spec.ts` | PUB-DRAFT, PUB-CHAPTER-V2, PUB-ARTICLE, PUB-PORTFOLIO, REV-VERSIONS |
+| `flows/publish-free.spec.ts` | **Ф13:** PUB-FREE-01…04 (свободная публикация, форк ревизий) |
+| `flows/comment-thread.spec.ts` | COM-THREAD, COM-STALE, COM-EDIT-WINDOW, COM-DEPTH, COM-GATING |
+| `flows/blog-manage.spec.ts` | BLOG-MANAGE (создание/переименование/удаление блога) |
+| `flows/reviewer-matching.spec.ts` | MATCH-RECRUIT, MATCH-BOARD, MATCH-APPLY |
+| `flows/review-queue.spec.ts` | **Ф14:** RQ-01…07 (заявка → claim → вердикт → бейдж) |
+| `flows/expert-invite.spec.ts` | **Ф14:** EXP-01…05 (инвайт-ссылка эксперта, канал 2) |
+| **`flows/featured.spec.ts`** | **Ф15:** FEATURED-01…07 — витрина, порог, «Выбор редакции», SEO |
+| **`flows/reports.spec.ts`** | **Ф15:** REPORT-01…05 — жалоба → уведомление → разбор |
+
+⚠️ **Точное число `test()` намеренно НЕ дублируется в этой таблице.** Оно устаревало каждую фазу
+(в Ф14 таблица заявляла 147 при фактических 166), а источник истины и так однострочный:
+`npx playwright test --list | tail -1`.
 
 **Smoke-набор** (`--grep @smoke`, канон — `testing/smoke/SMOKE-SUITE.md`): TC-GUEST-01/02/04/05/06 ·
 TC-READER-01/05/06/09 · TC-AUTHOR-01/09/16 · TC-REVIEWER-01/10/15 · TC-ADMIN-01 · **WS-01**,

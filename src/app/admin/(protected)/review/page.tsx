@@ -45,7 +45,7 @@ export default async function AdminReviewPage() {
         description="Заявки в очереди и активные ревью-сессии. Заявку можно закрыть руками — назначить ревьюера; главу можно опубликовать в обход ревью (force-approve) или снять с неё ревьюера."
       />
 
-      <Card className="mb-4">
+      <div className="mb-6">
         <SectionTitle count={requests.length}>Заявки в очереди</SectionTitle>
         {requests.length === 0 ? (
           <EmptyState>Открытых заявок нет.</EmptyState>
@@ -112,16 +112,18 @@ export default async function AdminReviewPage() {
             })}
           </ul>
         )}
-      </Card>
+      </div>
 
-      <Card className="mb-4">
+      <div className="mb-6">
         <SectionTitle count={items.length}>Активные ревью</SectionTitle>
         {items.length === 0 ? (
           <EmptyState>Нет глав в активном ревью.</EmptyState>
         ) : (
           <div className="space-y-3">
             {items.map((it) => (
-              <div key={it.chapterId} className="rounded-[var(--radius-md)] border border-[var(--border-secondary)] p-3">
+              // ⚠️ Card (= <section>) — РОВНО одна на главу: спеки находят карточку главы
+              // локатором `section`, отфильтрованным по ссылке с её названием.
+              <Card key={it.chapterId}>
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
                     <Link
@@ -149,13 +151,13 @@ export default async function AdminReviewPage() {
                 </div>
 
                 <ReviewActions chapterId={it.chapterId} reviewers={it.reviewers} />
-              </div>
+              </Card>
             ))}
           </div>
         )}
-      </Card>
+      </div>
 
-      <Card>
+      <div>
         <SectionTitle count={removed.length}>Журнал: снятия с ревью</SectionTitle>
         {removed.length === 0 ? (
           <EmptyState>Снятий не было.</EmptyState>
@@ -172,7 +174,7 @@ export default async function AdminReviewPage() {
             ))}
           </ul>
         )}
-      </Card>
+      </div>
     </div>
   );
 }

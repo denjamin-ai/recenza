@@ -58,8 +58,10 @@ export function BlogTocView({
       </nav>
 
       <header className="mb-8">
+        {/* `relative` обязателен: CoverImage рендерит <Image fill>, которому нужен позиционированный
+            родитель — иначе Next пишет предупреждение в консоль и картинка «уезжает». */}
         {blog.coverUrl && (
-          <div className="mb-6 aspect-[16/9] w-full overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)]">
+          <div className="relative mb-6 aspect-[16/9] w-full overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)]">
             <CoverImage src={blog.coverUrl} alt={blog.title} />
           </div>
         )}

@@ -37,6 +37,42 @@ export const BLOG = {
 
 export const HIDDEN_BLOG = { id: "blog_ghost", slug: "hidden-blog", title: "Скрытый блог" } as const;
 
+/**
+ * Ф15 — витрина главной. Проверенных блогов в сиде РОВНО ТРИ (порог `SHOWCASE_MIN_VERIFIED`),
+ * поэтому главная по умолчанию работает в режиме «Проверенные блоги»; режим «Выбор редакции»
+ * получают, скрыв один из них админом.
+ */
+export const VERIFIED_BLOGS = {
+  /** `BLOG` — первый проверенный (independent). */
+  async: BLOG,
+  /** Три ОПУБЛИКОВАННЫЕ главы — единственный блог, на котором проверяются переходы и оглавление. */
+  guide: {
+    id: "blog_guide",
+    slug: "review-craft",
+    title: "Ремесло ревью",
+    chapters: [
+      { id: "chp_guide_1", slug: "why-review", title: "Зачем нужно ревью" },
+      { id: "chp_guide_2", slug: "how-to-read", title: "Как читать чужой код" },
+      { id: "chp_guide_3", slug: "feedback", title: "Как давать обратную связь" },
+    ],
+  },
+  ops: { id: "blog_ops", slug: "ops-notes", title: "Заметки об эксплуатации" },
+} as const;
+
+/**
+ * Бейдж уровня `invited` — блог, который на главную НЕ попадает (З-19), но полноценен по прямой
+ * ссылке и в профиле автора. Ключевой негатив витрины.
+ */
+export const INVITED_BLOG = {
+  id: "blog_invited",
+  slug: "guest-review",
+  title: "Разбор от приглашённого эксперта",
+  chapter: { id: "chp_invited", slug: "expert-take", title: "Взгляд эксперта" },
+} as const;
+
+/** «Выбор редакции»: закреплён админом и БЕЗ бейджа — закрепление бейджа не требует. */
+export const FEATURED_BLOG = { id: "blog_duo", slug: "duo-notes", title: "Заметки универсала" } as const;
+
 /** Ф13: блог аккаунта с обеими возможностями. ⚠️ Ф14: на его главу подана заявка на ревью
  * (`REVIEW_REQUESTS.open`), поэтому ревизия опубликована и одновременно `review_status='requested'`. */
 export const DUO_BLOG = {
@@ -117,6 +153,14 @@ export const EXPERT_INVITES = {
   expired: { id: "einv_expired", token: "e2e-expert-expired" },
 } as const;
 
+/** Ф15: жалобы в сиде — по одной на каждый тип цели (комментарий/блог/ревью). */
+export const REPORTS = {
+  comment: "rpt_1",
+  blog: "rpt_blog",
+  /** приватная жалоба автора на ревьюера `lena_review` (замена рейтингу) */
+  review: "rpt_review",
+} as const;
+
 export const RECRUITS = { pending: "rec_pending", approved: "rec_approved", rejected: "rec_rejected" } as const;
 export const BOARD_CALLS = { frontend: "bc_frontend", backend: "bc_backend" } as const;
 export const APPLICATIONS = { user: "app_user", guest: "app_guest" } as const;
@@ -127,4 +171,5 @@ export const BANNER_TEXTS = {
   donate: { title: "Поддержите проект", cta: "Поддержать" },
 } as const;
 export const DONATION_METHODS = { link: "dm_link", qr: "dm_qr" } as const;
-export const REPORT_ID = "rpt_1";
+/** @deprecated Ф15 — используйте `REPORTS.comment` (жалоб в сиде стало три, по типу цели). */
+export const REPORT_ID = REPORTS.comment;
