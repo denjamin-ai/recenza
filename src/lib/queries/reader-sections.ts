@@ -14,7 +14,6 @@ export async function buildReaderSections(
       const credit = await getChapterReviewerCredit({
         chapterId: chapter.id,
         latestRevisionNumber: chapter.revisionNumber,
-        primaryHandle: chapter.primaryHandle,
       });
       return { chapter, credit };
     }),

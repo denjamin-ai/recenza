@@ -332,7 +332,7 @@ export function BlogDetailView({ detail }: { detail: AuthorBlogDetail }) {
                     </button>
                   </span>
                 )}
-                {isReviewOpen(ch.status, ch.reviewStatus) && (
+                {isReviewOpen(ch.reviewStatus, ch.reviewClosedAt) && (
                   <Link
                     href={`/author/blog/${detail.slug}/${ch.slug}/review`}
                     className="min-h-9 rounded-[var(--radius-sm)] border border-[var(--info-border)] bg-[var(--info-bg)] px-3 py-2 text-[length:var(--type-small)] text-[var(--info)] transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"

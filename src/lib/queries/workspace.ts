@@ -7,7 +7,7 @@
 
 import { getAuthorCabinet } from "./author";
 import { getReviewerQueue } from "./review";
-import { getReviewerInbox } from "./invitations";
+import { getReviewQueue } from "./review-requests";
 import { getReviewedChapters } from "./profile";
 import { plural } from "@/lib/plural";
 import type { Capability } from "@/lib/roles";
@@ -44,10 +44,10 @@ export interface WorkspaceView {
   attention: AttentionItem[];
 }
 
-/** Сколько пунктов одного типа показываем (прототип: 3 правки, 3 хода, 2 приглашения). */
+/** Сколько пунктов одного типа показываем (3 правки, 3 хода, 2 подходящих заявки). */
 const MAX_FIX = 3;
 const MAX_TURN = 3;
-const MAX_INVITE = 2;
+const MAX_OPEN = 2;
 
 export async function getWorkspace(
   userId: string,
@@ -57,10 +57,11 @@ export async function getWorkspace(
   const isAuthor = capabilities.includes("author");
   const isReviewer = capabilities.includes("reviewer");
 
-  const [cabinet, queue, invitations, reviewed] = await Promise.all([
+  const [cabinet, active, open, reviewed] = await Promise.all([
     isAuthor ? getAuthorCabinet(userId) : Promise.resolve(null),
     isReviewer ? getReviewerQueue(handle) : Promise.resolve([]),
-    isReviewer ? getReviewerInbox(handle) : Promise.resolve([]),
+    // Ф14: вместо входящих приглашений — открытые заявки, которые ревьюер может взять сам.
+    isReviewer ? getReviewQueue(handle, userId) : Promise.resolve([]),
     isReviewer ? getReviewedChapters(handle) : Promise.resolve([]),
   ]);
 
@@ -127,21 +128,22 @@ export async function getWorkspace(
   }
 
   if (isReviewer) {
-    const myTurn = queue.filter((q) => q.myVerdict === null);
+    const myTurn = active.filter((q) => q.myVerdict === null);
     cards.push({
       capability: "reviewer",
       title: "Кабинет ревьюера",
-      hint: "Очередь, ваши вердикты и история ревью",
+      hint: "Очередь заявок, ваши вердикты и история ревью",
       href: "/reviewer",
       stats: [
-        { label: "В очереди", value: queue.length },
+        { label: "Заявок в очереди", value: open.length },
         { label: "Ваш ход", value: myTurn.length, alert: myTurn.length > 0 },
+        { label: "Активные ревью", value: active.length },
         { label: "Отрецензировано", value: reviewed.length },
       ],
       footer:
-        invitations.length > 0
+        open.length > 0
           ? {
-              text: `${invitations.length} ${plural(invitations.length, "новое приглашение", "новых приглашения", "новых приглашений")} на ревью`,
+              text: `${open.length} ${plural(open.length, "заявка ждёт", "заявки ждут", "заявок ждут")} ревьюера`,
               tone: "accent",
             }
           : null,
@@ -156,12 +158,13 @@ export async function getWorkspace(
         href: `/reviewer/review/${q.chapterId}`,
       });
     }
-    for (const inv of invitations.slice(0, MAX_INVITE)) {
+    // Заявки с высоким совпадением по компетенциям — их стоит взять именно этому ревьюеру.
+    for (const r of open.filter((x) => x.matchPct >= 50).slice(0, MAX_OPEN)) {
       attention.push({
-        id: `inv-${inv.id}`,
+        id: `req-${r.id}`,
         source: "ревьюер",
-        title: inv.chapterTitle,
-        body: "Новое приглашение — примите или откажитесь",
+        title: `«${r.blogTitle}» · ${r.chapterTitle}`,
+        body: `Заявка по вашим навыкам — совпадение ${r.matchPct}%`,
         href: "/reviewer",
       });
     }

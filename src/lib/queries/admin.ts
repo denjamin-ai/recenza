@@ -339,20 +339,26 @@ export async function getAdminReviewQueue(): Promise<AdminReviewItem[]> {
       number: chapterRevisions.number,
       status: chapterRevisions.status,
       reviewStatus: chapterRevisions.reviewStatus,
+      reviewClosedAt: chapterRevisions.reviewClosedAt,
     })
     .from(chapterRevisions);
   const latest = new Map<
     string,
-    { number: number; status: RevisionStatus; reviewStatus: ReviewStatus }
+    { number: number; status: RevisionStatus; reviewStatus: ReviewStatus; reviewClosedAt: number | null }
   >();
   for (const r of allRevs) {
     const prev = latest.get(r.chapterId);
     if (!prev || r.number > prev.number) {
-      latest.set(r.chapterId, { number: r.number, status: r.status, reviewStatus: r.reviewStatus });
+      latest.set(r.chapterId, {
+        number: r.number,
+        status: r.status,
+        reviewStatus: r.reviewStatus,
+        reviewClosedAt: r.reviewClosedAt,
+      });
     }
   }
   for (const [cid, lr] of latest) {
-    if (!isReviewOpen(lr.status, lr.reviewStatus)) latest.delete(cid);
+    if (!isReviewOpen(lr.reviewStatus, lr.reviewClosedAt)) latest.delete(cid);
   }
   const activeIds = [...latest.keys()];
   if (activeIds.length === 0) return [];

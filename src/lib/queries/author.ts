@@ -17,20 +17,17 @@ import {
   chapters,
   portfolios,
   recruitRequests,
-  reviewInvitations,
   reviewerHistory,
-  reviewerRatings,
   users,
 } from "@/lib/db/schema";
 import { parseJson } from "@/lib/db/json";
-import { availability as availabilityOf, rankReviewers } from "@/lib/reviewer-match";
-import type { RankedReviewer } from "@/lib/reviewer-match";
 import type {
   Block,
   Complexity,
   RecruitStatus,
   ReviewStatus,
   RevisionStatus,
+  VerifiedTier,
   Verdict,
 } from "@/types";
 
@@ -44,11 +41,19 @@ export interface AuthorChapterTarget {
   blogId: string;
   blogSlug: string;
   authorId: string;
+  /** Ф14: нужен `closeReviewSession` для расчёта уровня бейджа (кто кого привёл). */
+  authorHandle: string;
+  /** Ф14: чек-лист готовности заявки требует тегов блога. */
+  blogTags: string | null;
   revision: {
     id: string;
     number: number;
     status: RevisionStatus;
     reviewStatus: ReviewStatus;
+    /** Ф14: токен закрытия ревью-сессии (null — сессия открыта). */
+    reviewClosedAt: number | null;
+    /** Ф14: у ревизии уже есть бейдж — повторная заявка на неё бессмысленна. */
+    verifiedTier: VerifiedTier | null;
     blocks: string | null;
     summary: string | null;
   };
@@ -69,10 +74,13 @@ export async function resolveAuthorChapter(
         chapterTitle: chapters.title,
         blogId: blogs.id,
         blogSlug: blogs.slug,
+        blogTags: blogs.tags,
         authorId: blogs.authorId,
+        authorHandle: users.handle,
       })
       .from(chapters)
       .innerJoin(blogs, eq(blogs.id, chapters.blogId))
+      .innerJoin(users, eq(users.id, blogs.authorId))
       .where(eq(chapters.id, chapterId))
       .limit(1)
   )[0];
@@ -85,6 +93,8 @@ export async function resolveAuthorChapter(
         number: chapterRevisions.number,
         status: chapterRevisions.status,
         reviewStatus: chapterRevisions.reviewStatus,
+        reviewClosedAt: chapterRevisions.reviewClosedAt,
+        verifiedTier: chapterRevisions.verifiedTier,
         blocks: chapterRevisions.blocks,
         summary: chapterRevisions.summary,
       })
@@ -105,7 +115,6 @@ export interface AuthorReviewerChip {
   /** Ф13.8 (З-50): нужен, чтобы чип в кабинете автора вёл на профиль ревьюера. */
   slug: string;
   displayName: string;
-  isPrimary: boolean;
   verdict: Verdict | null;
 }
 
@@ -172,7 +181,6 @@ export interface EditorChapter {
     title: string;
     order: number;
     skills: string[];
-    primaryHandle: string | null;
   };
   revision: {
     id: string;
@@ -188,14 +196,6 @@ export interface AuthorPortfolio {
   blocks: Block[];
   isVisible: boolean;
   updatedAt: number | null;
-}
-
-export interface ReviewerOption {
-  handle: string;
-  displayName: string;
-  competencies: string[];
-  rating: number | null;
-  availability: "free" | "busy" | "full";
 }
 
 // ───────────────────────────── helpers ─────────────────────────────
@@ -367,7 +367,6 @@ export const getBlogDetailForAuthor = cache(
               chapterId: chapterReviewers.chapterId,
               revisionNumber: chapterReviewers.revisionNumber,
               handle: chapterReviewers.handle,
-              isPrimary: chapterReviewers.isPrimary,
               verdict: chapterReviewers.verdict,
               displayName: users.displayName,
               slug: users.slug,
@@ -385,7 +384,6 @@ export const getBlogDetailForAuthor = cache(
         handle: r.handle,
         slug: r.slug,
         displayName: r.displayName,
-        isPrimary: r.isPrimary,
         verdict: (r.verdict as Verdict | null) ?? null,
       });
       reviewersByChapter.set(r.chapterId, arr);
@@ -402,8 +400,8 @@ export const getBlogDetailForAuthor = cache(
           latestRevisionNumber: lr?.revNumber ?? 1,
           status: (lr?.status ?? "draft") as RevisionStatus,
           reviewStatus: (lr?.reviewStatus ?? "none") as ReviewStatus,
-          reviewers: (reviewersByChapter.get(id) ?? []).sort(
-            (a, b) => Number(b.isPrimary) - Number(a.isPrimary),
+          reviewers: (reviewersByChapter.get(id) ?? []).sort((a, b) =>
+            a.displayName.localeCompare(b.displayName, "ru"),
           ),
         };
       })
@@ -442,7 +440,6 @@ export const getChapterForEditor = cache(
           chapterTitle: chapters.title,
           chapterOrder: chapters.order,
           skills: chapters.skills,
-          primaryHandle: chapters.primaryHandle,
         })
         .from(blogs)
         .innerJoin(chapters, eq(chapters.blogId, blogs.id))
@@ -483,7 +480,6 @@ export const getChapterForEditor = cache(
         title: row.chapterTitle,
         order: row.chapterOrder,
         skills: parseJson<string[]>(row.skills, []),
-        primaryHandle: row.primaryHandle,
       },
       revision: {
         id: rev.id,
@@ -496,82 +492,6 @@ export const getChapterForEditor = cache(
     };
   },
 );
-
-/**
- * Список ревьюеров для базовой формы SubmitSheet (Фаза 6; матчинг/скоринг — Фаза 9).
- * Только аккаунты с возможностью «ревьюер» (Ф13), не заблокированные.
- * Доступность выводится из review_load/review_capacity.
- */
-export const getAvailableReviewers = cache(async (): Promise<ReviewerOption[]> => {
-  const rows = await db
-    .select({
-      handle: users.handle,
-      displayName: users.displayName,
-      competencies: users.competencies,
-      rating: users.reviewerRating,
-      load: users.reviewLoad,
-      capacity: users.reviewCapacity,
-    })
-    .from(users)
-    .where(and(eq(users.isReviewer, true), eq(users.isBlocked, false)));
-
-  return rows.map((r) => {
-    const availability: ReviewerOption["availability"] =
-      r.load >= r.capacity ? "full" : r.load === 0 ? "free" : "busy";
-    return {
-      handle: r.handle,
-      displayName: r.displayName,
-      competencies: parseJson<string[]>(r.competencies, []),
-      rating: r.rating,
-      availability,
-    };
-  });
-});
-
-/**
- * Ревьюеры для SubmitSheet с подбором (Фаза 9): match%/«Топ»/занятость против навыков главы.
- * Возвращает RankedReviewer[] (competencies/rating/reviewsCount включены — клиент пересчитывает
- * match% вживую при правке навыков). Сортировка — по «Топ» против СОХРАНЁННЫХ навыков главы.
- */
-export const getReviewerMatches = cache(async (chapterId: string): Promise<RankedReviewer[]> => {
-  const chapterRow = (
-    await db.select({ skills: chapters.skills }).from(chapters).where(eq(chapters.id, chapterId)).limit(1)
-  )[0];
-  const skills = parseJson<string[]>(chapterRow?.skills, []);
-
-  const rows = await db
-    .select({
-      handle: users.handle,
-      displayName: users.displayName,
-      competencies: users.competencies,
-      rating: users.reviewerRating,
-      ratingsN: users.reviewerRatingsN,
-      load: users.reviewLoad,
-      capacity: users.reviewCapacity,
-    })
-    .from(users)
-    .where(and(eq(users.isReviewer, true), eq(users.isBlocked, false)));
-
-  // Объём = число отрецензированных глав (distinct chapter в reviewer_history) на handle.
-  const historyRows = await db
-    .select({ handle: reviewerHistory.handle, n: countDistinct(reviewerHistory.chapterId) })
-    .from(reviewerHistory)
-    .groupBy(reviewerHistory.handle);
-  const reviewsByHandle = new Map(historyRows.map((h) => [h.handle, h.n]));
-
-  return rankReviewers(
-    rows.map((r) => ({
-      handle: r.handle,
-      displayName: r.displayName,
-      competencies: parseJson<string[]>(r.competencies, []),
-      rating: r.rating,
-      ratingsN: r.ratingsN ?? 0,
-      reviewsCount: reviewsByHandle.get(r.handle) ?? 0,
-      availability: availabilityOf(r.load, r.capacity),
-    })),
-    skills,
-  );
-});
 
 // ───────────────────────────── recruit-запросы и оценка ревьюеров (Фаза 9) ─────────────────────────────
 
@@ -612,137 +532,6 @@ export const getRecruitRequests = cache(async (userId: string): Promise<RecruitS
     reason: r.reason,
     createdAt: r.createdAt,
   }));
-});
-
-export interface RatingPromptReviewer {
-  handle: string;
-  displayName: string;
-  myStars: number | null; // оценка, которую дал ЭТОТ автор (приватно); null — ещё не оценил
-}
-export interface RatingPrompt {
-  chapterId: string;
-  chapterSlug: string;
-  blogSlug: string;
-  chapterTitle: string;
-  reviewers: RatingPromptReviewer[];
-}
-
-/**
- * Запросы оценки в кабинете автора: опубликованные главы автора с зачтёнными ревьюерами
- * (reviewer_history последней опубликованной ревизии), которые ещё не оценены этим автором.
- * Приватность: myStars — только собственная оценка автора (byHandle), не чужие.
- */
-export const getRatingPrompts = cache(async (userId: string): Promise<RatingPrompt[]> => {
-  const me = (await db.select({ handle: users.handle }).from(users).where(eq(users.id, userId)).limit(1))[0];
-  if (!me) return [];
-
-  const rows = await db
-    .select({
-      chapterId: reviewerHistory.chapterId,
-      revisionNumber: reviewerHistory.revisionNumber,
-      reviewerHandle: reviewerHistory.handle,
-      reviewerName: users.displayName,
-      chapterSlug: chapters.slug,
-      chapterTitle: chapters.title,
-      blogSlug: blogs.slug,
-      myStars: reviewerRatings.stars,
-    })
-    .from(reviewerHistory)
-    .innerJoin(chapters, eq(chapters.id, reviewerHistory.chapterId))
-    .innerJoin(blogs, eq(blogs.id, chapters.blogId))
-    .innerJoin(users, eq(users.handle, reviewerHistory.handle))
-    .leftJoin(
-      reviewerRatings,
-      and(
-        eq(reviewerRatings.chapterId, reviewerHistory.chapterId),
-        eq(reviewerRatings.reviewerHandle, reviewerHistory.handle),
-        eq(reviewerRatings.byHandle, me.handle),
-      ),
-    )
-    .where(eq(blogs.authorId, userId));
-
-  // На главу берём только зачтённых ревьюеров ПОСЛЕДНЕЙ опубликованной ревизии.
-  const latestRev = new Map<string, number>();
-  for (const r of rows) {
-    const prev = latestRev.get(r.chapterId);
-    if (prev == null || r.revisionNumber > prev) latestRev.set(r.chapterId, r.revisionNumber);
-  }
-
-  const byChapter = new Map<string, RatingPrompt>();
-  for (const r of rows) {
-    if (r.revisionNumber !== latestRev.get(r.chapterId)) continue;
-    let entry = byChapter.get(r.chapterId);
-    if (!entry) {
-      entry = {
-        chapterId: r.chapterId,
-        chapterSlug: r.chapterSlug,
-        blogSlug: r.blogSlug,
-        chapterTitle: r.chapterTitle,
-        reviewers: [],
-      };
-      byChapter.set(r.chapterId, entry);
-    }
-    entry.reviewers.push({ handle: r.reviewerHandle, displayName: r.reviewerName, myStars: r.myStars });
-  }
-
-  // Только главы, где есть хотя бы один НЕоценённый ревьюер.
-  return [...byChapter.values()].filter((c) => c.reviewers.some((rv) => rv.myStars == null));
-});
-
-export interface SkillsMismatchNotice {
-  chapterId: string;
-  chapterTitle: string;
-  blogSlug: string;
-  chapterSlug: string;
-  flagReason: string | null;
-}
-
-/**
- * Жалобы «навыки не совпадают» на главы автора (Фаза 9): глава снята с ревью, нужно исправить навыки.
- * Только флаги на ПОСЛЕДНЕЙ ревизии (после новой отправки — неактуальны).
- */
-export const getSkillsMismatchNotices = cache(async (userId: string): Promise<SkillsMismatchNotice[]> => {
-  const rows = await db
-    .select({
-      chapterId: reviewInvitations.chapterId,
-      revision: reviewInvitations.revision,
-      flagReason: reviewInvitations.flagReason,
-      chapterTitle: chapters.title,
-      chapterSlug: chapters.slug,
-      blogSlug: blogs.slug,
-    })
-    .from(reviewInvitations)
-    .innerJoin(chapters, eq(chapters.id, reviewInvitations.chapterId))
-    .innerJoin(blogs, eq(blogs.id, chapters.blogId))
-    .where(and(eq(blogs.authorId, userId), eq(reviewInvitations.status, "flagged")));
-  if (rows.length === 0) return [];
-
-  // Только флаги на последней ревизии главы.
-  const chapterIds = [...new Set(rows.map((r) => r.chapterId))];
-  const revRows = await db
-    .select({ chapterId: chapterRevisions.chapterId, number: chapterRevisions.number })
-    .from(chapterRevisions)
-    .where(inArray(chapterRevisions.chapterId, chapterIds));
-  const latest = new Map<string, number>();
-  for (const r of revRows) {
-    const prev = latest.get(r.chapterId);
-    if (prev == null || r.number > prev) latest.set(r.chapterId, r.number);
-  }
-
-  const seen = new Set<string>();
-  const out: SkillsMismatchNotice[] = [];
-  for (const r of rows) {
-    if (r.revision !== latest.get(r.chapterId) || seen.has(r.chapterId)) continue;
-    seen.add(r.chapterId);
-    out.push({
-      chapterId: r.chapterId,
-      chapterTitle: r.chapterTitle,
-      blogSlug: r.blogSlug,
-      chapterSlug: r.chapterSlug,
-      flagReason: r.flagReason,
-    });
-  }
-  return out;
 });
 
 /** Портфолио автора (любой видимости — это владелец). null — ещё не создано. */

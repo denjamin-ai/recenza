@@ -9,27 +9,20 @@
 // публикация её НЕ трогает: опубликованная глава может остаться `none`, а `reviewed` переживает
 // публикацию и служит основанием кредита.
 //
-// Сверх Фазы 7/10 здесь закрыты P1-баги Фазы 11:
-//   (a) публикация уведомляет подписчиков автора (follows → new_chapter);
-//   (b) pending-запросы смены ведущего гасятся (→ void) + очищается админ-очередь.
+// Сверх Фазы 7/10 здесь закрыт P1-баг Фазы 11: публикация уведомляет подписчиков автора
+// (follows → new_chapter) при ПЕРВОЙ публикации главы.
+//
+// ⚠️ Фаза 14: кредит `reviewer_history`, освобождение `review_load`, выдача бейджа и закрытие
+// заявок уехали в общий `closeReviewSession()` (`queries/review-session.ts`) — та же операция
+// нужна во второй точке, где публикации не происходит (одобрение уже опубликованной ревизии).
+// Гашение запросов смены ведущего снято вместе с самой ролью «ведущего».
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
-import {
-  blogs,
-  chapterReviewers,
-  chapterRevisions,
-  follows,
-  primaryChangeRequests,
-  reviewerHistory,
-  users,
-} from "@/lib/db/schema";
+import { blogs, chapterRevisions, follows, users } from "@/lib/db/schema";
 import { ADMIN_NOTIFY, REVIEW_NOTIFY } from "@/lib/review-links";
-import {
-  clearAdminNotifications,
-  createNotifications,
-  type NotificationSpec,
-} from "@/lib/queries/notifications";
+import { createNotifications, type NotificationSpec } from "@/lib/queries/notifications";
+import { closeReviewSession, recomputeBlogVerified } from "@/lib/queries/review-session";
 
 /** Публикация невозможна из текущего состояния (уже опубликована) → у вызывающего 409. */
 export class PublishGateError extends Error {
@@ -48,6 +41,8 @@ export interface PublishTarget {
   chapterSlug: string;
   chapterTitle: string;
   authorId: string;
+  /** Handle автора блога — по нему `closeReviewSession` считает уровень бейджа (Ф14). */
+  authorHandle: string;
 }
 
 export async function publishRevision(
@@ -72,55 +67,24 @@ export async function publishRevision(
       throw new PublishGateError("Эта версия главы уже опубликована.");
     }
 
-    // Состав ревьюеров этой ревизии — внутри tx (не доверяем кэшу сессии).
-    // Пусто — штатная ситуация Фазы 13 (публикация без ревью): кредита и reviewLoad просто нет.
-    const verdictRows = await tx
-      .select({ handle: chapterReviewers.handle, verdict: chapterReviewers.verdict })
-      .from(chapterReviewers)
-      .where(
-        and(
-          eq(chapterReviewers.chapterId, target.chapterId),
-          eq(chapterReviewers.revisionNumber, target.revisionNumber),
-        ),
-      );
-    // Назначенные — освобождаются (reviewLoad −1) в любом случае: ревью этой ревизии закончилось.
-    const assigned = verdictRows.map((r) => r.handle);
-    // ⚠️ Ф13: КРЕДИТ — только за фактическое одобрение. Раньше публикация была возможна лишь при
-    // all-approve, поэтому «назначен» и «одобрил» совпадали. Теперь автор может опубликовать главу
-    // посреди ревью — и ревьюер, запросивший правки, получил бы публичную строчку «проверил это»,
-    // которую не может отозвать. Кредитуем только `approve`.
-    const credited = verdictRows.filter((r) => r.verdict === "approve").map((r) => r.handle);
-
     await tx
       .update(chapterRevisions)
       .set({ status: "published", publishedAt: now, scheduledAt: null })
       .where(eq(chapterRevisions.id, target.revisionId));
 
-    // Кредит ревьюеров этой версии (идемпотентно: чистим и пишем заново).
-    await tx
-      .delete(reviewerHistory)
-      .where(
-        and(
-          eq(reviewerHistory.chapterId, target.chapterId),
-          eq(reviewerHistory.revisionNumber, target.revisionNumber),
-        ),
-      );
-    for (const h of credited) {
-      await tx.insert(reviewerHistory).values({
-        chapterId: target.chapterId,
-        revisionNumber: target.revisionNumber,
-        handle: h,
-      });
-    }
-
-    // Ревью завершено → освобождаем ревьюеров: reviewLoad −1 (accept делает +1; Фаза 9).
-    // Здесь именно `assigned`: слот занимает назначение, а не одобрение.
-    if (assigned.length > 0) {
-      await tx
-        .update(users)
-        .set({ reviewLoad: sql`max(${users.reviewLoad} - 1, 0)` })
-        .where(inArray(users.handle, assigned));
-    }
+    // ⚠️ Ф14: кредит/бейдж/освобождение слотов вынесены в общий `closeReviewSession()` — он же
+    // работает во второй точке (одобрение УЖЕ опубликованной ревизии, где публикации не будет).
+    // Зовём его ПОСЛЕ проставления status='published': бейдж выдаётся только опубликованной ревизии.
+    // Идемпотентность — на `review_closed_at`, перечитываемом внутри tx.
+    const { assigned, tier } = await closeReviewSession(tx, {
+      revisionId: target.revisionId,
+      chapterId: target.chapterId,
+      revisionNumber: target.revisionNumber,
+      authorHandle: target.authorHandle,
+    });
+    // Пересчёт агрегата блога — БЕЗУСЛОВНО, а не только при выдаче бейджа: публикация новой
+    // непроверенной ревизии тоже меняет картину (у главы бейдж пропадает).
+    await recomputeBlogVerified(tx, target.blogId);
 
     // publishedAt блога — только при первой публикации (читаем внутри tx, race-safe).
     const blogRow = (
@@ -135,19 +99,6 @@ export async function publishRevision(
       .set({ lastActivityAt: now, ...(blogRow?.publishedAt == null ? { publishedAt: now } : {}) })
       .where(eq(blogs.id, target.blogId));
 
-    // P1(b): публикация закрывает сессию ревью — pending-запросы смены ведущего теряют смысл.
-    // Гасим их (→ void) и чистим очередь «Требует внимания» в админ-дашборде.
-    await tx
-      .update(primaryChangeRequests)
-      .set({ status: "void" })
-      .where(
-        and(
-          eq(primaryChangeRequests.chapterId, target.chapterId),
-          eq(primaryChangeRequests.status, "pending"),
-        ),
-      );
-    await clearAdminNotifications(tx, "primary_change_request", "chapterSlug", target.chapterSlug);
-
     // ── Уведомления (внутри tx: атомарны с публикацией) ──
     const specs: NotificationSpec[] = [];
 
@@ -156,6 +107,16 @@ export async function publishRevision(
         recipientId: target.authorId,
         type: ADMIN_NOTIFY.forceApproved,
         payload: { href, chapterTitle: target.chapterTitle },
+      });
+    }
+
+    // Ф14: бейдж выдан — автор узнаёт об этом отдельным событием (это «награда на выходе»,
+    // ради которой ревью вообще существует; в общем потоке публикации она бы потерялась).
+    if (tier !== null) {
+      specs.push({
+        recipientId: target.authorId,
+        type: REVIEW_NOTIFY.badgeGranted,
+        payload: { href, chapterTitle: target.chapterTitle, tier },
       });
     }
 

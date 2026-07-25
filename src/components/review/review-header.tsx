@@ -82,12 +82,12 @@ export function ReviewHeader({
             <span
               key={r.handle}
               className="relative inline-flex"
-              title={`@${r.handle}${r.isPrimary ? " · ведущий" : ""}${r.online ? " · онлайн" : " · был недавно"}`}
+              title={`@${r.handle}${r.online ? " · онлайн" : " · был недавно"}`}
             >
               <span
                 className={`inline-flex h-6 w-6 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--muted)] text-[length:var(--type-small)] font-semibold uppercase text-[var(--muted-foreground)] ring-2 ring-[var(--background)] ${
                   r.online ? "" : "opacity-45"
-                } ${r.isPrimary ? "outline outline-1 outline-[var(--accent)]" : ""}`}
+                }`}
               >
                 {(r.displayName || r.handle).slice(0, 1)}
               </span>

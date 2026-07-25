@@ -40,6 +40,7 @@ export async function POST(
         chapterSlug: session.chapter.slug,
         chapterTitle: session.chapter.title,
         authorId: session.blog.authorId,
+        authorHandle: session.blog.authorHandle,
       },
       { notifyAuthorForceApproved: true },
     );

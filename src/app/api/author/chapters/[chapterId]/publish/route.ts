@@ -100,6 +100,7 @@ export async function POST(
       chapterSlug: target.chapterSlug,
       chapterTitle: target.chapterTitle,
       authorId: target.authorId,
+      authorHandle: target.authorHandle,
     });
   } catch (e) {
     if (e instanceof PublishGateError) return NextResponse.json({ error: e.reason }, { status: 409 });

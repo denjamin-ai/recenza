@@ -22,13 +22,19 @@ export const OPEN_REVIEW_STATUSES = [
 
 /**
  * Ревью-сессия открыта — можно ставить вердикты, вести треды, чат и применять правки.
- * ⚠️ Считается по ОБЕИМ осям: публикация закрывает сессию, даже если `review_status = 'reviewed'`
- * (он переживает публикацию намеренно — это основание кредита и бейджа Ф14).
+ *
+ * ⚠️ **Фаза 14: ось публикации из предиката УШЛА.** До неё сессию закрывала публикация
+ * (`status !== "published" && reviewStatus !== "none"`), из-за чего ревью ОПУБЛИКОВАННОЙ главы
+ * было невозможно физически — вердикт отвечал 409 «Глава не на активном ревью». Ф14 требует
+ * принимать заявку в любом статусе, включая `published` (З-03), поэтому закрытие стало явным
+ * токеном `chapter_revisions.review_closed_at`: его ставит `closeReviewSession()` — единственное
+ * место, где сессия завершается (оно же выдаёт кредит и бейдж).
+ *
  * `reviewed` входит в «открытые» сознательно: ревьюер должен мочь передумать и сменить вердикт
  * на `request-changes` после того, как все одобрили (паритет с поведением до Фазы 13).
  */
-export function isReviewOpen(status: RevisionStatus, reviewStatus: ReviewStatus): boolean {
-  return status !== "published" && reviewStatus !== "none";
+export function isReviewOpen(reviewStatus: ReviewStatus, reviewClosedAt: number | null): boolean {
+  return reviewStatus !== "none" && reviewClosedAt === null;
 }
 
 /**

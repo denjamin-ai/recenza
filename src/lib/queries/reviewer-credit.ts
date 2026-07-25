@@ -1,5 +1,6 @@
 // Кредит ревьюеров опубликованной главы: текущая версия (чипами) + прошлые версии (за раскрытием).
-// Источник — reviewer_history (кредит по версиям). Ведущий помечается по chapters.primaryHandle.
+// Источник — reviewer_history (кредит по версиям).
+// ⚠️ Ф14: пометка «ведущий» снята вместе с самой ролью — состав ревьюеров больше не иерархичен.
 
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
@@ -9,7 +10,6 @@ export interface ReviewerChip {
   handle: string;
   displayName: string;
   slug: string;
-  isPrimary: boolean;
 }
 
 export interface PastVersionCredit {
@@ -25,9 +25,8 @@ export interface ChapterReviewerCredit {
 export async function getChapterReviewerCredit(args: {
   chapterId: string;
   latestRevisionNumber: number;
-  primaryHandle: string | null;
 }): Promise<ChapterReviewerCredit> {
-  const { chapterId, latestRevisionNumber, primaryHandle } = args;
+  const { chapterId, latestRevisionNumber } = args;
 
   const rows = await db
     .select({
@@ -46,7 +45,6 @@ export async function getChapterReviewerCredit(args: {
       handle: r.handle,
       displayName: r.displayName,
       slug: r.slug,
-      isPrimary: primaryHandle != null && r.handle === primaryHandle,
     };
     const list = byRevision.get(r.revision) ?? [];
     list.push(chip);

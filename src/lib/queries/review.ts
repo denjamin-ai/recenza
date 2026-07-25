@@ -27,6 +27,7 @@ import { isReviewOpen } from "@/lib/review-status";
 import type {
   Block,
   PublicUser,
+  VerifiedTier,
   ReviewStatus,
   RevisionStatus,
   Suggestion,
@@ -40,7 +41,6 @@ export interface ReviewReviewer {
   handle: string;
   displayName: string;
   slug: string;
-  isPrimary: boolean;
   verdict: Verdict | null;
   verdictAt: number | null;
   online: boolean;
@@ -99,7 +99,6 @@ export interface ReviewSession {
     slug: string;
     title: string;
     order: number;
-    primaryHandle: string | null;
     skills: string[];
   };
   revision: {
@@ -109,6 +108,11 @@ export interface ReviewSession {
     status: RevisionStatus;
     /** Ось ревью: none | requested | in-review | changes-requested | reviewed. */
     reviewStatus: ReviewStatus;
+    /** Ф14: токен закрытия сессии — единственный признак «ревью по этой ревизии завершено». */
+    reviewClosedAt: number | null;
+    /** Ф14: бейдж ревизии (null — не проверена). */
+    verifiedTier: VerifiedTier | null;
+    verifiedAt: number | null;
     summary: string | null;
     blocks: Block[];
     /** Снапшот последней публикации для инлайн-диффа; пусто → глава ещё не публиковалась (дифф «всё ново»). */
@@ -135,7 +139,7 @@ export interface ReviewerQueueItem {
   revisionNumber: number;
   status: RevisionStatus;
   reviewStatus: ReviewStatus;
-  isPrimary: boolean;
+  reviewClosedAt: number | null;
   myVerdict: Verdict | null;
   openThreadCount: number;
 }
@@ -154,7 +158,6 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
         chapterSlug: chapters.slug,
         chapterTitle: chapters.title,
         chapterOrder: chapters.order,
-        primaryHandle: chapters.primaryHandle,
         skills: chapters.skills,
         blogId: blogs.id,
         blogSlug: blogs.slug,
@@ -179,6 +182,9 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
       number: chapterRevisions.number,
       status: chapterRevisions.status,
       reviewStatus: chapterRevisions.reviewStatus,
+      reviewClosedAt: chapterRevisions.reviewClosedAt,
+      verifiedTier: chapterRevisions.verifiedTier,
+      verifiedAt: chapterRevisions.verifiedAt,
       summary: chapterRevisions.summary,
       blocks: chapterRevisions.blocks,
       prevBlocks: chapterRevisions.prevBlocks,
@@ -193,7 +199,6 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
   const reviewerRows = await db
     .select({
       handle: chapterReviewers.handle,
-      isPrimary: chapterReviewers.isPrimary,
       verdict: chapterReviewers.verdict,
       verdictAt: chapterReviewers.verdictAt,
       lastSeenAt: chapterReviewers.lastSeenAt,
@@ -213,12 +218,11 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
       handle: r.handle,
       displayName: r.displayName,
       slug: r.slug,
-      isPrimary: r.isPrimary,
       verdict: (r.verdict as Verdict | null) ?? null,
       verdictAt: r.verdictAt,
       online: r.lastSeenAt !== null && r.lastSeenAt >= presenceThreshold,
     }))
-    .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
+    .sort((a, b) => a.displayName.localeCompare(b.displayName, "ru"));
 
   // Треды последней ревизии + ответы.
   const threadRows = await db
@@ -367,7 +371,6 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
       slug: head.chapterSlug,
       title: head.chapterTitle,
       order: head.chapterOrder,
-      primaryHandle: head.primaryHandle,
       skills: parseJson<string[]>(head.skills, []),
     },
     revision: {
@@ -375,6 +378,9 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
       number: rev.number,
       status: rev.status as RevisionStatus,
       reviewStatus: rev.reviewStatus as ReviewStatus,
+      reviewClosedAt: rev.reviewClosedAt,
+      verifiedTier: rev.verifiedTier,
+      verifiedAt: rev.verifiedAt,
       summary: rev.summary,
       blocks: parseJson<Block[]>(rev.blocks, []),
       prevBlocks: parseJson<Block[]>(rev.prevBlocks, []),
@@ -397,7 +403,6 @@ export async function getReviewerQueue(handle: string): Promise<ReviewerQueueIte
     .select({
       chapterId: chapterReviewers.chapterId,
       revisionNumber: chapterReviewers.revisionNumber,
-      isPrimary: chapterReviewers.isPrimary,
       verdict: chapterReviewers.verdict,
       chapterSlug: chapters.slug,
       chapterTitle: chapters.title,
@@ -419,17 +424,23 @@ export async function getReviewerQueue(handle: string): Promise<ReviewerQueueIte
       number: chapterRevisions.number,
       status: chapterRevisions.status,
       reviewStatus: chapterRevisions.reviewStatus,
+      reviewClosedAt: chapterRevisions.reviewClosedAt,
     })
     .from(chapterRevisions)
     .where(inArray(chapterRevisions.chapterId, chapterIds));
   const latest = new Map<
     string,
-    { number: number; status: RevisionStatus; reviewStatus: ReviewStatus }
+    { number: number; status: RevisionStatus; reviewStatus: ReviewStatus; reviewClosedAt: number | null }
   >();
   for (const r of revRows) {
     const prev = latest.get(r.chapterId);
     if (!prev || r.number > prev.number) {
-      latest.set(r.chapterId, { number: r.number, status: r.status, reviewStatus: r.reviewStatus });
+      latest.set(r.chapterId, {
+        number: r.number,
+        status: r.status,
+        reviewStatus: r.reviewStatus,
+        reviewClosedAt: r.reviewClosedAt,
+      });
     }
   }
 
@@ -456,7 +467,7 @@ export async function getReviewerQueue(handle: string): Promise<ReviewerQueueIte
     if (!lr) continue;
     // Только назначения НА последнюю ревизию и в открытом ревью.
     if (row.revisionNumber !== lr.number) continue;
-    if (!isReviewOpen(lr.status, lr.reviewStatus)) continue;
+    if (!isReviewOpen(lr.reviewStatus, lr.reviewClosedAt)) continue;
     items.push({
       chapterId: row.chapterId,
       blogSlug: row.blogSlug,
@@ -466,7 +477,7 @@ export async function getReviewerQueue(handle: string): Promise<ReviewerQueueIte
       revisionNumber: lr.number,
       status: lr.status,
       reviewStatus: lr.reviewStatus,
-      isPrimary: row.isPrimary,
+      reviewClosedAt: lr.reviewClosedAt,
       myVerdict: (row.verdict as Verdict | null) ?? null,
       openThreadCount: openCounts.get(openCountKey(row.chapterId, lr.number)) ?? 0,
     });
