@@ -5,6 +5,7 @@
 // «Стать ревьюером» переехала сюда из шапки (баннер pb_recruit → /board). Токены, без теней.
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { IconHeart, IconUsers, IconStar, IconEdit, IconChevronLeft, IconChevronRight, IconExternal } from "@/components/icons";
 import { DonateModal } from "@/components/reader/donate-modal";
@@ -75,10 +76,16 @@ export function PromoCarousel({ banners, donation }: { banners: FeedBanner[]; do
           (ui-feedback-4, реверс «всегда справа» из ui-feedback-3). CTA — пилюля --promo-cta-bg
           с ВСЕГДА белым текстом (в dark фон кнопки затемняется токеном, см. globals.css). */}
       <div className={`promo-slide relative flex min-h-36 overflow-hidden rounded-[var(--radius-xl)] ${tone(b.tone)}`}>
-        <div className="promo-slide-art relative hidden w-[30%] shrink-0 sm:block">
-          <span aria-hidden="true" className="absolute inset-0 flex items-center justify-center text-[var(--promo-ink)] opacity-40">
-            <BannerIcon name={b.icon} className="h-10 w-10" />
-          </span>
+        <div className="promo-slide-art relative hidden w-[30%] shrink-0 overflow-hidden sm:block">
+          {/* Ф15 (З-59): обложка занимает декоративную панель, а не подложку под текстом —
+              контраст «всегда белого» текста CTA от неё не зависит. Нет обложки — прежняя иконка. */}
+          {b.coverUrl ? (
+            <Image src={b.coverUrl} alt="" fill sizes="30vw" className="object-cover" aria-hidden="true" />
+          ) : (
+            <span aria-hidden="true" className="absolute inset-0 flex items-center justify-center text-[var(--promo-ink)] opacity-40">
+              <BannerIcon name={b.icon} className="h-10 w-10" />
+            </span>
+          )}
         </div>
         {/* max-sm:pl-12 — на узких экранах контент начинается правее левой стрелки (панели-иконки нет) */}
         <div className={`promo-slide-wash flex min-w-0 flex-1 flex-col justify-center px-5 py-5 sm:px-6 ${count > 1 ? "max-sm:pl-12" : ""}`}>

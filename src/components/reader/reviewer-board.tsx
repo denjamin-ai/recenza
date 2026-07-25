@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BackLink } from "@/components/back-link";
 import { IconX, IconScan, IconEdit } from "@/components/icons";
-import { plural } from "@/lib/plural";
+import { SLA_UNCLAIMED_DAYS } from "@/lib/review-sla";
 import type { BoardCallView } from "@/lib/queries/board";
 
 // Esc закрывает модалку + автофокус на диалог при открытии (a11y для role="dialog"). Два эффекта:
@@ -36,7 +36,6 @@ export function ReviewerBoard({ calls, isAuthed }: { calls: BoardCallView[]; isA
 
   const allSkills = [...new Set(calls.flatMap((c) => c.skills))].sort((a, b) => a.localeCompare(b, "ru"));
   const visible = filter ? calls.filter((c) => c.skills.includes(filter)) : calls;
-  const totalWaiting = calls.reduce((sum, c) => sum + c.waiting, 0);
 
   const chip = (active: boolean) =>
     `min-h-9 rounded-[var(--radius-pill)] border px-3 py-1 text-[length:var(--type-small)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
@@ -86,8 +85,10 @@ export function ReviewerBoard({ calls, isAuthed }: { calls: BoardCallView[]; isA
           {(
             [
               [String(calls.length), "открытых направлений"],
-              [String(totalWaiting), "глав ждут ревью"],
-              ["1–5", "звёзд — оценка авторов"],
+              // ⚠️ Ф15: метрика «N глав ждут» убрана — `board_calls.waiting` всегда был нулём
+              // (ставился 0 при создании и никем не обновлялся), то есть публично врал (З-57).
+              // «1–5 звёзд — оценка авторов» тоже снята: рейтинг ревьюеров удалён в Ф14.
+              [String(SLA_UNCLAIMED_DAYS), "дней — и заявка уходит в редакцию"],
             ] as const
           ).map(([n, label]) => (
             <div key={label} className="text-center">
@@ -150,10 +151,7 @@ export function ReviewerBoard({ calls, isAuthed }: { calls: BoardCallView[]; isA
                 </div>
               )}
               <p className="flex-1 text-[length:var(--type-small)] leading-relaxed text-[var(--muted-foreground)] [text-wrap:pretty]">{c.note}</p>
-              <div className="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-3">
-                <span className="text-[0.75rem] tabular-nums text-[var(--muted-foreground)]">
-                  {c.waiting} {plural(c.waiting, "глава ждёт", "главы ждут", "глав ждут")}
-                </span>
+              <div className="flex items-center justify-end gap-3 border-t border-[var(--border)] pt-3">
                 <button
                   type="button"
                   onClick={() => setApply({ area: c.area, skills: c.skills })}

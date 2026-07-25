@@ -592,7 +592,6 @@ export interface AdminBoardCall {
   id: string;
   area: string;
   skills: string[];
-  waiting: number;
   note: string | null;
   hot: boolean;
 }
@@ -622,7 +621,7 @@ export interface AdminRecruitData {
 export async function getAdminBoardCalls(): Promise<AdminBoardCall[]> {
   const callRows = await db.select().from(boardCalls);
   return callRows
-    .map((c) => ({ id: c.id, area: c.area, skills: parseJson<string[]>(c.skills, []), waiting: c.waiting, note: c.note, hot: c.hot }))
+    .map((c) => ({ id: c.id, area: c.area, skills: parseJson<string[]>(c.skills, []), note: c.note, hot: c.hot }))
     .sort((a, b) => Number(b.hot) - Number(a.hot) || a.area.localeCompare(b.area, "ru"));
 }
 

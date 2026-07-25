@@ -8,6 +8,7 @@ import { adminMutate } from "@/app/admin/_components/client";
 import { btnPrimary, btnSecondary as btnGhost, btnText, inputCls } from "@/app/admin/_components/buttons";
 import { BANNER_ACTIONS, type BannerAction } from "@/types";
 import { BANNER_LIMITS } from "@/lib/banners";
+import { UploadField } from "@/components/upload-field";
 import type { AdminBannerRow } from "@/lib/queries/admin";
 
 const ACTION_LABEL: Record<BannerAction, string> = { internal: "Внутр. ссылка", external: "Внешняя ссылка", donate: "Открыть пожертвования" };
@@ -20,6 +21,8 @@ interface Draft {
   icon: string;
   action: BannerAction;
   target: string;
+  /** Ф15 (З-59): обложка. До неё поле существовало в схеме и в API, но задать его было нечем. */
+  coverUrl: string;
 }
 
 function fromRow(b?: AdminBannerRow): Draft {
@@ -31,6 +34,7 @@ function fromRow(b?: AdminBannerRow): Draft {
     icon: b?.icon ?? "heart",
     action: b?.action ?? "internal",
     target: b?.target ?? "",
+    coverUrl: b?.coverUrl ?? "",
   };
 }
 
@@ -85,6 +89,16 @@ function BannerForm({ initial, onSubmit, onCancel, pending }: { initial: Draft; 
           aria-label="Цель ссылки"
         />
       )}
+      {/* Ф15 (З-59): обложка слайда. Образец загрузки — QR в donation-manager; API уже
+          валидирует путь на префикс /uploads/. */}
+      <UploadField
+        kind="banner"
+        value={d.coverUrl}
+        onChange={(coverUrl) => set({ coverUrl })}
+        placeholder="/uploads/banners/cover.png (необязательно)"
+        ariaLabel="Обложка баннера"
+        inputClassName={inputCls}
+      />
       <div className="flex gap-2">
         <button type="button" disabled={pending || !d.title.trim()} className={btnPrimary} onClick={() => onSubmit(d)}>Сохранить</button>
         <button type="button" className={btnText} onClick={onCancel}>Отмена</button>
