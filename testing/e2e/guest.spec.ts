@@ -361,7 +361,9 @@ test.describe("Гость (аноним)", () => {
       expect(res?.status()).toBe(200);
       await expect(page.getByRole("heading", { name: "Антон Автор" })).toBeVisible();
       await expect(page.getByText(`@${USERS.author.handle}`)).toBeVisible();
-      await expect(page.getByRole("region", { name: "Об авторе" })).toBeVisible();
+      // Ф13.5: единый профиль — секция «О себе» (био + портфолио), таб «Об авторе» переименован.
+      await expect(page.getByRole("region", { name: "О себе" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Об авторе", level: 2 })).toBeVisible();
     });
 
     await test.step("handle с подчёркиванием (/u/lena_review) → 404", async () => {

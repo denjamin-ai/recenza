@@ -36,6 +36,14 @@ export const BLOG = {
 
 export const HIDDEN_BLOG = { id: "blog_ghost", slug: "hidden-blog", title: "Скрытый блог" } as const;
 
+/** Ф13: блог аккаунта с обеими возможностями — опубликован БЕЗ ревью (review_status='none'). */
+export const DUO_BLOG = {
+  id: "blog_duo",
+  slug: "duo-notes",
+  title: "Заметки универсала",
+  chapter: { id: "chp_duo", slug: "hello", title: "Как я совмещаю" },
+} as const;
+
 /**
  * Ф13 — состояние главы описывается ДВУМЯ осями: status (draft|published) + reviewStatus
  * (none|requested|in-review|changes-requested|reviewed).

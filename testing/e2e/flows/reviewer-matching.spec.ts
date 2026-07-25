@@ -96,9 +96,10 @@ test.describe("Подбор ревьюеров (MATCH-*)", () => {
       }).toPass({ timeout: 25_000 });
     });
 
-    await test.step("приватность: на /u/sergey-review виден только агрегат, без индивидуальной оценки", async () => {
+    await test.step("приватность: на /u/sergey-review нет ни агрегата, ни индивидуальной оценки", async () => {
       await asGuest.page.goto(`/u/${USERS.sergey.slug}`);
-      await expect(asGuest.page.getByText(/оцен/i).first()).toBeVisible(); // агрегат «★ … · N оценок»
+      // ⚠️ Ф13.5 (З-41): рейтинг ушёл из профиля целиком — наружу не течёт даже агрегат.
+      await expect(asGuest.page.getByText(/★ \d\.\d/)).toHaveCount(0);
       // «Оценка приватная …» — подпись только в кабинете автора, не на публичном профиле
       await expect(asGuest.page.getByText("Оценка приватная")).toHaveCount(0);
     });

@@ -8,7 +8,8 @@ function Chip({ chip }: { chip: ReviewerChip }) {
     <li>
       <Link
         href={`/u/${chip.slug}`}
-        className="inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] border border-[var(--border)] bg-[var(--bg-secondary)] px-2.5 py-1 text-[length:var(--type-small)] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        /* Ф13.8 (З-46): чип — ссылка, и это должно быть видно: акцентный цвет + подчёркивание на hover. */
+        className="inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] border border-[var(--border)] bg-[var(--bg-secondary)] px-2.5 py-1 text-[length:var(--type-small)] text-[var(--accent)] underline-offset-2 transition-colors hover:border-[var(--accent)] hover:bg-[var(--muted)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
       >
         <span>{chip.displayName}</span>
         {chip.isPrimary && (

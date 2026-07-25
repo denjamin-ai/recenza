@@ -197,9 +197,13 @@ smoke — 16 TC-кейсов в 13 SMK-шагах + 2 инварианта (SMK-
 
 ## 9. Traceability-матрица
 
-Suite: **smoke** — входит и в smoke (16 кейсов, ~15 мин), и в полный регресс; **regression** —
-только полный регресс; все FLOWS несут тег `@critical`. Spec-файлы — целевые для Фазы 11.3
-(`testing/e2e/**`); security-кейсы (CSRF/rate-limit/XSS/httpOnly) сведены в `security.spec.ts`.
+Suite: **smoke** — входит и в smoke, и в полный регресс; **regression** — только полный регресс;
+все FLOWS несут тег `@critical`. Spec-файлы — `testing/e2e/**`; security-кейсы
+(CSRF/rate-limit/XSS/httpOnly) сведены в `security.spec.ts`.
+
+⚠️ **После Фазы 13** ролевые формулировки в §9.1–9.6 ниже читать через матрицу возможностей
+(`TESTING.md` §2): «читатель» = аккаунт без возможностей, «автор»/«ревьюер» = `can_author`/
+`is_reviewer`. Фактическое распределение автотестов — §9.7 (оно и есть источник правды по числу).
 
 ### 9.1 Гость — `testing/test-cases/TC-GUEST.md` (14)
 
@@ -349,21 +353,35 @@ Suite: **smoke** — входит и в smoke (16 кейсов, ~15 мин), и 
 
 ### 9.7 Сводка распределения по spec-файлам
 
-| Spec-файл | Кейсов | Состав |
-|-----------|:------:|--------|
-| `guest.spec.ts` | 14 | TC-GUEST-01…14 |
-| `reader.spec.ts` | 20 | TC-READER-01…20 (кроме 21) |
-| `author.spec.ts` | 25 | TC-AUTHOR-01…25 |
-| `reviewer.spec.ts` | 18 | TC-REVIEWER-01…18 |
-| `admin.spec.ts` | 20 | TC-ADMIN (кроме 02, 17) |
-| `security.spec.ts` | 3 (+invariant-чеки) | TC-READER-21, TC-ADMIN-02, TC-ADMIN-17 + CSRF/XSS/httpOnly/timestamps без TC-ID (§8) |
-| `flows/review-chapter.spec.ts` | 2 | REV-CHAPTER, REV-PRIMARY |
-| `flows/review-whole-blog.spec.ts` | 1 | REV-WHOLE-BLOG |
-| `flows/session-chat.spec.ts` | 1 | REV-SESSION-CHAT (multi-context) |
-| `flows/publish.spec.ts` | 5 | PUB-DRAFT, PUB-CHAPTER-V2, PUB-ARTICLE, PUB-PORTFOLIO, REV-VERSIONS |
-| `flows/comment-thread.spec.ts` | 4 | COM-THREAD, COM-STALE, COM-EDIT-WINDOW, COM-GATING (multi-context) |
-| `flows/reviewer-matching.spec.ts` | 3 | MATCH-INVITE, MATCH-RECRUIT, MATCH-BOARD |
+⚠️ **Ресинк Фазы 13.9 (З-32).** Матрица §9.1–9.6 перечисляет TC-ID постановочных тест-кейсов
+(`testing/test-cases/TC-*.md`) и отставала от кода: 116 записей против фактических автотестов.
+Ниже — ФАКТИЧЕСКОЕ распределение `test(...)` по файлам (источник — сами спеки, а не TC-документы).
+Расхождение TC-ID ↔ `test()` штатно: один спек может закрывать два TC (напр. `TC-AUTHOR-10+11`),
+а часть автотестов (`UPL-*`, `BLK-*`, `CRON-*`, `SEC-*`, `PUB-*`, `WS-*`, `SET-*`, `PROF-*`,
+`BLOG-MANAGE`) заводилась сразу спеками, без отдельной карточки TC.
 
-**Smoke-набор (15 SMK-шагов, канон — `testing/smoke/SMOKE-SUITE.md`):** TC-GUEST-01/02/04/05/06 ·
-TC-READER-01/05/06/09 · TC-AUTHOR-01/09/16 · TC-REVIEWER-01/10/15 · TC-ADMIN-01 + инварианты
-CSRF (SMK-14) и XSS (SMK-15) без TC-ID.
+| Spec-файл | `test()` | Состав |
+|-----------|:--------:|--------|
+| `guest.spec.ts` | 16 | TC-GUEST-01…16 |
+| `reader.spec.ts` | 20 | TC-READER-01…20 |
+| `author.spec.ts` | 17 | TC-AUTHOR-01…28 (часть кейсов объединена) |
+| `reviewer.spec.ts` | 14 | TC-REVIEWER-01…19 |
+| `admin.spec.ts` | 19 | TC-ADMIN (кроме 02, 17 — в security.spec) |
+| `account.spec.ts` | 6 | **Ф13:** WS-01/02, SET-01/02, PROF-01/02 |
+| `security.spec.ts` | 9 | TC-READER-21, TC-ADMIN-02/17 + SEC-CSRF/XSS/HTTPONLY/HEADERS/CRON/TS |
+| `uploads.spec.ts` | 5 | UPL-01…05 |
+| `blocks-render.spec.ts` | 2 | BLK-* (рендер блоков ридер ⇄ ревью) |
+| `cron.spec.ts` | 2 | CRON-01/02 (отложенная публикация) |
+| `flows/review-chapter.spec.ts` | 4 | REV-CHAPTER, REV-PRIMARY |
+| `flows/review-whole-blog.spec.ts` | 4 | REV-WHOLE-BLOG |
+| `flows/session-chat.spec.ts` | 2 | REV-SESSION-CHAT (multi-context) |
+| `flows/publish.spec.ts` | 6 | PUB-FREE, PUB-DRAFT, PUB-CHAPTER-V2, PUB-ARTICLE, PUB-PORTFOLIO, REV-VERSIONS |
+| `flows/publish-free.spec.ts` | 4 | **Ф13:** PUB-FREE-01…04 (свободная публикация, фолк ревизий, З-05) |
+| `flows/comment-thread.spec.ts` | 5 | COM-THREAD, COM-STALE, COM-EDIT-WINDOW, COM-DEPTH, COM-GATING |
+| `flows/blog-manage.spec.ts` | 4 | BLOG-MANAGE (создание/переименование/удаление блога) |
+| `flows/reviewer-matching.spec.ts` | 5 | MATCH-INVITE, MATCH-RECRUIT, MATCH-BOARD, MATCH-DECLINE, MATCH-RATING |
+| **Итого** | **144** | полный прогон, 0 skip |
+
+**Smoke-набор** (`--grep @smoke`, канон — `testing/smoke/SMOKE-SUITE.md`): TC-GUEST-01/02/04/05/06 ·
+TC-READER-01/05/06/09 · TC-AUTHOR-01/09/16 · TC-REVIEWER-01/10/15 · TC-ADMIN-01 · **WS-01**,
+**PUB-FREE-01** (Ф13) + инварианты CSRF и XSS без TC-ID.

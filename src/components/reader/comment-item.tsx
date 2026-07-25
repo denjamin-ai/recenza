@@ -5,6 +5,7 @@
 // (без HTML, XSS-safe). Tombstone удалённого узла с живыми ответами — «[комментарий удалён]».
 
 import { useState } from "react";
+import Link from "next/link";
 import { formatRelativeTime } from "@/lib/format";
 import { Avatar } from "@/components/review/review-primitives";
 import { CommentVote } from "./comment-vote";
@@ -112,9 +113,18 @@ export function CommentItem({
               <span className="font-medium text-[var(--muted-foreground)]">Комментарий удалён</span>
             ) : (
               <>
-                <span className="font-medium text-[var(--foreground)]">
-                  {comment.author?.displayName ?? "Аноним"}
-                </span>
+                {/* Ф13.8 (З-48): имя автора комментария ведёт на его профиль — `slug` уже был
+                    в CommentAuthorView, но ссылкой не рендерился. */}
+                {comment.author ? (
+                  <Link
+                    href={`/u/${comment.author.slug}`}
+                    className="font-medium text-[var(--foreground)] underline-offset-2 hover:text-[var(--accent)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded-[var(--radius-sm)]"
+                  >
+                    {comment.author.displayName}
+                  </Link>
+                ) : (
+                  <span className="font-medium text-[var(--foreground)]">Аноним</span>
+                )}
                 {comment.author?.isBlogAuthor && (
                   <span className="rounded-[var(--radius-pill)] border border-[var(--accent)] px-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--accent)]">
                     автор

@@ -287,24 +287,26 @@ test.describe("Роль «Ревьюер»: кабинет, ReviewPage, проф
     await expect(review.threadsRail.getByText(message)).toHaveCount(0);
   });
 
-  test("TC-REVIEWER-13+14 @regression: публичный профиль /u/reviewer — «Отрецензировал», только агрегат рейтинга", async ({
+  test("TC-REVIEWER-13+14 @regression: публичный профиль /u/reviewer — таб «Ревью», рейтинга ★ нет", async ({
     asGuest,
     api,
   }) => {
     const { page } = asGuest;
     await asGuest.goto(`/u/${USERS.reviewer.slug}`);
 
-    await test.step("Шапка профиля и агрегат рейтинга", async () => {
+    await test.step("Шапка профиля: чип возможности, метрика «Отрецензировано», рейтинга нет", async () => {
       await expect(page.getByRole("heading", { name: "Раиса Ревьюер" })).toBeVisible();
-      // ui-feedback-3 (П5): шапка по прототипу ProfileScreen — @handle и пилюля роли отдельные элементы.
+      // ui-feedback-3 (П5): шапка по прототипу ProfileScreen — @handle и чипы отдельными элементами.
       await expect(page.getByText(`@${USERS.reviewer.handle}`, { exact: true })).toBeVisible();
       await expect(page.getByText("Ревьюер", { exact: true })).toBeVisible();
-      // Только агрегат «★ N.N [· M оценок]» — точное число не ассертим (агрегат пересчитывается
-      // по реальным строкам reviewer_ratings, MCP-FINDINGS §5).
-      await expect(page.getByText(/★ \d\.\d/)).toBeVisible();
+      await expect(page.getByText("Отрецензировано", { exact: true })).toBeVisible();
+      // ⚠️ Ф13.5 (З-41): рейтинг ★ из профиля убран (окончательный снос рейтинга — Ф14).
+      await expect(page.getByText(/★ \d\.\d/)).toHaveCount(0);
     });
 
-    await test.step("«Отрецензировал»: только published-главы", async () => {
+    await test.step("Таб «Ревью»: только published-главы", async () => {
+      // Ф13.5: ревью-активность живёт в отдельном табе (решение владельца — публично).
+      await page.getByRole("tab", { name: /^Ревью/ }).click();
       const reviewed = page.getByRole("region", { name: "Отрецензированные главы" });
       await expect(reviewed).toBeVisible();
       const link = reviewed.getByRole("link", { name: /Цикл событий/ }).first();
@@ -356,10 +358,12 @@ test.describe("Роль «Ревьюер»: кабинет, ReviewPage, проф
       expect(body.error).toBe("Вы рецензировали эту главу — публичное обсуждение недоступно.");
     });
 
-    await test.step("возможность «ревьюер» сама по себе не блокирует: duo комментирует ту же главу", async () => {
-      const ctx = await apiLoginUser(USERS.duo.handle);
+    await test.step("возможность «ревьюер» сама по себе не блокирует: sergey комментирует ту же главу", async () => {
+      // sergey_review — ревьюер БЕЗ строк chapter_reviewers/reviewer_history по этой главе
+      // (у него только pending/flagged приглашения), значит конфликта интересов нет.
+      const ctx = await apiLoginUser(USERS.sergey.handle);
       try {
-        await throttleMutation(USERS.duo.handle);
+        await throttleMutation(USERS.sergey.handle);
         const res = await ctx.post("/api/comments", {
           data: {
             blogSlug: BLOG.slug,

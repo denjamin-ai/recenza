@@ -32,17 +32,20 @@ function ReviewerChips({ reviewers }: { reviewers: AuthorChapterRow["reviewers"]
   return (
     <div className="flex items-center gap-1.5">
       <span className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">Команда:</span>
+      {/* Ф13.8 (З-50): чип ревьюера ведёт на его публичный профиль. */}
       <div className="flex -space-x-1">
         {reviewers.slice(0, 4).map((r) => (
-          <span
+          <Link
             key={r.handle}
+            href={`/u/${r.slug}`}
             title={`${r.displayName}${r.isPrimary ? " · ведущий" : ""}${r.verdict ? ` · ${r.verdict === "approve" ? "одобрил" : "нужны правки"}` : ""}`}
-            className={`flex h-6 w-6 items-center justify-center rounded-full border bg-[var(--bg-secondary)] text-[0.7rem] ${
+            aria-label={`Профиль ${r.displayName}`}
+            className={`flex h-6 w-6 items-center justify-center rounded-full border bg-[var(--bg-secondary)] text-[0.7rem] transition-colors hover:border-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
               r.isPrimary ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--border)] text-[var(--muted-foreground)]"
             }`}
           >
             {r.displayName.slice(0, 1).toUpperCase()}
-          </span>
+          </Link>
         ))}
       </div>
     </div>

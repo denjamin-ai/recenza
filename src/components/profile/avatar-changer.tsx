@@ -2,8 +2,9 @@
 
 // Смена аватарки своего профиля (ui-feedback-5 П2): скрытый file-input → POST /api/uploads
 // (kind=avatar) → PATCH /api/profile/avatar → router.refresh() (в startTransition — CLAUDE gotcha).
-// Живёт кнопкой на своей странице /u/… (пункт меню шапки убран по ui-feedback-6 П2;
-// у читателя /u/-страницы нет — сменить аватар ему негде, backlog «настройки профиля»).
+// Живёт кнопкой на своей странице /u/… и в «Настройках» (Ф13.7 — пункт меню шапки убран
+// по ui-feedback-6 П2; теперь аватар доступен ЛЮБОМУ аккаунту через /settings, чем закрыт
+// backlog «читателю негде сменить аватар»).
 
 import { startTransition, useRef, useState } from "react";
 import { useRouter } from "next/navigation";

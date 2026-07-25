@@ -43,16 +43,21 @@ export interface ReviewedChapterView {
   chapterTitle: string;
 }
 
-export type ProfileView =
-  | {
-      kind: "author";
-      user: ProfileUser;
-      blogs: BlogCardView[];
-      portfolio: Block[] | null;
-      pinnedBlogId: string | null;
-      stats: ProfileStats;
-    }
-  | { kind: "reviewer"; user: ProfileUser; reviewed: ReviewedChapterView[] };
+/**
+ * ⚠️ Фаза 13.5: union `author|reviewer` схлопнут в ОДИН профиль (З-37). Аккаунт может держать обе
+ * возможности сразу, и профиль обязан показывать обе стороны. Секции пустуют, а не отсутствуют:
+ * `blogs`/`reviewed` могут быть пустыми массивами — решение о показе таба принимает страница.
+ */
+export interface ProfileView {
+  user: ProfileUser;
+  blogs: BlogCardView[];
+  portfolio: Block[] | null;
+  pinnedBlogId: string | null;
+  stats: ProfileStats;
+  reviewed: ReviewedChapterView[];
+  /** Профиль «пустой» (нет ни публикаций, ни ревью) → `noindex` и вне sitemap (З-47). */
+  isEmpty: boolean;
+}
 
 export const getProfileBySlug = cache(async (slug: string): Promise<ProfileView | null> => {
   const row = (
@@ -80,12 +85,10 @@ export const getProfileBySlug = cache(async (slug: string): Promise<ProfileView 
   )[0];
 
   // Скрыт: нет пользователя / заблокирован.
-  // ⚠️ Ф13 (промежуточный шаг): видимость профиля гейтится ВОЗМОЖНОСТЯМИ, а не legacy-ролью —
-  // иначе у аккаунта, которому админ выдал `canAuthor` (а `role` остался `reader`), профиля бы
-  // не было никогда, а пункт меню «Мой профиль» вёл бы в 404. Полное перепроектирование
-  // «профиль есть у ЛЮБОГО аккаунта, у пустого — noindex» (З-36/З-37) — подфаза 13.5, PR-B.
+  // ⚠️ Ф13.5 (З-36): профиль есть у ЛЮБОГО аккаунта — гейта по роли/возможностям больше нет.
+  // Скрывается только заблокированный. «Пустой» профиль (без публикаций и ревью) отдаётся,
+  // но помечается isEmpty → страница ставит noindex, sitemap его не берёт (З-47).
   if (!row || row.isBlocked) return null;
-  if (!row.canAuthor && !row.isReviewer) return null;
 
   const user: ProfileUser = {
     id: row.id,
@@ -103,73 +106,83 @@ export const getProfileBySlug = cache(async (slug: string): Promise<ProfileView 
     createdAt: row.createdAt,
   };
 
-  // Аккаунт с обеими возможностями показывается как авторский профиль (полноценные две секции —
-  // 13.5/PR-B). Порядок ветвления сохраняет поведение до Ф13 для «чистых» ролей.
-  if (row.canAuthor) {
-    const allBlogs = await getVisibleBlogs();
-    const authored = allBlogs.filter((b) => b.author.id === user.id);
-    const pf = (
+  // Обе стороны профиля считаются ВСЕГДА — аккаунт может держать обе возможности сразу,
+  // и «блоги» с «ревью» больше не взаимоисключающи.
+  const [allBlogs, reviewed] = await Promise.all([
+    getVisibleBlogs(),
+    getReviewedChapters(user.handle),
+  ]);
+  const authored = allBlogs.filter((b) => b.author.id === user.id);
+
+  const pf = (
+    await db
+      .select({ blocks: portfolios.blocks })
+      .from(portfolios)
+      .where(and(eq(portfolios.authorId, user.id), eq(portfolios.isVisible, true)))
+      .limit(1)
+  )[0];
+
+  // Просмотры — агрегат по видимым блогам автора (viewCount не входит в BlogCardView).
+  let views = 0;
+  if (authored.length > 0) {
+    const vc = (
       await db
-        .select({ blocks: portfolios.blocks })
-        .from(portfolios)
-        .where(and(eq(portfolios.authorId, user.id), eq(portfolios.isVisible, true)))
-        .limit(1)
+        .select({ total: sum(blogs.viewCount) })
+        .from(blogs)
+        .where(inArray(blogs.id, authored.map((b) => b.id)))
     )[0];
-
-    // Просмотры — агрегат по видимым блогам автора (viewCount не входит в BlogCardView).
-    let views = 0;
-    if (authored.length > 0) {
-      const vc = (
-        await db
-          .select({ total: sum(blogs.viewCount) })
-          .from(blogs)
-          .where(inArray(blogs.id, authored.map((b) => b.id)))
-      )[0];
-      views = Number(vc?.total ?? 0);
-    }
-
-    return {
-      kind: "author",
-      user,
-      blogs: authored,
-      portfolio: pf ? parseJson<Block[]>(pf.blocks, []) : null,
-      pinnedBlogId: row.pinnedBlogId ?? null,
-      stats: {
-        blogs: authored.length,
-        chapters: authored.reduce((n, b) => n + b.chapterCount, 0),
-        views,
-        bookmarks: authored.reduce((n, b) => n + b.bookmarkCount, 0),
-      },
-    };
+    views = Number(vc?.total ?? 0);
   }
 
-  // reviewer: главы из reviewer_history, ограниченные публично читаемыми (видимый автор + published).
-  const readableIds = new Set((await getReadableChapters()).map((r) => r.chapterId));
-  const rows = await db
-    .select({
-      chapterId: reviewerHistory.chapterId,
-      blogSlug: blogs.slug,
-      blogTitle: blogs.title,
-      chapterSlug: chapters.slug,
-      chapterTitle: chapters.title,
-    })
-    .from(reviewerHistory)
-    .innerJoin(chapters, eq(reviewerHistory.chapterId, chapters.id))
-    .innerJoin(blogs, eq(chapters.blogId, blogs.id))
-    .where(eq(reviewerHistory.handle, user.handle));
-
-  const seen = new Set<string>();
-  const reviewed: ReviewedChapterView[] = [];
-  for (const r of rows) {
-    if (!readableIds.has(r.chapterId) || seen.has(r.chapterId)) continue;
-    seen.add(r.chapterId);
-    reviewed.push({
-      blogSlug: r.blogSlug,
-      chapterSlug: r.chapterSlug,
-      blogTitle: r.blogTitle,
-      chapterTitle: r.chapterTitle,
-    });
-  }
-
-  return { kind: "reviewer", user, reviewed };
+  return {
+    user,
+    blogs: authored,
+    portfolio: pf ? parseJson<Block[]>(pf.blocks, []) : null,
+    pinnedBlogId: row.pinnedBlogId ?? null,
+    stats: {
+      blogs: authored.length,
+      chapters: authored.reduce((n, b) => n + b.chapterCount, 0),
+      views,
+      bookmarks: authored.reduce((n, b) => n + b.bookmarkCount, 0),
+    },
+    reviewed,
+    isEmpty: authored.length === 0 && reviewed.length === 0,
+  };
 });
+
+/**
+ * Публично читаемые главы, отрецензированные этим handle (З-44 — вынесено из getProfileBySlug).
+ * Переиспользуется профилем и «Рабочим местом». Ограничение «публично читаемые» обязательно:
+ * кредит за скрытую/неопубликованную главу наружу не показываем.
+ */
+export const getReviewedChapters = cache(
+  async (handle: string): Promise<ReviewedChapterView[]> => {
+    const readableIds = new Set((await getReadableChapters()).map((r) => r.chapterId));
+    const rows = await db
+      .select({
+        chapterId: reviewerHistory.chapterId,
+        blogSlug: blogs.slug,
+        blogTitle: blogs.title,
+        chapterSlug: chapters.slug,
+        chapterTitle: chapters.title,
+      })
+      .from(reviewerHistory)
+      .innerJoin(chapters, eq(reviewerHistory.chapterId, chapters.id))
+      .innerJoin(blogs, eq(chapters.blogId, blogs.id))
+      .where(eq(reviewerHistory.handle, handle));
+
+    const seen = new Set<string>();
+    const reviewed: ReviewedChapterView[] = [];
+    for (const r of rows) {
+      if (!readableIds.has(r.chapterId) || seen.has(r.chapterId)) continue;
+      seen.add(r.chapterId);
+      reviewed.push({
+        blogSlug: r.blogSlug,
+        chapterSlug: r.chapterSlug,
+        blogTitle: r.blogTitle,
+        chapterTitle: r.chapterTitle,
+      });
+    }
+    return reviewed;
+  },
+);
