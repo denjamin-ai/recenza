@@ -2,7 +2,7 @@
 // делает layout, эти функции данные не авторизуют. Мутации — в src/app/api/admin/**.
 // JSON-поля читаем через parseJson; наружу passwordHash не отдаём (выбираем явные колонки).
 
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, like as like_, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   blogs,
@@ -147,9 +147,42 @@ export interface AdminUserRow {
   reviewLoad: number;
   reviewCapacity: number;
   createdAt: number;
+  /** Ф15: кто привёл аккаунт (Ф14) — от этого зависит УРОВЕНЬ бейджа, поэтому видно в списке. */
+  introducedBy: string | null;
 }
 
-export async function getAdminUsers(): Promise<AdminUserRow[]> {
+/** Ф15 (З-58): раньше был только `?q=`, и тот фильтровался в JS поверх выборки всех пользователей. */
+export interface AdminUserFilter {
+  q?: string;
+  /** `none` — аккаунт без возможностей (чистый читатель). */
+  cap?: "author" | "reviewer" | "none";
+  status?: "active" | "blocked" | "muted";
+  sort?: "new" | "name" | "load";
+}
+
+export async function getAdminUsers(filter: AdminUserFilter = {}): Promise<AdminUserRow[]> {
+  const where: SQL[] = [];
+
+  const q = filter.q?.trim().toLowerCase();
+  if (q) {
+    // handle хранится в нижнем регистре, displayName — как ввели: сравниваем через lower().
+    const like = `%${q}%`;
+    where.push(or(like_(users.handle, like), like_(sql`lower(${users.displayName})`, like))!);
+  }
+  if (filter.cap === "author") where.push(eq(users.canAuthor, true));
+  if (filter.cap === "reviewer") where.push(eq(users.isReviewer, true));
+  if (filter.cap === "none") where.push(and(eq(users.canAuthor, false), eq(users.isReviewer, false))!);
+  if (filter.status === "blocked") where.push(eq(users.isBlocked, true));
+  if (filter.status === "active") where.push(eq(users.isBlocked, false));
+  if (filter.status === "muted") where.push(eq(users.commentingBlocked, true));
+
+  const order =
+    filter.sort === "name"
+      ? [users.displayName]
+      : filter.sort === "load"
+        ? [desc(users.reviewLoad), users.displayName]
+        : [desc(users.createdAt)];
+
   return db
     .select({
       id: users.id,
@@ -163,9 +196,11 @@ export async function getAdminUsers(): Promise<AdminUserRow[]> {
       reviewLoad: users.reviewLoad,
       reviewCapacity: users.reviewCapacity,
       createdAt: users.createdAt,
+      introducedBy: users.introducedBy,
     })
     .from(users)
-    .orderBy(desc(users.createdAt));
+    .where(where.length > 0 ? and(...where) : undefined)
+    .orderBy(...order);
 }
 
 export interface AdminUserDetail extends AdminUserRow {
@@ -191,6 +226,7 @@ export async function getAdminUserDetail(handle: string): Promise<AdminUserDetai
         competencies: users.competencies,
         bio: users.bio,
         createdAt: users.createdAt,
+        introducedBy: users.introducedBy,
       })
       .from(users)
       .where(eq(users.handle, handle))

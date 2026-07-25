@@ -91,9 +91,19 @@ export default async function AdminRecruitPage() {
                     у аккаунта, заведённого под такого эксперта, надо проставить `introducedBy`,
                     иначе его ревью получит уровень «независимое» вместо «приглашённого». */}
                 {a.invitedBy && (
-                  <p className="mt-1.5 rounded-[var(--radius-sm)] bg-[var(--info-bg)] px-2 py-1 text-[length:var(--type-small)] text-[var(--info)]">
-                    По приглашению автора @{a.invitedBy} — при создании аккаунта укажите его в «Кто пригласил»
-                  </p>
+                  <div className="mt-1.5 rounded-[var(--radius-sm)] bg-[var(--info-bg)] px-2 py-1 text-[length:var(--type-small)] text-[var(--info)]">
+                    <span>По приглашению автора @{a.invitedBy}</span>{" "}
+                    {/* Ф15: раньше handle пригласившего приходилось переносить в форму руками —
+                        а от него зависит УРОВЕНЬ бейджа, и опечатка тихо портила его. */}
+                    {!a.byHandle && (
+                      <Link
+                        href={`/admin/users?new=1&name=${encodeURIComponent(a.name ?? "")}&introducedBy=${encodeURIComponent(a.invitedBy)}`}
+                        className="rounded-[var(--radius-sm)] font-medium underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                      >
+                        Создать аккаунт эксперта →
+                      </Link>
+                    )}
+                  </div>
                 )}
                 {a.skills.length > 0 && <div className="mt-1.5"><SkillChips skills={a.skills} /></div>}
                 {a.message && <p className="mt-1.5 text-[length:var(--type-small)] text-[var(--muted-foreground)] [text-wrap:pretty]">{a.message}</p>}

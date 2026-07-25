@@ -6,18 +6,24 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { adminMutate } from "@/app/admin/_components/client";
+// Ф15: общий inputCls вместо локальной копии — стиль полей админки один на все формы.
+import { inputCls } from "@/app/admin/_components/buttons";
 
-const inputCls =
-  "min-h-9 w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[length:var(--type-small)] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]";
-
-export function UserCreate() {
+export function UserCreate({
+  initialOpen = false,
+  initial,
+}: {
+  /** Ф15: форма раскрывается сразу, когда админ пришёл из анкеты по инвайт-ссылке. */
+  initialOpen?: boolean;
+  initial?: { handle?: string; displayName?: string; introducedBy?: string };
+}) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
-  const [handle, setHandle] = useState("");
-  const [displayName, setDisplayName] = useState("");
+  const [handle, setHandle] = useState(initial?.handle ?? "");
+  const [displayName, setDisplayName] = useState(initial?.displayName ?? "");
   const [password, setPassword] = useState("");
   // Фаза 13: вместо одной роли — независимые возможности. Авторство включено по умолчанию
   // (решение владельца), ревьюерство выдаётся явно.
@@ -26,7 +32,7 @@ export function UserCreate() {
   // Ф14: кто привёл человека. От этого поля зависит УРОВЕНЬ БЕЙДЖА его ревью: приведённый автором
   // эксперт даёт «Проверено приглашённым экспертом», независимый — «Проверено на Recenza».
   // Заполняется при разборе анкеты с инвайт-ссылки (там же указан handle пригласившего).
-  const [introducedBy, setIntroducedBy] = useState("");
+  const [introducedBy, setIntroducedBy] = useState(initial?.introducedBy ?? "");
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
