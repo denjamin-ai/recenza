@@ -333,6 +333,11 @@ bash .claude/playwright-tester/reset-test-db.sh
 systemd: `recenza.service` (Node standalone, **строго один инстанс** — in-memory rate-limit),
 `recenza-publish.timer` (cron отложенной публикации, каждые 5 мин, Bearer `CRON_SECRET`),
 `recenza-review-sla.timer` (Ф14: SLA заявок на ревью, раз в час, тот же Bearer),
+⚠️ **новый systemd-юнит не приезжает деплоем**: `deploy.yml` раскатывает только код, юниты ставит
+`provision.sh`. После добавления юнита в `deploy/` его нужно один раз доставить руками
+(`scp` → `install -m 644` в `/etc/systemd/system/` → `systemctl daemon-reload` →
+`systemctl enable --now <unit>`) — иначе фича выкатится, а по расписанию не запустится
+(наступили на это в Ф14 с `recenza-review-sla.timer`).
 `recenza-backup.timer` (03:30). Reverse-proxy — Caddy (`/etc/caddy/Caddyfile`): авто-TLS, HSTS,
 `/uploads/*` с диска, остальное → `127.0.0.1:3000`.
 
