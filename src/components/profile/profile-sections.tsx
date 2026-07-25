@@ -1,6 +1,6 @@
-// Профиль автора: табы «Об авторе» (портфолио, read-only) · «Блоги». Владелец видит портфолио
-// даже скрытым (с баннером) + вход в редактор; читатель — только видимое портфолио.
-// Закреплённый блог (users.pinnedBlogId) — отдельной секцией над остальными (прототип ProfileScreen).
+// Панели профиля (Ф13.5, RSC): «О себе» · «Блоги» · «Ревью». Собирает серверные узлы и отдаёт их
+// клиентской оболочке табов. Заменяет прежние AuthorProfile/ReviewerProfile — после схлопывания
+// union'а профиль один, а секции показываются по наличию контента и возможностей.
 
 import Link from "next/link";
 import { BlockRenderer } from "@/components/blocks/block-renderer";
@@ -9,25 +9,41 @@ import { IconPin } from "@/components/icons";
 import { ProfileTabs } from "./profile-tabs";
 import type { Block } from "@/types";
 import type { BlogCardView } from "@/lib/queries/types";
+import type { ReviewedChapterView } from "@/lib/queries/profile";
 
-export function AuthorProfile({
+export function ProfileSections({
+  bio,
   blogs,
   portfolio,
   portfolioVisible,
   isOwner,
   pinnedBlogId,
+  reviewed,
+  showReviewTab,
 }: {
+  bio: string | null;
   blogs: BlogCardView[];
   portfolio: Block[] | null;
   portfolioVisible: boolean;
   isOwner: boolean;
   pinnedBlogId: string | null;
+  reviewed: ReviewedChapterView[];
+  showReviewTab: boolean;
 }) {
   const hasPortfolio = !!portfolio && portfolio.length > 0;
-  const hasAbout = isOwner || hasPortfolio;
 
+  // «О себе»: био (переехало сюда из шапки) + портфолио «Об авторе» для тех, у кого оно есть.
   const about = (
-    <section aria-label="Об авторе">
+    <section aria-label="О себе">
+      {bio ? (
+        <p className="mb-6 max-w-xl leading-relaxed text-[var(--foreground)] [text-wrap:pretty]">
+          {bio}
+        </p>
+      ) : (
+        !hasPortfolio &&
+        !isOwner && <p className="text-[var(--muted-foreground)]">Пользователь пока ничего о себе не написал.</p>
+      )}
+
       {isOwner && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <p className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">
@@ -48,9 +64,11 @@ export function AuthorProfile({
       {hasPortfolio ? (
         <BlockRenderer blocks={portfolio!} prefix="portfolio" />
       ) : (
-        <p className="text-[var(--muted-foreground)]">
-          {isOwner ? "Расскажите о себе — публикуется сразу, без ревью." : "Автор пока не заполнил раздел."}
-        </p>
+        isOwner && (
+          <p className="text-[var(--muted-foreground)]">
+            Расскажите о себе — публикуется сразу, без ревью.
+          </p>
+        )
       )}
     </section>
   );
@@ -96,5 +114,41 @@ export function AuthorProfile({
     </section>
   );
 
-  return <ProfileTabs hasAbout={hasAbout} about={about} blogs={blogsPanel} blogsCount={blogs.length} />;
+  // «Ревью» — публичная активность ревьюера (решение владельца, реверс прототипа).
+  // ⚠️ Ф13: рейтинг ★ из профиля убран (З-41) — окончательный снос рейтинга в Ф14.
+  const reviewPanel = (
+    <section aria-label="Отрецензированные главы">
+      <h2 className="sr-only">Отрецензированные главы</h2>
+      {reviewed.length === 0 ? (
+        <p className="text-[var(--muted-foreground)]">Пока нет отрецензированных глав.</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {reviewed.map((r) => (
+            <li key={`${r.blogSlug}/${r.chapterSlug}`}>
+              <Link
+                href={`/blog/${r.blogSlug}/${r.chapterSlug}`}
+                className="block rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--bg-secondary)] p-3 transition-colors hover:border-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              >
+                <span className="block font-medium text-[var(--foreground)]">{r.chapterTitle}</span>
+                <span className="block text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+                  {r.blogTitle}
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+
+  return (
+    <ProfileTabs
+      about={about}
+      blogs={blogsPanel}
+      blogsCount={blogs.length}
+      review={reviewPanel}
+      reviewCount={reviewed.length}
+      showReviewTab={showReviewTab}
+    />
+  );
 }

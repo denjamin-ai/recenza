@@ -404,7 +404,9 @@ test.describe("Автор (author)", () => {
       await expect(toggle).toHaveText("Видно всем");
       await expect(toggle).toHaveAttribute("aria-pressed", "true");
       await asGuest.goto(`/u/${USERS.author.slug}`);
-      await expect(guest.getByRole("region", { name: "Об авторе" })).toBeVisible();
+      // Ф13.5: секция называется «О себе» и есть у всех; портфолио внутри неё — по видимости.
+      await expect(guest.getByRole("region", { name: "О себе" })).toBeVisible();
+      await expect(guest.getByRole("heading", { name: "Об авторе", level: 2 })).toBeVisible();
     });
 
     await test.step("выключаем видимость и сохраняем (клик ретраится до гидрации)", async () => {
@@ -421,11 +423,12 @@ test.describe("Автор (author)", () => {
       await expect(page.getByText("сохранено", { exact: true })).toBeVisible();
     });
 
-    await test.step("гость на /u/author: секции и таба «Об авторе» нет", async () => {
+    await test.step("гость на /u/author: таб «О себе» остаётся, но портфолио в нём нет", async () => {
       await asGuest.goto(`/u/${USERS.author.slug}`);
       await expect(guest.getByRole("heading", { name: "Антон Автор" })).toBeVisible();
-      await expect(guest.getByRole("region", { name: "Об авторе" })).toHaveCount(0);
-      await expect(guest.getByRole("tab", { name: "Об авторе" })).toHaveCount(0);
+      // Ф13.5: таб «О себе» есть всегда (там био), скрывается только содержимое портфолио.
+      await expect(guest.getByRole("region", { name: "О себе" })).toBeVisible();
+      await expect(guest.getByRole("heading", { name: "Об авторе", level: 2 })).toHaveCount(0);
     });
 
     await test.step("самовосстановление: включаем обратно — гостю снова видно", async () => {
@@ -437,7 +440,7 @@ test.describe("Автор (author)", () => {
       await expect(page.getByText("сохранено", { exact: true })).toBeVisible();
 
       await asGuest.goto(`/u/${USERS.author.slug}`);
-      await expect(guest.getByRole("region", { name: "Об авторе" })).toBeVisible();
+      await expect(guest.getByRole("heading", { name: "Об авторе", level: 2 })).toBeVisible();
     });
   });
 

@@ -4,6 +4,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import type { ReviewReviewer } from "@/lib/queries/review";
 import { Avatar } from "./review-primitives";
 
@@ -306,8 +307,14 @@ export function TeamSheet({
             return (
               <li key={r.handle} className="flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border)] p-2">
                 <Avatar handle={r.handle} name={r.displayName} size={28} />
+                {/* Ф13.8 (З-49): имя участника ревью ведёт на профиль — `slug` уже был в ReviewReviewer. */}
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[length:var(--type-body)] font-medium">{r.displayName}</p>
+                  <Link
+                    href={`/u/${r.slug}`}
+                    className="block truncate text-[length:var(--type-body)] font-medium underline-offset-2 hover:text-[var(--accent)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded-[var(--radius-sm)]"
+                  >
+                    {r.displayName}
+                  </Link>
                   <p className="truncate text-[length:var(--type-small)] text-[var(--muted-foreground)]">
                     @{r.handle}
                     {r.handle === primaryHandle ? " · ведущий" : ""}

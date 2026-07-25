@@ -102,6 +102,8 @@ export async function resolveAuthorChapter(
 
 export interface AuthorReviewerChip {
   handle: string;
+  /** Ф13.8 (З-50): нужен, чтобы чип в кабинете автора вёл на профиль ревьюера. */
+  slug: string;
   displayName: string;
   isPrimary: boolean;
   verdict: Verdict | null;
@@ -368,6 +370,7 @@ export const getBlogDetailForAuthor = cache(
               isPrimary: chapterReviewers.isPrimary,
               verdict: chapterReviewers.verdict,
               displayName: users.displayName,
+              slug: users.slug,
             })
             .from(chapterReviewers)
             .innerJoin(users, eq(users.handle, chapterReviewers.handle))
@@ -380,6 +383,7 @@ export const getBlogDetailForAuthor = cache(
       const arr = reviewersByChapter.get(r.chapterId) ?? [];
       arr.push({
         handle: r.handle,
+        slug: r.slug,
         displayName: r.displayName,
         isPrimary: r.isPrimary,
         verdict: (r.verdict as Verdict | null) ?? null,

@@ -1,8 +1,9 @@
-// Публичный профиль /u/[slug]. Автор → «Об авторе» + блоги; ревьюер → «что отрецензировал».
-// Читатель/админ/заблокированный → 404 (нет публичного профиля).
-// Шапка — по прототипу ProfileScreen (feed.jsx): back вверху, карточка с аватаром, пилюлей роли,
-// «на платформе с …», соц-иконками и статистикой. «Изменить профиль» убран (ui-feedback-6 П3) —
-// редактирование «Об авторе» живёт кнопкой внутри одноимённого таба (AuthorProfile).
+// Публичный профиль /u/[slug] — ЕДИНЫЙ для любого аккаунта (Ф13.5, З-36/З-37): чипы возможностей,
+// табы «О себе» · «Блоги (N)» · «Ревью (N)». 404 только у заблокированного/несуществующего;
+// «пустой» профиль (без публикаций и ревью) отдаётся, но с `noindex` (З-47).
+// Шапка — по прототипу ProfileScreen (feed.jsx): back вверху, карточка с аватаром, чипами,
+// «на платформе с …», соц-иконками и статистикой; био — в табе «О себе», не в шапке.
+// ⚠️ Реверс uif-6 П3: кнопка «Изменить профиль» на своём профиле возвращена (модалка = /settings).
 
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -11,8 +12,9 @@ import { AvatarChanger } from "@/components/profile/avatar-changer";
 import { getProfileBySlug } from "@/lib/queries/profile";
 import { getPortfolioForAuthor } from "@/lib/queries/author";
 import { getCurrentUser } from "@/lib/auth";
-import { AuthorProfile } from "@/components/profile/author-profile";
-import { ReviewerProfile } from "@/components/profile/reviewer-profile";
+import { CAPABILITY_LABEL, capabilitiesLabel, capabilitiesOf } from "@/lib/roles";
+import { ProfileSections } from "@/components/profile/profile-sections";
+import { ProfileEditButton } from "@/components/profile/profile-edit-button";
 import { BackLink } from "@/components/back-link";
 import { IconGitHub, IconGlobe, IconTelegram } from "@/components/icons";
 import { formatCompact, formatMonthYear } from "@/lib/format";
@@ -28,14 +30,16 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const profile = await getProfileBySlug(slug);
   if (!profile) return { title: "Профиль не найден" };
 
-  const roleLabel = profile.kind === "author" ? "Автор" : "Ревьюер";
-  const description = truncate(profile.user.bio || `${roleLabel} на Recenza: ${profile.user.displayName}.`);
+  const label = capabilitiesLabel(profile.user);
+  const description = truncate(profile.user.bio || `${label} на Recenza: ${profile.user.displayName}.`);
   const url = absoluteUrl(`/u/${slug}`);
   return {
     title: profile.user.displayName,
     description,
     alternates: { canonical: url },
     openGraph: { type: "profile", title: profile.user.displayName, description, url },
+    // З-47: у «пустого» профиля индексировать нечего — он есть, но в поиск не идёт.
+    ...(profile.isEmpty ? { robots: { index: false, follow: false } } : {}),
   };
 }
 
@@ -99,24 +103,28 @@ export default async function ProfilePage({ params }: { params: Params }) {
 
   const { user } = profile;
   const viewer = await getCurrentUser();
-  const isOwner = profile.kind === "author" && viewer?.id === profile.user.id;
-  // Владелец профиля любой роли (и автор, и ревьюер) — для смены аватарки (ui-feedback-5 П2).
+  // Ф13.5: владелец — просто «это я»; ветвления по типу профиля больше нет (З-40/З-42).
   const isOwnProfile = viewer?.id === profile.user.id;
+  const isOwner = isOwnProfile && user.canAuthor;
   // Владелец видит своё портфолио даже скрытым (профиль-запрос отдаёт только видимое).
   const ownerPortfolio = isOwner ? await getPortfolioForAuthor(profile.user.id) : null;
-  const roleLabel = profile.kind === "author" ? "Автор" : "Ревьюер";
+  const capabilities = capabilitiesOf(user);
   const initial = (user.displayName || user.handle).charAt(0).toUpperCase();
   const memberSince = formatMonthYear(user.createdAt);
 
-  const stats =
-    profile.kind === "author"
+  // Статистика перестала ветвиться по типу профиля: авторские цифры — при наличии блогов,
+  // «Отрецензировано» — при наличии ревью. У пустого профиля блок просто пуст.
+  const stats = [
+    ...(profile.blogs.length > 0
       ? [
           { k: profile.stats.blogs === 1 ? "Блог" : "Блогов", v: profile.stats.blogs },
           { k: "Глав", v: profile.stats.chapters },
           { k: "Просмотров", v: formatCompact(profile.stats.views) },
           { k: "В закладках", v: formatCompact(profile.stats.bookmarks) },
         ]
-      : [{ k: "Отрецензировано", v: profile.reviewed.length }];
+      : []),
+    ...(user.isReviewer ? [{ k: "Отрецензировано", v: profile.reviewed.length }] : []),
+  ];
 
   return (
     <div className="mx-auto w-full max-w-[var(--max-content)] px-6 py-10">
@@ -147,9 +155,15 @@ export default async function ProfilePage({ params }: { params: Params }) {
               <h1 className="font-display text-[26px] font-extrabold leading-[1.1] tracking-tight sm:text-4xl">
                 {user.displayName}
               </h1>
-              <span className="shrink-0 rounded-[var(--radius-pill)] border border-[color-mix(in_srgb,var(--accent)_30%,transparent)] bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider text-[var(--accent)]">
-                {roleLabel}
-              </span>
+              {/* Ф13.5 (З-40): чипы возможностей — их может быть несколько (прототип ProfileScreen). */}
+              {capabilities.map((c) => (
+                <span
+                  key={c}
+                  className="shrink-0 rounded-[var(--radius-pill)] border border-[color-mix(in_srgb,var(--accent)_30%,transparent)] bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider text-[var(--accent)]"
+                >
+                  {CAPABILITY_LABEL[c]}
+                </span>
+              ))}
             </div>
             <div className="flex flex-wrap items-center justify-center gap-2 text-[length:var(--type-small)] text-[var(--muted-foreground)] sm:justify-start">
               <span className="font-mono">@{user.handle}</span>
@@ -160,28 +174,37 @@ export default async function ProfilePage({ params }: { params: Params }) {
                 </>
               )}
             </div>
-            {user.bio && (
-              <p className="mx-auto mt-3 max-w-xl leading-relaxed text-[var(--foreground)] sm:mx-0">{user.bio}</p>
-            )}
+            {/* Ф13.5: био переехало в таб «О себе» (прототип feed.jsx:479) — в шапке не дублируется. */}
             <SocialLinks links={user.links} />
             <StatCells stats={stats} />
           </div>
         </div>
+        {isOwnProfile && (
+          <div className="mt-4 flex justify-center sm:justify-start">
+            {/* ⚠️ Реверс uif-6 П3 (решение владельца): кнопка редактирования вернулась на свой профиль. */}
+            <ProfileEditButton
+              initial={{
+                displayName: user.displayName,
+                bio: user.bio,
+                links: user.links,
+                competencies: user.competencies,
+              }}
+              isReviewer={user.isReviewer}
+            />
+          </div>
+        )}
       </header>
 
-      <div>
-        {profile.kind === "author" ? (
-          <AuthorProfile
-            blogs={profile.blogs}
-            portfolio={isOwner ? (ownerPortfolio?.blocks ?? null) : profile.portfolio}
-            portfolioVisible={isOwner ? (ownerPortfolio?.isVisible ?? false) : true}
-            isOwner={isOwner}
-            pinnedBlogId={profile.pinnedBlogId}
-          />
-        ) : (
-          <ReviewerProfile user={profile.user} reviewed={profile.reviewed} />
-        )}
-      </div>
+      <ProfileSections
+        bio={user.bio}
+        blogs={profile.blogs}
+        portfolio={isOwner ? (ownerPortfolio?.blocks ?? null) : profile.portfolio}
+        portfolioVisible={isOwner ? (ownerPortfolio?.isVisible ?? false) : true}
+        isOwner={isOwner}
+        pinnedBlogId={profile.pinnedBlogId}
+        reviewed={profile.reviewed}
+        showReviewTab={user.isReviewer}
+      />
     </div>
   );
 }

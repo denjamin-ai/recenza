@@ -51,6 +51,13 @@
   --pin-bg: #fef3c7;
   --pin-border: #fcd34d;
 
+  /* Приватные поверхности «Рабочего места» (Фаза 13) — индиго, намеренно вне teal-акцента:
+     приватное не должно читаться как основное действие. Пунктирные рамки/подложки строятся
+     из --private через color-mix (паттерн прототипа private/workspace.jsx). */
+  --private: #4f46b8;
+  --private-bg: #eef0fb;
+  --private-border: #c7cbf0;
+
   /* Золото пожертвований (donate-модалка по прототипу donation-ui.jsx). Прототипный
      solid #b8860b не проходит AA с белым текстом — затемнён до #9a6f08 (≥4.5:1). */
   --gold: #9a6f08;
@@ -149,6 +156,9 @@ html[data-theme="dark"] {
   --pin-ring: #f59e0b;
   --pin-bg: rgb(120 53 15 / 0.3);
   --pin-border: rgb(180 83 9 / 0.55);
+  --private: #a5a8f0;
+  --private-bg: rgb(49 46 129 / 0.28);
+  --private-border: rgb(99 102 241 / 0.5);
 
   --gold: #d9a92d;
   --gold-bg: rgb(212 160 23 / 0.16);

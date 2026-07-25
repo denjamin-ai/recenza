@@ -304,11 +304,12 @@ test.describe("Флоу публикации: гейт all-approve, force-approv
       await savePortfolio(asAuthor.page);
     });
 
-    await test.step("Гость: reload — портфолио скрыто (нет таба «Об авторе»), блоги видны", async () => {
+    await test.step("Гость: reload — содержимое портфолио скрыто, таб «Блоги» доступен", async () => {
       await asGuest.page.reload();
       await expect(asGuest.page.getByText(PF_TEXT)).toHaveCount(0);
-      // Без видимого портфолио табов профиля нет вовсе — сразу панель блогов.
-      await expect(asGuest.page.getByRole("tab", { name: "Об авторе" })).toHaveCount(0);
+      // Ф13.5: табы есть всегда («О себе» держит био); скрывается именно содержимое портфолио.
+      await expect(asGuest.page.getByRole("tab", { name: "О себе" })).toBeVisible();
+      await asGuest.page.getByRole("tab", { name: /^Блоги/ }).click();
       await expect(asGuest.page.getByText(BLOG.title).first()).toBeVisible();
     });
 

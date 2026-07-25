@@ -112,6 +112,15 @@ export function AvatarMenu({ user }: { user: AvatarUser }) {
             <Link role="menuitem" href="/bookmarks" className={menuItem} onClick={() => setOpen(false)}>
               Закладки
             </Link>
+            <Link role="menuitem" href="/settings" className={menuItem} onClick={() => setOpen(false)}>
+              Настройки
+            </Link>
+            {/* Ф13.6: «Рабочее место» — приватный хаб, только при наличии возможностей. */}
+            {caps.length > 0 && (
+              <Link role="menuitem" href="/workspace" className={menuItem} onClick={() => setOpen(false)}>
+                Рабочее место
+              </Link>
+            )}
             {caps.map((c) => (
               <Link
                 key={c}
