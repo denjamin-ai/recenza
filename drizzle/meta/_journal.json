@@ -50,6 +50,13 @@
       "when": 1783693645245,
       "tag": "0006_brainy_sphinx",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1784976375274,
+      "tag": "0007_violet_kabuki",
+      "breakpoints": true
     }
   ]
 }

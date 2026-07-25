@@ -17,7 +17,8 @@ import type {
   SkillsMismatchNotice,
 } from "@/lib/queries/author";
 import type { NotificationView } from "@/lib/queries/notifications";
-import type { Block, RecruitStatus, RevisionStatus } from "@/types";
+import type { Block, RecruitStatus, ReviewStatus, RevisionStatus } from "@/types";
+import { statusDotClass } from "@/lib/review-status";
 import { plural } from "@/lib/plural";
 import { formatRelativeTime } from "@/lib/format";
 import { notificationLabel, notificationTone } from "@/lib/notification-text";
@@ -36,21 +37,21 @@ const RECRUIT_HINT: Record<RecruitStatus, string> = {
   rejected: "Запрос отклонён.",
 };
 
-// Точки-прогресс по прототипу: published — заполненная (success), остальные — контурные
-// (ревью — warning, «нужны правки» — danger, черновик — muted).
-const STATUS_DOT: Record<RevisionStatus, string> = {
-  published: "bg-[var(--success)]",
-  "under-review": "border border-[var(--warning)]",
-  "changes-requested": "border border-[var(--danger)]",
-  draft: "border border-[var(--muted-foreground)]",
-};
-
-function ChapterDots({ statuses }: { statuses: { order: number; status: RevisionStatus }[] }) {
+// Точки-прогресс по прототипу. Фаза 13: цвет выводится из ДВУХ осей общей функцией
+// (ревью важнее публикации — «нужны правки» видно даже у опубликованной главы).
+function ChapterDots({
+  statuses,
+}: {
+  statuses: { order: number; status: RevisionStatus; reviewStatus: ReviewStatus }[];
+}) {
   if (statuses.length === 0) return null;
   return (
     <span className="flex flex-wrap items-center gap-1" aria-hidden="true">
       {statuses.map((s, i) => (
-        <span key={i} className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[s.status]}`} />
+        <span
+          key={i}
+          className={`h-1.5 w-1.5 rounded-full ${statusDotClass(s.status, s.reviewStatus)}`}
+        />
       ))}
     </span>
   );
@@ -171,10 +172,12 @@ function CreateTile() {
 function BlogTile({ blog, pinned }: { blog: AuthorBlogCard; pinned: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const onReview = blog.chapterStatuses.filter((c) => c.status === "under-review").length;
+  const onReview = blog.chapterStatuses.filter(
+    (c) => c.reviewStatus === "requested" || c.reviewStatus === "in-review",
+  ).length;
   const drafts = blog.chapterStatuses.filter((c) => c.status === "draft").length;
-  // «ваш ход» — есть глава со статусом «нужны правки» (ход за автором).
-  const myTurn = blog.chapterStatuses.some((c) => c.status === "changes-requested");
+  // «ваш ход» — ревьюер запросил правки (ход за автором). Ось ревью, не публикации.
+  const myTurn = blog.chapterStatuses.some((c) => c.reviewStatus === "changes-requested");
 
   function togglePin() {
     start(async () => {

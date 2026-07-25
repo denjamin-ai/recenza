@@ -51,14 +51,16 @@ export const COMPLEXITY_TIERS = {
 
 export const MAX_SKILLS = 6;
 
+/**
+ * ⚠️ Фаза 13: `reviewers`/`primary` из чек-листа УБРАНЫ — состав ревьюеров перестал быть условием
+ * готовности главы. Он остался собственным гейтом пикера SubmitSheet и серверной валидации
+ * `submit`-роута (снос пикера целиком — Ф14/14.5).
+ */
 export interface ReadinessInput {
   title: string;
   blocks: Block[];
   tags: string[];
   skills: string[];
-  complexity: Complexity;
-  reviewers: string[];
-  primary: string | null;
 }
 
 export interface ReadinessCheck {
@@ -76,9 +78,12 @@ function isSubstantive(b: Block): boolean {
   return false;
 }
 
-/** 7 пунктов готовности (как в прототипе SubmitSheet). Гейт отправки = все ok. */
+/**
+ * 5 пунктов готовности главы к ревью (было 7 до Фазы 13 — см. ReadinessInput).
+ * Навыки нужны именно для ЗАЯВКИ на ревью (по ним идёт подбор), а не для публикации:
+ * публиковать можно и без них.
+ */
 export function readinessChecklist(i: ReadinessInput): ReadinessCheck[] {
-  const tier = COMPLEXITY_TIERS[i.complexity];
   const hasH2 = i.blocks.some((b) => b.type === "h2" && typeof b.text === "string" && b.text.trim());
   const substantive = i.blocks.filter(isSubstantive).length;
   return [
@@ -90,16 +95,6 @@ export function readinessChecklist(i: ReadinessInput): ReadinessCheck[] {
       id: "skills",
       label: `Ключевые навыки статьи (1–${MAX_SKILLS})`,
       ok: i.skills.length >= 1 && i.skills.length <= MAX_SKILLS,
-    },
-    {
-      id: "reviewers",
-      label: `Ревьюеров по сложности: ${tier.min}–${tier.max}`,
-      ok: i.reviewers.length >= tier.min && i.reviewers.length <= tier.max,
-    },
-    {
-      id: "primary",
-      label: "Назначен ведущий из выбранных",
-      ok: !!i.primary && i.reviewers.includes(i.primary),
     },
   ];
 }

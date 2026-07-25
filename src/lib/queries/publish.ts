@@ -1,7 +1,14 @@
 // Единая транзакция публикации ревизии (Фаза 12). Используется тремя путями:
-// author-publish (api/review/[chapterId]/publish), admin force-approve
+// author-publish (api/author/chapters/[chapterId]/publish), admin force-approve
 // (api/admin/review/[chapterId]/force-approve) и cron отложенной публикации (api/cron/publish).
-// Гейт «все approve» перечитывается ВНУТРИ транзакции (race-safe); gate="force" его обходит.
+//
+// ⚠️ Фаза 13 — ПУБЛИКАЦИЯ СВОБОДНА. Гейт «все approve» удалён целиком (не заменён на gate:"none"):
+// раз публиковать можно всегда, ветка all-approve была бы мёртвым кодом, а "force" отличался бы от
+// "none" ровно одним уведомлением. Осталась единственная race-safe перепроверка — «ревизия ещё
+// не опубликована» (иначе двойной decrement reviewLoad). Ревью — независимая ось (`review_status`),
+// публикация её НЕ трогает: опубликованная глава может остаться `none`, а `reviewed` переживает
+// публикацию и служит основанием кредита.
+//
 // Сверх Фазы 7/10 здесь закрыты P1-баги Фазы 11:
 //   (a) публикация уведомляет подписчиков автора (follows → new_chapter);
 //   (b) pending-запросы смены ведущего гасятся (→ void) + очищается админ-очередь.
@@ -24,9 +31,7 @@ import {
   type NotificationSpec,
 } from "@/lib/queries/notifications";
 
-export const ACTIVE_REVISION_STATUSES = new Set(["under-review", "changes-requested"]);
-
-/** Гейт публикации не прошёл при перепроверке внутри транзакции → у вызывающего 409. */
+/** Публикация невозможна из текущего состояния (уже опубликована) → у вызывающего 409. */
 export class PublishGateError extends Error {
   constructor(readonly reason: string) {
     super(reason);
@@ -47,13 +52,14 @@ export interface PublishTarget {
 
 export async function publishRevision(
   target: PublishTarget,
-  opts: { gate: "all-approve" | "force"; notifyAuthorForceApproved?: boolean },
+  opts: { notifyAuthorForceApproved?: boolean } = {},
 ): Promise<void> {
   const now = Math.floor(Date.now() / 1000);
   const href = `/blog/${target.blogSlug}/${target.chapterSlug}`;
 
   await db.transaction(async (tx) => {
-    // Race-safe: ревизия ещё активна (не опубликована параллельно) — иначе двойной decrement reviewLoad.
+    // Race-safe: ревизия ещё не опубликована (параллельным запросом/cron'ом) — иначе
+    // двойной decrement reviewLoad и дубль fan-out'а подписчикам.
     const rev = (
       await tx
         .select({ status: chapterRevisions.status })
@@ -61,13 +67,15 @@ export async function publishRevision(
         .where(eq(chapterRevisions.id, target.revisionId))
         .limit(1)
     )[0];
-    if (!rev || !ACTIVE_REVISION_STATUSES.has(rev.status)) {
-      throw new PublishGateError("Главу нельзя опубликовать из текущего статуса.");
+    if (!rev) throw new PublishGateError("Ревизия не найдена.");
+    if (rev.status === "published") {
+      throw new PublishGateError("Эта версия главы уже опубликована.");
     }
 
-    // Состав/вердикты ревьюеров — внутри tx (не доверяем кэшу сессии).
+    // Состав ревьюеров этой ревизии — внутри tx (не доверяем кэшу сессии).
+    // Пусто — штатная ситуация Фазы 13 (публикация без ревью): кредита и reviewLoad просто нет.
     const verdictRows = await tx
-      .select({ handle: chapterReviewers.handle, verdict: chapterReviewers.verdict })
+      .select({ handle: chapterReviewers.handle })
       .from(chapterReviewers)
       .where(
         and(
@@ -75,12 +83,6 @@ export async function publishRevision(
           eq(chapterReviewers.revisionNumber, target.revisionNumber),
         ),
       );
-    if (opts.gate === "all-approve") {
-      if (verdictRows.length === 0) throw new PublishGateError("Нет назначенных ревьюеров.");
-      if (!verdictRows.every((r) => r.verdict === "approve")) {
-        throw new PublishGateError("Опубликовать можно только когда все ревьюеры одобрили.");
-      }
-    }
     const handles = verdictRows.map((r) => r.handle);
 
     await tx

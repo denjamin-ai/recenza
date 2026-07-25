@@ -96,11 +96,14 @@ export function SubmitSheet({
 
   const noMatches = tab === "matched" && ranked.length === 0;
 
+  // Фаза 13: чек-лист — только готовность ТЕКСТА (5 пунктов). Состав ревьюеров ушёл из него и
+  // проверяется отдельно (ниже) — это требование заявки на ревью, а не готовности главы.
   const checks = useMemo(
-    () => readinessChecklist({ title: chapterTitle, blocks, tags, skills, complexity, reviewers: picked, primary }),
-    [chapterTitle, blocks, tags, skills, complexity, picked, primary],
+    () => readinessChecklist({ title: chapterTitle, blocks, tags, skills }),
+    [chapterTitle, blocks, tags, skills],
   );
-  const ready = checks.every((c) => c.ok);
+  const teamOk = picked.length >= tier.min && picked.length <= tier.max && !!primary && picked.includes(primary);
+  const ready = checks.every((c) => c.ok) && teamOk;
   const passed = checks.filter((c) => c.ok).length;
 
   function togglePick(handle: string) {
@@ -193,6 +196,15 @@ export function SubmitSheet({
                   <span className={c.ok ? "" : "text-[var(--muted-foreground)]"}>{c.label}</span>
                 </li>
               ))}
+              {/* Состав ревьюеров — требование заявки, не готовности главы (Ф13). */}
+              <li className="flex items-center gap-2 text-[length:var(--type-small)]">
+                <span aria-hidden="true" className={teamOk ? "text-[var(--success)]" : "text-[var(--muted-foreground)]"}>
+                  {teamOk ? "✓" : "○"}
+                </span>
+                <span className={teamOk ? "" : "text-[var(--muted-foreground)]"}>
+                  Ревьюеры по сложности: {tier.min}–{tier.max}, из них ведущий
+                </span>
+              </li>
             </ul>
           </section>
 

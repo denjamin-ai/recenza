@@ -22,14 +22,15 @@ import {
 } from "@/lib/db/schema";
 import { parseJson } from "@/lib/db/json";
 import { DONATIONS_ENABLED_KEY, getAppFlag } from "@/lib/queries/settings";
+import { isReviewOpen } from "@/lib/review-status";
 import type {
   ApplicationStatus,
   BannerAction,
   DonationType,
   RecruitStatus,
   ReportStatus,
+  ReviewStatus,
   RevisionStatus,
-  Role,
 } from "@/types";
 
 // ───────────────────────────── Сводка (dashboard) ─────────────────────────────
@@ -133,7 +134,9 @@ export interface AdminUserRow {
   handle: string;
   slug: string;
   displayName: string;
-  role: Role;
+  /** Возможности аккаунта (Ф13) — выдаёт админ; `users.role` больше не читается. */
+  canAuthor: boolean;
+  isReviewer: boolean;
   isBlocked: boolean;
   commentingBlocked: boolean;
   reviewLoad: number;
@@ -149,7 +152,8 @@ export async function getAdminUsers(): Promise<AdminUserRow[]> {
       handle: users.handle,
       slug: users.slug,
       displayName: users.displayName,
-      role: users.role,
+      canAuthor: users.canAuthor,
+      isReviewer: users.isReviewer,
       isBlocked: users.isBlocked,
       commentingBlocked: users.commentingBlocked,
       reviewLoad: users.reviewLoad,
@@ -176,7 +180,8 @@ export async function getAdminUserDetail(handle: string): Promise<AdminUserDetai
         handle: users.handle,
         slug: users.slug,
         displayName: users.displayName,
-        role: users.role,
+        canAuthor: users.canAuthor,
+        isReviewer: users.isReviewer,
         isBlocked: users.isBlocked,
         commentingBlocked: users.commentingBlocked,
         reviewLoad: users.reviewLoad,
@@ -194,7 +199,7 @@ export async function getAdminUserDetail(handle: string): Promise<AdminUserDetai
   if (!row) return null;
 
   const authoredBlogs =
-    row.role === "author"
+    row.canAuthor
       ? await db
           .select({ id: blogs.id, slug: blogs.slug, title: blogs.title, hidden: blogs.hidden, publishedAt: blogs.publishedAt })
           .from(blogs)
@@ -315,6 +320,7 @@ export interface AdminReviewItem {
   authorName: string;
   revisionNumber: number;
   status: RevisionStatus;
+  reviewStatus: ReviewStatus;
   reviewerCount: number;
   approvedCount: number;
   reviewers: AdminReviewReviewer[];
@@ -322,24 +328,31 @@ export interface AdminReviewItem {
   pendingPrimaryChange: { id: string; fromHandle: string; toHandle: string } | null;
 }
 
-const ACTIVE_REVIEW = ["under-review", "changes-requested"] as const;
-
 export async function getAdminReviewQueue(): Promise<AdminReviewItem[]> {
-  // Берём только активные ревизии (под ревью). Инвариант доменки: активной может быть лишь ПОСЛЕДНЯЯ
-  // ревизия главы (редактор не даёт править under-review/changes-requested; publish её замещает) —
-  // поэтому фильтр по статусу = её последняя ревизия. max(number) оставляем как защиту.
-  const activeRevs = await db
+  // ⚠️ Фаза 13: прежний порядок «отфильтровать по статусу → взять max(number)» больше не годится.
+  // Раньше активной могла быть лишь ПОСЛЕДНЯЯ ревизия (публикация её замещала), теперь черновик
+  // ложится ПОВЕРХ опубликованной — фильтр-до-max показал бы старую ревизию как активную.
+  // Поэтому: сначала max(number) на главу, потом проверка открытости ревью у неё.
+  const allRevs = await db
     .select({
       chapterId: chapterRevisions.chapterId,
       number: chapterRevisions.number,
       status: chapterRevisions.status,
+      reviewStatus: chapterRevisions.reviewStatus,
     })
-    .from(chapterRevisions)
-    .where(inArray(chapterRevisions.status, [...ACTIVE_REVIEW]));
-  const latest = new Map<string, { number: number; status: RevisionStatus }>();
-  for (const r of activeRevs) {
+    .from(chapterRevisions);
+  const latest = new Map<
+    string,
+    { number: number; status: RevisionStatus; reviewStatus: ReviewStatus }
+  >();
+  for (const r of allRevs) {
     const prev = latest.get(r.chapterId);
-    if (!prev || r.number > prev.number) latest.set(r.chapterId, { number: r.number, status: r.status });
+    if (!prev || r.number > prev.number) {
+      latest.set(r.chapterId, { number: r.number, status: r.status, reviewStatus: r.reviewStatus });
+    }
+  }
+  for (const [cid, lr] of latest) {
+    if (!isReviewOpen(lr.status, lr.reviewStatus)) latest.delete(cid);
   }
   const activeIds = [...latest.keys()];
   if (activeIds.length === 0) return [];
@@ -397,6 +410,7 @@ export async function getAdminReviewQueue(): Promise<AdminReviewItem[]> {
         authorName: h.authorName,
         revisionNumber: lr.number,
         status: lr.status,
+        reviewStatus: lr.reviewStatus,
         reviewerCount: rs.length,
         approvedCount: rs.filter((r) => r.verdict === "approve").length,
         reviewers: rs
@@ -440,7 +454,8 @@ export interface AdminApplicationRow {
   byHandle: string | null;
   name: string | null;
   applicantName: string | null; // displayName зарегистрированного пользователя
-  applicantRole: Role | null;
+  /** null — заявка от гостя (без аккаунта). Ф13: возможность вместо роли. */
+  applicantIsReviewer: boolean | null;
   area: string | null;
   skills: string[];
   message: string | null;
@@ -504,7 +519,7 @@ export async function getAdminRecruit(): Promise<AdminRecruitData> {
       byHandle: reviewerApplications.byHandle,
       name: reviewerApplications.name,
       applicantName: users.displayName,
-      applicantRole: users.role,
+      applicantIsReviewer: users.isReviewer,
       area: reviewerApplications.area,
       skills: reviewerApplications.skills,
       message: reviewerApplications.message,
@@ -520,7 +535,7 @@ export async function getAdminRecruit(): Promise<AdminRecruitData> {
     byHandle: a.byHandle,
     name: a.name,
     applicantName: a.applicantName,
-    applicantRole: a.applicantRole,
+    applicantIsReviewer: a.applicantIsReviewer,
     area: a.area,
     skills: parseJson<string[]>(a.skills, []),
     message: a.message,

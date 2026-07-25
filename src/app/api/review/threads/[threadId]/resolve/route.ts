@@ -8,8 +8,7 @@ import { threads } from "@/lib/db/schema";
 import { assertSameOrigin } from "@/lib/csrf";
 import { hitActionRate } from "@/lib/rate-limit";
 import { resolveReviewAccess } from "@/lib/queries/review";
-
-const ACTIVE = new Set(["under-review", "changes-requested"]);
+import { isReviewOpen } from "@/lib/review-status";
 
 export async function POST(
   req: Request,
@@ -40,7 +39,7 @@ export async function POST(
     );
   }
 
-  if (!ACTIVE.has(access.session.revision.status)) {
+  if (!isReviewOpen(access.session.revision.status, access.session.revision.reviewStatus)) {
     return NextResponse.json({ error: "Глава не на активном ревью." }, { status: 409 });
   }
 

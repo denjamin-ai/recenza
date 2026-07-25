@@ -89,7 +89,7 @@ export default async function AdminRecruitPage() {
                 </div>
                 {a.skills.length > 0 && <div className="mt-1.5"><SkillChips skills={a.skills} /></div>}
                 {a.message && <p className="mt-1.5 text-[length:var(--type-small)] text-[var(--muted-foreground)] [text-wrap:pretty]">{a.message}</p>}
-                <ApplicationActions id={a.id} canPromote={!!a.byHandle && a.applicantRole !== "reviewer" && a.applicantRole !== "admin"} />
+                <ApplicationActions id={a.id} canPromote={!!a.byHandle && a.applicantIsReviewer === false} />
               </li>
             ))}
           </ul>

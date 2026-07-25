@@ -2,8 +2,10 @@
 // треды+ответы, чат, strip глав). getReviewerQueue — активные ревью в кабинете ревьюера.
 // resolveReviewAccess — handler-гард доступа (автор-владелец ИЛИ назначенный ревьюер; иначе 401/403/404).
 //
-// Доступ к под-роутам ревью: вердикт — только назначенный ревьюер; apply/publish/submit-revision/
+// Доступ к под-роутам ревью: вердикт — только назначенный ревьюер; apply/submit-revision/
 // primary-change — только автор; треды/ответы/чат — оба участника. Гейтинг — серверный (CLAUDE.md §POV).
+// ⚠️ Фаза 13: публикация из этого набора ВЫШЛА — это авторское действие над своей главой
+// (`/api/author/chapters/[chapterId]/publish`), а не шаг ревью.
 
 import { cache } from "react";
 import { and, asc, eq, inArray } from "drizzle-orm";
@@ -21,7 +23,16 @@ import {
 } from "@/lib/db/schema";
 import { parseJson } from "@/lib/db/json";
 import { getCurrentUser } from "@/lib/auth";
-import type { Block, PublicUser, RevisionStatus, Suggestion, ThreadStatus, Verdict } from "@/types";
+import { isReviewOpen } from "@/lib/review-status";
+import type {
+  Block,
+  PublicUser,
+  ReviewStatus,
+  RevisionStatus,
+  Suggestion,
+  ThreadStatus,
+  Verdict,
+} from "@/types";
 
 // ───────────────────────────── view-типы (сериализуемые) ─────────────────────────────
 
@@ -69,6 +80,7 @@ export interface ReviewChapterLink {
   title: string;
   order: number;
   status: RevisionStatus;
+  reviewStatus: ReviewStatus;
   active: boolean;
 }
 
@@ -93,7 +105,10 @@ export interface ReviewSession {
   revision: {
     id: string;
     number: number;
+    /** Ось публикации: draft | published. */
     status: RevisionStatus;
+    /** Ось ревью: none | requested | in-review | changes-requested | reviewed. */
+    reviewStatus: ReviewStatus;
     summary: string | null;
     blocks: Block[];
     /** Снапшот последней публикации для инлайн-диффа; пусто → глава ещё не публиковалась (дифф «всё ново»). */
@@ -119,6 +134,7 @@ export interface ReviewerQueueItem {
   chapterTitle: string;
   revisionNumber: number;
   status: RevisionStatus;
+  reviewStatus: ReviewStatus;
   isPrimary: boolean;
   myVerdict: Verdict | null;
   openThreadCount: number;
@@ -162,6 +178,7 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
       id: chapterRevisions.id,
       number: chapterRevisions.number,
       status: chapterRevisions.status,
+      reviewStatus: chapterRevisions.reviewStatus,
       summary: chapterRevisions.summary,
       blocks: chapterRevisions.blocks,
       prevBlocks: chapterRevisions.prevBlocks,
@@ -290,6 +307,7 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
       order: chapters.order,
       revNumber: chapterRevisions.number,
       status: chapterRevisions.status,
+      reviewStatus: chapterRevisions.reviewStatus,
     })
     .from(chapters)
     .innerJoin(chapterRevisions, eq(chapterRevisions.chapterId, chapters.id))
@@ -297,7 +315,14 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
 
   const latestStrip = new Map<
     string,
-    { slug: string; title: string; order: number; revNumber: number; status: RevisionStatus }
+    {
+      slug: string;
+      title: string;
+      order: number;
+      revNumber: number;
+      status: RevisionStatus;
+      reviewStatus: ReviewStatus;
+    }
   >();
   for (const r of stripRows) {
     const prev = latestStrip.get(r.chapterId);
@@ -308,11 +333,19 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
         order: r.order,
         revNumber: r.revNumber,
         status: r.status,
+        reviewStatus: r.reviewStatus,
       });
     }
   }
   const chapterLinks: ReviewChapterLink[] = [...latestStrip.entries()]
-    .map(([cid, c]) => ({ slug: c.slug, title: c.title, order: c.order, status: c.status, active: cid === chapterId }))
+    .map(([cid, c]) => ({
+      slug: c.slug,
+      title: c.title,
+      order: c.order,
+      status: c.status,
+      reviewStatus: c.reviewStatus,
+      active: cid === chapterId,
+    }))
     .sort((a, b) => a.order - b.order);
 
   const allApproved =
@@ -341,6 +374,7 @@ export const getReviewSession = cache(async (chapterId: string): Promise<ReviewS
       id: rev.id,
       number: rev.number,
       status: rev.status as RevisionStatus,
+      reviewStatus: rev.reviewStatus as ReviewStatus,
       summary: rev.summary,
       blocks: parseJson<Block[]>(rev.blocks, []),
       prevBlocks: parseJson<Block[]>(rev.prevBlocks, []),
@@ -378,19 +412,25 @@ export async function getReviewerQueue(handle: string): Promise<ReviewerQueueIte
 
   const chapterIds = [...new Set(assignedRows.map((r) => r.chapterId))];
 
-  // Последняя ревизия каждой назначенной главы (number + status).
+  // Последняя ревизия каждой назначенной главы (number + обе оси состояния).
   const revRows = await db
     .select({
       chapterId: chapterRevisions.chapterId,
       number: chapterRevisions.number,
       status: chapterRevisions.status,
+      reviewStatus: chapterRevisions.reviewStatus,
     })
     .from(chapterRevisions)
     .where(inArray(chapterRevisions.chapterId, chapterIds));
-  const latest = new Map<string, { number: number; status: RevisionStatus }>();
+  const latest = new Map<
+    string,
+    { number: number; status: RevisionStatus; reviewStatus: ReviewStatus }
+  >();
   for (const r of revRows) {
     const prev = latest.get(r.chapterId);
-    if (!prev || r.number > prev.number) latest.set(r.chapterId, { number: r.number, status: r.status });
+    if (!prev || r.number > prev.number) {
+      latest.set(r.chapterId, { number: r.number, status: r.status, reviewStatus: r.reviewStatus });
+    }
   }
 
   // Открытые треды (для счётчика) — только по активным главам последней ревизии.
@@ -414,9 +454,9 @@ export async function getReviewerQueue(handle: string): Promise<ReviewerQueueIte
   for (const row of assignedRows) {
     const lr = latest.get(row.chapterId);
     if (!lr) continue;
-    // Только назначения НА последнюю ревизию и в активном статусе.
+    // Только назначения НА последнюю ревизию и в открытом ревью.
     if (row.revisionNumber !== lr.number) continue;
-    if (lr.status !== "under-review" && lr.status !== "changes-requested") continue;
+    if (!isReviewOpen(lr.status, lr.reviewStatus)) continue;
     items.push({
       chapterId: row.chapterId,
       blogSlug: row.blogSlug,
@@ -425,6 +465,7 @@ export async function getReviewerQueue(handle: string): Promise<ReviewerQueueIte
       chapterTitle: row.chapterTitle,
       revisionNumber: lr.number,
       status: lr.status,
+      reviewStatus: lr.reviewStatus,
       isPrimary: row.isPrimary,
       myVerdict: (row.verdict as Verdict | null) ?? null,
       openThreadCount: openCounts.get(openCountKey(row.chapterId, lr.number)) ?? 0,
@@ -485,7 +526,9 @@ export async function resolveReviewAccess(chapterId: string): Promise<ReviewAcce
   if (!session) return NextResponse.json({ error: "Глава не найдена." }, { status: 404 });
 
   if (user.id === session.blog.authorId) return { user, role: "author", session };
-  if (user.role === "reviewer" && isAssignedReviewer(user.handle, session)) {
+  // Возможность «ревьюер» + фактическое назначение (defense in depth: отзыв возможности админом
+  // закрывает доступ, даже если строка chapter_reviewers осталась).
+  if (user.isReviewer && isAssignedReviewer(user.handle, session)) {
     return { user, role: "reviewer", session };
   }
   return NextResponse.json({ error: "Нет доступа к этому ревью." }, { status: 403 });

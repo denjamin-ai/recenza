@@ -1,6 +1,6 @@
 // Подписка на автора (toggle), автор-центрично. Нельзя подписаться на себя; цель — существующий
-// незаблокированный автор. PK(userId, authorId) — страховка от гонки.
-// ui-feedback-5: подписки — ТОЛЬКО роль reader (модель ролей; решение владельца).
+// незаблокированный аккаунт с возможностью «автор». PK(userId, authorId) — страховка от гонки.
+// ⚠️ Фаза 13 — реверс uif-5 П4: подписывается ЛЮБОЙ аккаунт (роли reader больше нет).
 
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
@@ -23,7 +23,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   const csrf = assertSameOrigin(req);
   if (csrf) return csrf;
 
-  const session = await requireUser("reader");
+  const session = await requireUser();
   if (session instanceof NextResponse) return session;
   const userId = session.userId;
   if (!userId) return NextResponse.json({ error: "Требуется вход." }, { status: 401 });
@@ -53,12 +53,12 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   const target = (
     await db
-      .select({ id: users.id, role: users.role, isBlocked: users.isBlocked })
+      .select({ id: users.id, canAuthor: users.canAuthor, isBlocked: users.isBlocked })
       .from(users)
       .where(eq(users.id, authorId))
       .limit(1)
   )[0];
-  if (!target || target.isBlocked || target.role !== "author") {
+  if (!target || target.isBlocked || !target.canAuthor) {
     return NextResponse.json({ error: "Автор не найден." }, { status: 404 });
   }
 

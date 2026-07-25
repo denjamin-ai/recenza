@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import type { Role } from "@/types";
+import { CAPABILITY_LABEL, READER_LABEL, capabilitiesOf, type CapabilityHolder } from "@/lib/roles";
 
 export type Tone = "neutral" | "accent" | "success" | "warning" | "danger" | "info";
 
@@ -24,11 +24,27 @@ export function Pill({ tone = "neutral", children }: { tone?: Tone; children: Re
   );
 }
 
-const ROLE_LABEL: Record<Role, string> = { reader: "Читатель", author: "Автор", reviewer: "Ревьюер", admin: "Админ" };
-const ROLE_TONE: Record<Role, Tone> = { reader: "neutral", author: "accent", reviewer: "info", admin: "warning" };
+const CAPABILITY_TONE = { author: "accent", reviewer: "info" } as const satisfies Record<
+  "author" | "reviewer",
+  Tone
+>;
 
-export function RolePill({ role }: { role: Role }) {
-  return <Pill tone={ROLE_TONE[role]}>{ROLE_LABEL[role]}</Pill>;
+/**
+ * Возможности аккаунта пилюлями (Фаза 13 — вместо одной ролевой пилюли).
+ * Аккаунт без возможностей — «Читатель» (базовый уровень), это не ошибка и не пустое состояние.
+ */
+export function CapabilityPills({ user }: { user: CapabilityHolder }) {
+  const caps = capabilitiesOf(user);
+  if (caps.length === 0) return <Pill tone="neutral">{READER_LABEL}</Pill>;
+  return (
+    <span className="flex flex-wrap gap-1">
+      {caps.map((c) => (
+        <Pill key={c} tone={CAPABILITY_TONE[c]}>
+          {CAPABILITY_LABEL[c]}
+        </Pill>
+      ))}
+    </span>
+  );
 }
 
 export function ScreenHead({ eyebrow, title, description }: { eyebrow?: string; title: string; description?: string }) {

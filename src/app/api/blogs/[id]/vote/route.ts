@@ -1,6 +1,7 @@
 // Голос за БЛОГ (±1), race-safe toggle (ui-feedback-5: голоса блоговые, как в прототипе).
-// Порядок: CSRF → auth (ТОЛЬКО reader — модель ролей) → rate-limit → валидация → цель → транзакция.
+// Порядок: CSRF → auth (ЛЮБОЙ аккаунт) → rate-limit → валидация → цель → транзакция.
 // Счёт — SUM в той же транзакции (идемпотентный ответ).
+// ⚠️ Фаза 13 — реверс uif-5 П4: «читатель» перестал быть отдельной ролью, читают и реагируют все.
 
 import { NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
@@ -32,8 +33,7 @@ export async function POST(req: Request, ctx: Ctx): Promise<NextResponse> {
   const csrf = assertSameOrigin(req);
   if (csrf) return csrf;
 
-  // Голосует только читатель (ui-feedback-5, решение владельца: engagement — прерогатива reader).
-  const session = await requireUser("reader");
+  const session = await requireUser();
   if (session instanceof NextResponse) return session;
   const userId = session.userId;
   if (!userId) return NextResponse.json({ error: "Требуется вход." }, { status: 401 });

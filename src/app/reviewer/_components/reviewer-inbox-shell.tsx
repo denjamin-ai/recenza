@@ -4,13 +4,8 @@
 import Link from "next/link";
 import type { ReviewerQueueItem } from "@/lib/queries/review";
 import type { ReviewerInvitationItem } from "@/lib/queries/invitations";
-import type { RevisionStatus } from "@/types";
+import { reviewMeta } from "@/lib/review-status";
 import { InvitationCard } from "./invitation-card";
-
-const STATUS_META: Partial<Record<RevisionStatus, { label: string; cls: string }>> = {
-  "under-review": { label: "На ревью", cls: "bg-[var(--info-bg)] text-[var(--info)]" },
-  "changes-requested": { label: "Нужны правки", cls: "bg-[var(--warning-bg)] text-[var(--warning)]" },
-};
 
 export function ReviewerInboxShell({
   displayName,
@@ -77,7 +72,7 @@ export function ReviewerInboxShell({
           ) : (
             <ul className="mt-4 flex flex-col gap-2">
               {queue.map((q) => {
-                const meta = STATUS_META[q.status];
+                const meta = reviewMeta(q.reviewStatus);
                 return (
                   <li key={q.chapterId}>
                     <Link

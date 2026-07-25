@@ -1,7 +1,10 @@
 // Создание пользователя админом (Фаза 12) — альфа-модель доступа: self-registration в приложении
-// нет, аккаунты выдаёт только админ и сообщает пароль лично. Роль задаётся ОДИН раз при создании
-// (менять её обычным API по-прежнему нельзя — binding, CLAUDE.md §гейтинг); роль admin через этот
-// эндпоинт не создаётся (админ — env-based, строки в users не имеет).
+// нет, аккаунты выдаёт только админ и сообщает пароль лично.
+//
+// Фаза 13: вместо одной роли задаются ВОЗМОЖНОСТИ (`canAuthor`/`isReviewer`, обе опциональны и по
+// умолчанию false = читатель). Их можно менять и позже — PATCH /api/admin/users/[handle].
+// Колонка `role` notNull, поэтому пишется legacy-shim, отражающий «главную» возможность;
+// админ через этот эндпоинт не создаётся (админ — env-based, строки в users не имеет).
 
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
@@ -13,8 +16,6 @@ import { assertSameOrigin } from "@/lib/csrf";
 import { hitActionRate } from "@/lib/rate-limit";
 
 const HANDLE_RE = /^[a-z0-9_-]{3,30}$/;
-const CREATABLE_ROLES = ["reader", "author", "reviewer"] as const;
-type CreatableRole = (typeof CREATABLE_ROLES)[number];
 
 export async function POST(req: Request): Promise<NextResponse> {
   const csrf = assertSameOrigin(req);
@@ -31,7 +32,13 @@ export async function POST(req: Request): Promise<NextResponse> {
     );
   }
 
-  let body: { handle?: unknown; displayName?: unknown; password?: unknown; role?: unknown };
+  let body: {
+    handle?: unknown;
+    displayName?: unknown;
+    password?: unknown;
+    canAuthor?: unknown;
+    isReviewer?: unknown;
+  };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -56,13 +63,16 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "Пароль: минимум 8 символов." }, { status: 400 });
   }
 
-  const role = body.role as CreatableRole;
-  if (!CREATABLE_ROLES.includes(role)) {
-    return NextResponse.json(
-      { error: "Роль: reader, author или reviewer." },
-      { status: 400 },
-    );
+  if (body.canAuthor !== undefined && typeof body.canAuthor !== "boolean") {
+    return NextResponse.json({ error: "canAuthor: ожидается boolean." }, { status: 400 });
   }
+  if (body.isReviewer !== undefined && typeof body.isReviewer !== "boolean") {
+    return NextResponse.json({ error: "isReviewer: ожидается boolean." }, { status: 400 });
+  }
+  const canAuthor = body.canAuthor === true;
+  const isReviewer = body.isReviewer === true;
+  // legacy-shim для notNull-колонки `role`: гейты её не читают (см. schema.ts).
+  const role = isReviewer ? "reviewer" : canAuthor ? "author" : "reader";
 
   // slug = handle (оба UNIQUE); проверяем оба поля, т.к. slug другого пользователя мог занять имя.
   const clash = (
@@ -87,6 +97,8 @@ export async function POST(req: Request): Promise<NextResponse> {
     await db.insert(users).values({
       handle,
       role,
+      canAuthor,
+      isReviewer,
       passwordHash,
       displayName,
       slug: handle,

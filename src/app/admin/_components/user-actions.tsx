@@ -3,6 +3,10 @@
 // Клиентские действия модерации пользователя (Фаза 10): баны, ограничение комментариев, ёмкость
 // ревью, смена пароля, скрытие/показ его блогов. Каждое действие → admin-API + router.refresh()
 // в startTransition.
+//
+// Фаза 13: здесь же ВЫДАЧА И ОТЗЫВ ВОЗМОЖНОСТЕЙ («автор» / «ревьюер»). Решение владельца: роли
+// выдаёт администратор, читатель — базовый уровень. Отзыв возможности НЕ является баном: человек
+// остаётся читателем, его опубликованные блоги и кредит ревью сохраняются.
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -18,7 +22,8 @@ interface BlogRow {
 
 export function UserModeration(props: {
   handle: string;
-  role: string;
+  canAuthor: boolean;
+  isReviewer: boolean;
   isBlocked: boolean;
   commentingBlocked: boolean;
   reviewCapacity: number;
@@ -53,6 +58,31 @@ export function UserModeration(props: {
         </p>
       )}
 
+      <div>
+        <p className="mb-2 text-[length:var(--type-small)] font-medium text-[var(--foreground)]">Возможности</p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => run(() => patchUser({ canAuthor: !props.canAuthor }))}
+            className={btnSecondary}
+          >
+            {props.canAuthor ? "Отозвать возможность вести блоги" : "Разрешить вести блоги"}
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => run(() => patchUser({ isReviewer: !props.isReviewer }))}
+            className={btnSecondary}
+          >
+            {props.isReviewer ? "Отозвать статус ревьюера" : "Сделать ревьюером"}
+          </button>
+        </div>
+        <p className="mt-1 text-[0.7rem] text-[var(--muted-foreground)]">
+          Отзыв возможности — не бан: аккаунт остаётся читателем, опубликованное и кредит ревью сохраняются.
+        </p>
+      </div>
+
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
@@ -73,7 +103,7 @@ export function UserModeration(props: {
         </button>
       </div>
 
-      {props.role === "reviewer" && (
+      {props.isReviewer && (
         <div className="flex items-center gap-2 text-[length:var(--type-small)] text-[var(--foreground)]">
           <span>Ёмкость ревью:</span>
           <button

@@ -1,14 +1,27 @@
-// Отправка главы на ревью (Фаза 6 → согласие в Фазе 9): draft|changes-requested → under-review.
+// Отправка главы на ревью (Фаза 6 → согласие в Фазе 9). Фаза 13: трогает ТОЛЬКО ось ревью
+// (review_status → 'requested'); ось публикации не меняется — отправка на ревью больше не является
+// шагом публикации, публиковать можно независимо и в любой момент.
 // Гейт готовности применяется ПОВТОРНО на сервере (никогда не доверяем клиенту). Навыки обязательны.
 //
 // Фаза 9 (согласие): отправка создаёт ПРИГЛАШЕНИЯ (review_invitations, status=pending), а НЕ пишет
 // chapter_reviewers напрямую. Ревью по приглашению стартует только после accept (accept → пишет
 // chapter_reviewers). Уже принявшие на этой ревизии не переприглашаются (re-consent не требуется).
+//
+// ⚠️ Фаза 13, фикс З-05: вердикты ЭТОЙ ревизии обнуляются при отправке. Раньше повторная отправка из
+// changes-requested не трогала chapter_reviewers вовсе, и `approve`, поставленный на прошлый текст,
+// переживал правки — глава могла уйти в «все одобрили» без нового круга ревью.
 
 import { NextResponse } from "next/server";
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { blogs, chapterRevisions, chapters, reviewInvitations, users } from "@/lib/db/schema";
+import {
+  blogs,
+  chapterReviewers,
+  chapterRevisions,
+  chapters,
+  reviewInvitations,
+  users,
+} from "@/lib/db/schema";
 import { requireAuthor } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { hitActionRate } from "@/lib/rate-limit";
@@ -16,6 +29,7 @@ import { parseJson, stringifyJson } from "@/lib/db/json";
 import { createNotifications } from "@/lib/queries/notifications";
 import { REVIEW_NOTIFY, reviewerInboxHref } from "@/lib/queries/review";
 import { COMPLEXITY_TIERS, MAX_SKILLS, readinessChecklist } from "@/lib/blocks/validate";
+import { isRevisionEditable } from "@/lib/review-status";
 import type { Block, Complexity } from "@/types";
 
 /**
@@ -153,25 +167,32 @@ export async function POST(
   )[0];
   if (!row || row.authorId !== userId) return NextResponse.json({ error: "Глава не найдена." }, { status: 404 });
 
-  // Последняя ревизия (отправляем только из draft|changes-requested).
+  // Последняя ревизия. Отправлять можно только то, что не читают ревьюеры прямо сейчас
+  // (published тоже нельзя: сначала правка → она заведёт черновик поверх, его и отправляем).
   const rev = (
     await db
-      .select({ id: chapterRevisions.id, number: chapterRevisions.number, status: chapterRevisions.status, blocks: chapterRevisions.blocks })
+      .select({
+        id: chapterRevisions.id,
+        number: chapterRevisions.number,
+        status: chapterRevisions.status,
+        reviewStatus: chapterRevisions.reviewStatus,
+        blocks: chapterRevisions.blocks,
+      })
       .from(chapterRevisions)
       .where(eq(chapterRevisions.chapterId, chapterId))
       .orderBy(desc(chapterRevisions.number))
       .limit(1)
   )[0];
   if (!rev) return NextResponse.json({ error: "Ревизия не найдена." }, { status: 404 });
-  if (rev.status !== "draft" && rev.status !== "changes-requested") {
+  if (rev.status !== "draft" || !isRevisionEditable(rev.status, rev.reviewStatus)) {
     return NextResponse.json({ error: "Главу нельзя отправить из текущего статуса." }, { status: 409 });
   }
 
-  // Ревьюеры существуют и имеют роль reviewer (не заблокированы).
+  // Ревьюеры существуют, имеют возможность «ревьюер» и не заблокированы.
   const reviewerRows = await db
     .select({ handle: users.handle, id: users.id })
     .from(users)
-    .where(and(inArray(users.handle, reviewers), eq(users.role, "reviewer"), eq(users.isBlocked, false)));
+    .where(and(inArray(users.handle, reviewers), eq(users.isReviewer, true), eq(users.isBlocked, false)));
   const valid = new Set(reviewerRows.map((r) => r.handle));
   if (reviewers.some((h) => !valid.has(h))) {
     return NextResponse.json({ error: "В списке есть несуществующий ревьюер." }, { status: 400 });
@@ -184,9 +205,6 @@ export async function POST(
     blocks: parseJson<Block[]>(rev.blocks, []),
     tags: parseJson<string[]>(row.blogTags, []),
     skills,
-    complexity,
-    reviewers,
-    primary,
   });
   const failed = checks.filter((c) => !c.ok);
   if (failed.length > 0) {
@@ -195,10 +213,14 @@ export async function POST(
       { status: 400 },
     );
   }
-  // tier-границы — диагностический дубль (readiness уже проверил счётчики).
+  // Состав ревьюеров с Фазы 13 не входит в чек-лист готовности, но остаётся условием ЗАЯВКИ:
+  // отправлять на ревью без ревьюеров бессмысленно (в Ф14 это заменит очередь заявок).
   const tier = COMPLEXITY_TIERS[complexity];
   if (reviewers.length < tier.min || reviewers.length > tier.max) {
     return NextResponse.json({ error: `Для «${tier.label}»: ${tier.min}–${tier.max} ревьюеров.` }, { status: 400 });
+  }
+  if (!primary || !reviewers.includes(primary)) {
+    return NextResponse.json({ error: "Назначьте ведущего из выбранных ревьюеров." }, { status: 400 });
   }
 
   const now = Math.floor(Date.now() / 1000);
@@ -206,10 +228,23 @@ export async function POST(
     await db.transaction(async (tx) => {
       await tx.update(chapters).set({ skills: stringifyJson(skills), primaryHandle: primary }).where(eq(chapters.id, chapterId));
       await tx.update(blogs).set({ complexity, lastActivityAt: now }).where(eq(blogs.id, row.blogId));
+      // Ось ревью: 'requested' — приглашения разосланы, но ревью стартует только после accept.
+      // Ось публикации (status) НЕ трогаем: черновик остаётся черновиком.
       await tx
         .update(chapterRevisions)
-        .set({ status: "under-review", submittedAt: now, ...(note !== null ? { summary: note } : {}) })
+        .set({ reviewStatus: "requested", submittedAt: now, ...(note !== null ? { summary: note } : {}) })
         .where(eq(chapterRevisions.id, rev.id));
+      // З-05: обнуляем вердикты ЭТОЙ ревизии — текст изменился, прошлый approve к нему не относится.
+      // Затрагивает уже принявших ревьюеров (их назначение сохраняется, голос — нет).
+      await tx
+        .update(chapterReviewers)
+        .set({ verdict: null, verdictAt: null })
+        .where(
+          and(
+            eq(chapterReviewers.chapterId, chapterId),
+            eq(chapterReviewers.revisionNumber, rev.number),
+          ),
+        );
       // Фаза 9: создаём приглашения (а не chapter_reviewers); ревью стартует только после accept.
       const invited = await createInvitations(tx, chapterId, rev.number, reviewers, primary, note, now);
       // Уведомляем приглашённых: ссылка ведёт в кабинет ревьюера (войти в ревью можно лишь после accept).

@@ -31,8 +31,14 @@ export default async function AdminReviewPage() {
                   <p className="text-[0.7rem] text-[var(--muted-foreground)]">{it.blogTitle} · {it.authorName} · v{it.revisionNumber}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <Pill tone={it.status === "changes-requested" ? "warning" : "info"}>
-                    {it.status === "changes-requested" ? "Нужны правки" : "На ревью"}
+                  <Pill tone={it.reviewStatus === "changes-requested" ? "warning" : "info"}>
+                    {it.reviewStatus === "changes-requested"
+                      ? "Нужны правки"
+                      : it.reviewStatus === "requested"
+                        ? "Ждёт ревьюера"
+                        : it.reviewStatus === "reviewed"
+                          ? "Ревью пройдено"
+                          : "На ревью"}
                   </Pill>
                   <Pill tone={it.reviewerCount > 0 && it.approvedCount === it.reviewerCount ? "success" : "neutral"}>
                     {it.approvedCount}/{it.reviewerCount} approve

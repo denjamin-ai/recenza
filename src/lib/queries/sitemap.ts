@@ -27,17 +27,18 @@ export async function getSitemapData(): Promise<SitemapData> {
   }
 
   // Профили ревьюеров публичных глав.
+  // ⚠️ Фаза 13 (З-45): фильтра по роли здесь БЫТЬ НЕ ДОЛЖНО — наличие строки в reviewer_history и
+  // означает, что человек рецензировал. Прежняя проверка `role === "reviewer"` выкидывала из sitemap
+  // ревьюера, ставшего автором (при единой ролевой модели это был бы штатный случай).
   const chapterIds = [...new Set(rows.map((r) => r.chapterId))];
   if (chapterIds.length > 0) {
     const rev = await db
-      .select({ slug: users.slug, role: users.role, isBlocked: users.isBlocked })
+      .select({ slug: users.slug, isBlocked: users.isBlocked })
       .from(reviewerHistory)
       .innerJoin(users, eq(reviewerHistory.handle, users.handle))
       .where(inArray(reviewerHistory.chapterId, chapterIds));
     for (const x of rev) {
-      if (x.role === "reviewer" && !x.isBlocked && !profileSlugs.has(x.slug)) {
-        profileSlugs.set(x.slug, null);
-      }
+      if (!x.isBlocked && !profileSlugs.has(x.slug)) profileSlugs.set(x.slug, null);
     }
   }
 

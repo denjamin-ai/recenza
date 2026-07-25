@@ -14,6 +14,7 @@ import { BackLink } from "@/components/back-link";
 import type { Block } from "@/types";
 import type { EditorChapter } from "@/lib/queries/author";
 import type { RankedReviewer } from "@/lib/reviewer-match";
+import { PUBLICATION_META, isRevisionEditable, reviewMeta } from "@/lib/review-status";
 import { AutoTextarea } from "./auto-textarea";
 import { BlockListEditor } from "./block-list-editor";
 import { SettingsPopover } from "./settings-popover";
@@ -35,7 +36,10 @@ function SaveState({ dirty, savedAt }: { dirty: boolean; savedAt: number | null 
 
 export function ChapterEditor({ data, reviewers }: { data: EditorChapter; reviewers: RankedReviewer[] }) {
   const router = useRouter();
-  const editable = data.revision.status === "draft" || data.revision.status === "changes-requested";
+  // Фаза 13: опубликованная глава РЕДАКТИРУЕМА — PATCH заведёт ревизию-черновик поверх.
+  // Заблокировано только то, что читают ревьюеры прямо сейчас.
+  const editable = isRevisionEditable(data.revision.status, data.revision.reviewStatus);
+  const forksOnEdit = data.revision.status === "published";
   const [title, setTitle] = useState(data.chapter.title);
   const [blocks, setBlocks] = useState<Block[]>(data.revision.blocks);
   const [dirty, setDirty] = useState(false);
@@ -217,20 +221,23 @@ export function ChapterEditor({ data, reviewers }: { data: EditorChapter; review
 
       <div className="mx-auto w-full max-w-[var(--max-article)] px-6 py-8">
         <p className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">
-          {data.blog.title} ·{" "}
-          {data.revision.status === "draft"
-            ? "черновик"
-            : data.revision.status === "changes-requested"
-              ? "нужны правки"
-              : data.revision.status === "under-review"
-                ? "на ревью"
-                : "опубликовано"}
+          {data.blog.title} · {PUBLICATION_META[data.revision.status].label.toLowerCase()}
+          {reviewMeta(data.revision.reviewStatus)
+            ? ` · ${reviewMeta(data.revision.reviewStatus)!.label.toLowerCase()}`
+            : ""}
         </p>
+
+        {forksOnEdit && (
+          <div className="mt-3 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-4 text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+            Глава опубликована. Правки создадут новую версию поверх опубликованной — читатели
+            продолжат видеть текущую, пока вы не опубликуете новую.
+          </div>
+        )}
 
         {!editable && (
           <div className="mt-3 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] p-4 text-[length:var(--type-small)] text-[var(--muted-foreground)]">
-            Эта глава {data.revision.status === "under-review" ? "на ревью" : "опубликована"} —
-            редактирование недоступно. Откройте «Просмотр», чтобы посмотреть содержимое.
+            Эту версию сейчас читают ревьюеры — редактирование недоступно. Откройте «Просмотр», чтобы
+            посмотреть содержимое.
           </div>
         )}
 

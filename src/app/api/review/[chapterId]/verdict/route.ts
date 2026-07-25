@@ -11,9 +11,8 @@ import { assertSameOrigin } from "@/lib/csrf";
 import { hitActionRate } from "@/lib/rate-limit";
 import { createNotifications } from "@/lib/queries/notifications";
 import { REVIEW_NOTIFY, authorReviewHref, resolveReviewAccess } from "@/lib/queries/review";
-import { VERDICTS, type RevisionStatus, type Verdict } from "@/types";
-
-const ACTIVE = new Set(["under-review", "changes-requested"]);
+import { isReviewOpen } from "@/lib/review-status";
+import { VERDICTS, type ReviewStatus, type Verdict } from "@/types";
 
 export async function POST(
   req: Request,
@@ -49,7 +48,7 @@ export async function POST(
   }
 
   const { session } = access;
-  if (!ACTIVE.has(session.revision.status)) {
+  if (!isReviewOpen(session.revision.status, session.revision.reviewStatus)) {
     return NextResponse.json({ error: "Глава не на активном ревью." }, { status: 409 });
   }
 
@@ -58,7 +57,7 @@ export async function POST(
   // Пересчёт статуса/консенсуса делаем по СВЕЖИМ вердиктам из БД ВНУТРИ транзакции (после записи
   // своего голоса) — иначе при одновременных голосах двух ревьюеров расчёт по кэшу сессии даёт гонку.
   let allApprove = false;
-  let newStatus: RevisionStatus = session.revision.status;
+  let newStatus: ReviewStatus = session.revision.reviewStatus;
 
   try {
     await db.transaction(async (tx) => {
@@ -80,13 +79,14 @@ export async function POST(
         );
       const anyChanges = fresh.some((r) => r.verdict === "request-changes");
       allApprove = fresh.length > 0 && fresh.every((r) => r.verdict === "approve");
-      // Статус ревизии: правки → changes-requested; иначе остаётся under-review (publish — отдельный
-      // шаг; «все одобрили» — производный флаг allApprove, не статус).
-      newStatus = anyChanges ? "changes-requested" : "under-review";
-      if (newStatus !== session.revision.status) {
+      // Ось РЕВЬЮ (Фаза 13): правки → changes-requested; все одобрили → reviewed; иначе ещё in-review.
+      // «reviewed» — теперь настоящий статус, а не производный флаг: он переживает публикацию и
+      // служит основанием кредита/бейджа (Ф14). Ось публикации здесь НЕ трогается.
+      newStatus = anyChanges ? "changes-requested" : allApprove ? "reviewed" : "in-review";
+      if (newStatus !== session.revision.reviewStatus) {
         await tx
           .update(chapterRevisions)
-          .set({ status: newStatus })
+          .set({ reviewStatus: newStatus })
           .where(eq(chapterRevisions.id, session.revision.id));
       }
       // Уведомление автору: запрошены правки / всё одобрено.

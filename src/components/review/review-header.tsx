@@ -6,22 +6,32 @@ import Link from "next/link";
 import { BackLink } from "@/components/back-link";
 import type { ReviewSession } from "@/lib/queries/review";
 import { authorReviewHref } from "@/lib/review-links";
-import type { RevisionStatus } from "@/types";
+import { statusDotClass } from "@/lib/review-status";
+import type { ReviewStatus, RevisionStatus } from "@/types";
 
-const STATUS_META: Record<RevisionStatus, { label: string; cls: string }> = {
-  draft: { label: "Черновик", cls: "border-[var(--border)] text-[var(--muted-foreground)]" },
-  "under-review": { label: "На ревью", cls: "border-[var(--info-border)] bg-[var(--info-bg)] text-[var(--info)]" },
+// На экране ревью первичен статус РЕВЬЮ (мы внутри ревью-сессии); публикация — вторична.
+const REVIEW_PILL: Record<ReviewStatus, { label: string; cls: string }> = {
+  none: { label: "Без ревью", cls: "border-[var(--border)] text-[var(--muted-foreground)]" },
+  requested: { label: "Ждёт ревьюера", cls: "border-[var(--info-border)] bg-[var(--info-bg)] text-[var(--info)]" },
+  "in-review": { label: "На ревью", cls: "border-[var(--info-border)] bg-[var(--info-bg)] text-[var(--info)]" },
   "changes-requested": {
     label: "Нужны правки",
     cls: "border-[var(--warning-border)] bg-[var(--warning-bg)] text-[var(--warning)]",
   },
-  published: { label: "Опубликовано", cls: "border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success)]" },
+  reviewed: {
+    label: "Ревью пройдено",
+    cls: "border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success)]",
+  },
 };
 
-function dotColor(status: RevisionStatus): string {
-  if (status === "published") return "var(--success)";
-  if (status === "under-review" || status === "changes-requested") return "var(--info)";
-  return "var(--muted-foreground)";
+function pillFor(status: RevisionStatus, reviewStatus: ReviewStatus) {
+  if (status === "published") {
+    return {
+      label: "Опубликовано",
+      cls: "border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success)]",
+    };
+  }
+  return REVIEW_PILL[reviewStatus];
 }
 
 export function ReviewHeader({
@@ -35,7 +45,7 @@ export function ReviewHeader({
 }) {
   const { blog, chapter, revision, reviewers, chapters } = session;
   const isMulti = chapters.length > 1;
-  const meta = STATUS_META[revision.status];
+  const meta = pillFor(revision.status, revision.reviewStatus);
   const backHref = pov === "author" ? `/author/blog/${blog.slug}` : "/reviewer";
 
   return (
@@ -115,7 +125,9 @@ export function ReviewHeader({
           {chapters.map((c, i) => {
             const inner = (
               <>
-                <span className="h-1.5 w-1.5 shrink-0 rounded-[var(--radius-pill)]" style={{ background: dotColor(c.status) }} />
+                <span
+                  className={`h-1.5 w-1.5 shrink-0 rounded-[var(--radius-pill)] ${statusDotClass(c.status, c.reviewStatus)}`}
+                />
                 <span className="tabular-nums opacity-70">{String(i + 1).padStart(2, "0")}</span>
                 <span className="max-w-[160px] truncate">{c.title}</span>
               </>

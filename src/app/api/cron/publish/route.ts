@@ -1,12 +1,12 @@
 // Cron отложенной публикации (Фаза 12). Защита: Authorization: Bearer <CRON_SECRET> ПЕРВОЙ проверкой
-// (конвенция CLAUDE.md §API). Находит активные ревизии с наступившим scheduled_at и публикует каждую
-// через общий publishRevision (гейт «все approve» перепроверяется в транзакции — вердикт мог
-// измениться после планирования). Провал гейта — не ошибка cron: план снимается, автор получает
-// уведомление scheduled_publish_failed. Запускается systemd-timer'ом на сервере каждые 5 минут.
+// (конвенция CLAUDE.md §API). Находит ЧЕРНОВЫЕ ревизии с наступившим scheduled_at и публикует каждую
+// через общий publishRevision. Фаза 13: ревью-гейта больше нет (публикация свободна), поэтому
+// PublishGateError остаётся ровно для одного случая — ревизию успели опубликовать иначе; тогда план
+// снимается и автор получает scheduled_publish_failed. Запускается systemd-timer'ом каждые 5 минут.
 
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { and, eq, inArray, isNotNull, lte } from "drizzle-orm";
+import { and, eq, isNotNull, lte } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { blogs, chapterRevisions, chapters } from "@/lib/db/schema";
 import { REVIEW_NOTIFY } from "@/lib/review-links";
@@ -47,7 +47,7 @@ export async function GET(req: Request): Promise<NextResponse> {
       and(
         isNotNull(chapterRevisions.scheduledAt),
         lte(chapterRevisions.scheduledAt, now),
-        inArray(chapterRevisions.status, ["under-review", "changes-requested"]),
+        eq(chapterRevisions.status, "draft"),
       ),
     );
 
@@ -55,23 +55,20 @@ export async function GET(req: Request): Promise<NextResponse> {
   let failed = 0;
   for (const row of due) {
     try {
-      await publishRevision(
-        {
-          chapterId: row.chapterId,
-          revisionId: row.revisionId,
-          revisionNumber: row.revisionNumber,
-          blogId: row.blogId,
-          blogSlug: row.blogSlug,
-          chapterSlug: row.chapterSlug,
-          chapterTitle: row.chapterTitle,
-          authorId: row.authorId,
-        },
-        { gate: "all-approve" },
-      );
+      await publishRevision({
+        chapterId: row.chapterId,
+        revisionId: row.revisionId,
+        revisionNumber: row.revisionNumber,
+        blogId: row.blogId,
+        blogSlug: row.blogSlug,
+        chapterSlug: row.chapterSlug,
+        chapterTitle: row.chapterTitle,
+        authorId: row.authorId,
+      });
       published += 1;
     } catch (e) {
       failed += 1;
-      // Гейт перестал проходить (вердикт отозван/сменился состав) → снимаем план и говорим автору.
+      // Ревизию опубликовали иначе (автор вручную) → снимаем план и говорим автору.
       // Прочие ошибки план НЕ снимают — следующий тик попробует снова.
       if (e instanceof PublishGateError) {
         await db

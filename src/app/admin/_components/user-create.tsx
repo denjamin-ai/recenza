@@ -7,12 +7,6 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { adminMutate } from "@/app/admin/_components/client";
 
-const ROLE_OPTIONS = [
-  { value: "reader", label: "Читатель" },
-  { value: "author", label: "Автор" },
-  { value: "reviewer", label: "Ревьюер" },
-] as const;
-
 const inputCls =
   "min-h-9 w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-[length:var(--type-small)] text-[var(--foreground)] placeholder:text-[var(--muted-foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]";
 
@@ -25,7 +19,9 @@ export function UserCreate() {
   const [handle, setHandle] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<string>("reader");
+  // Фаза 13: вместо одной роли — независимые возможности. Обе выключены = читатель (базовый уровень).
+  const [canAuthor, setCanAuthor] = useState(false);
+  const [isReviewer, setIsReviewer] = useState(false);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -36,7 +32,8 @@ export function UserCreate() {
         handle,
         displayName,
         password,
-        role,
+        canAuthor,
+        isReviewer,
       });
       if (!res.ok) {
         setError(res.error ?? "Не удалось создать пользователя.");
@@ -46,7 +43,8 @@ export function UserCreate() {
       setHandle("");
       setDisplayName("");
       setPassword("");
-      setRole("reader");
+      setCanAuthor(false);
+      setIsReviewer(false);
       router.refresh();
     });
   }
@@ -66,8 +64,8 @@ export function UserCreate() {
       {open && (
         <form onSubmit={submit} className="space-y-3 border-t border-[var(--border-secondary)] px-4 py-3">
           <p className="text-[length:var(--type-small)] text-[var(--muted-foreground)] [text-wrap:pretty]">
-            Самостоятельной регистрации нет: доступ выдаёт администратор. Роль задаётся один раз
-            при создании и обычным API не меняется.
+            Самостоятельной регистрации нет: доступ выдаёт администратор. Без отметок аккаунт —
+            читатель; возможности можно выдать и отозвать позже в карточке пользователя.
           </p>
           {error && (
             <p role="alert" className="rounded-[var(--radius-md)] border border-[var(--danger-border)] bg-[var(--danger-bg)] px-3 py-2 text-[length:var(--type-small)] text-[var(--danger)]">
@@ -119,15 +117,31 @@ export function UserCreate() {
                 className={`${inputCls} font-mono`}
               />
             </label>
-            <label className="block">
-              <span className="mb-1 block text-[length:var(--type-small)] text-[var(--muted-foreground)]">Роль</span>
-              {/* aria-label: у обёрнутого label accessible name включает тексты <option> — ломает точный матч */}
-              <select aria-label="Роль" value={role} onChange={(e) => setRole(e.target.value)} className={inputCls}>
-                {ROLE_OPTIONS.map((r) => (
-                  <option key={r.value} value={r.value}>{r.label}</option>
-                ))}
-              </select>
-            </label>
+            <fieldset className="block">
+              <legend className="mb-1 block text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+                Возможности
+              </legend>
+              <span className="flex flex-wrap items-center gap-4 pt-1.5">
+                <label className="inline-flex min-h-9 items-center gap-2 text-[length:var(--type-small)]">
+                  <input
+                    type="checkbox"
+                    checked={canAuthor}
+                    onChange={(e) => setCanAuthor(e.target.checked)}
+                    className="h-4 w-4 accent-[var(--accent)]"
+                  />
+                  Автор
+                </label>
+                <label className="inline-flex min-h-9 items-center gap-2 text-[length:var(--type-small)]">
+                  <input
+                    type="checkbox"
+                    checked={isReviewer}
+                    onChange={(e) => setIsReviewer(e.target.checked)}
+                    className="h-4 w-4 accent-[var(--accent)]"
+                  />
+                  Ревьюер
+                </label>
+              </span>
+            </fieldset>
           </div>
 
           <button
