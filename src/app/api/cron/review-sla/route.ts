@@ -147,48 +147,57 @@ export async function GET(req: Request): Promise<NextResponse> {
     // ── Свип 3: взял и молчит ──
     if (row.status === "claimed" && row.claimedBy) {
       const since = row.claimedAt ?? 0;
-      const verdictRows = await db
-        .select({ verdict: chapterReviewers.verdict })
+      // ⚠️ Признаки работы читаются ОДНИМ запросом на заявку вместо трёх (backlog Ф14 P2 «N+1»):
+      // UNION ALL по трём источникам — вердикт, тред, сообщение чата. Хватает самого факта
+      // существования любой строки, поэтому селектим константу и обрываемся на первой.
+      const activity = await db
+        .select({ kind: sql<string>`'verdict'` })
         .from(chapterReviewers)
         .where(
           and(
             eq(chapterReviewers.chapterId, row.chapterId),
             eq(chapterReviewers.revisionNumber, row.revisionNumber),
             eq(chapterReviewers.handle, row.claimedBy),
-          ),
-        );
-      const hasVerdict = verdictRows.some((v) => v.verdict !== null);
-      const threadRows = await db
-        .select({ id: threads.id })
-        .from(threads)
-        .where(
-          and(
-            eq(threads.chapterId, row.chapterId),
-            eq(threads.revisionNumber, row.revisionNumber),
-            eq(threads.fromHandle, row.claimedBy),
-            gt(threads.createdAt, since),
+            isNotNull(chapterReviewers.verdict),
           ),
         )
-        .limit(1);
-      const chatRows = await db
-        .select({ id: reviewChat.id })
-        .from(reviewChat)
-        .where(
-          and(
-            eq(reviewChat.chapterId, row.chapterId),
-            eq(reviewChat.revisionNumber, row.revisionNumber),
-            eq(reviewChat.fromHandle, row.claimedBy),
-            gt(reviewChat.createdAt, since),
-          ),
+        .unionAll(
+          db
+            .select({ kind: sql<string>`'thread'` })
+            .from(threads)
+            .where(
+              and(
+                eq(threads.chapterId, row.chapterId),
+                eq(threads.revisionNumber, row.revisionNumber),
+                eq(threads.fromHandle, row.claimedBy),
+                gt(threads.createdAt, since),
+              ),
+            ),
+        )
+        .unionAll(
+          db
+            .select({ kind: sql<string>`'chat'` })
+            .from(reviewChat)
+            .where(
+              and(
+                eq(reviewChat.chapterId, row.chapterId),
+                eq(reviewChat.revisionNumber, row.revisionNumber),
+                eq(reviewChat.fromHandle, row.claimedBy),
+                gt(reviewChat.createdAt, since),
+              ),
+            ),
         )
         .limit(1);
 
-      if (hasVerdict || threadRows.length > 0 || chatRows.length > 0) {
+      if (activity.length > 0) {
         // Работа идёт — продлеваем срок ещё на один период, не наказывая за медленное ревью.
+        // ⚠️ Условие в WHERE (backlog Ф14 P2): раньше UPDATE шёл безусловно и вне транзакции —
+        // если заявку в этот момент вернули в очередь или закрыли, продление писалось поверх
+        // уже изменившегося состояния. Теперь продлеваем только всё ещё `claimed` строку.
         await db
           .update(reviewRequests)
           .set({ dueAt: dueAtFrom(now, SLA_UNCLAIMED_DAYS) })
-          .where(eq(reviewRequests.id, row.id));
+          .where(and(eq(reviewRequests.id, row.id), eq(reviewRequests.status, "claimed")));
         continue;
       }
 

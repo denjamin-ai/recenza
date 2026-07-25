@@ -6,7 +6,8 @@
 // QR — загруженное изображение (без генерации). Контролируется родителем (open/onClose).
 // Esc/клик по фону закрывают. Золото — токены --gold* (raw-цвета запрещены); теней нет (правило DS).
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import { useModalA11y } from "@/lib/use-modal-a11y";
 import Image from "next/image";
 import { IconX, IconHeart, IconExternal, IconScan } from "@/components/icons";
 import type { DonationConfig, DonationMethodView } from "@/lib/queries/monetization";
@@ -14,18 +15,9 @@ import type { DonationConfig, DonationMethodView } from "@/lib/queries/monetizat
 export function DonateModal({ open, onClose, config }: { open: boolean; onClose: () => void; config: DonationConfig }) {
   const links = config.methods.filter((m) => m.type === "link");
   const qrs = config.methods.filter((m) => m.type === "qr");
-  const dialogRef = useRef<HTMLDivElement>(null);
+  // Общий a11y-хук модалок: Escape, автофокус, focus-trap, возврат фокуса (backlog Ф6/Ф8/Ф10/Ф12).
+  const dialogRef = useModalA11y<HTMLDivElement>(open, onClose);
   const [activeQr, setActiveQr] = useState(0);
-
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    dialogRef.current?.focus();
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
 
   if (!open) return null;
 

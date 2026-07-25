@@ -7,8 +7,9 @@
 // валидация, один текст, один локатор для e2e. Гостю кнопка не рендерится вовсе — роут ответил
 // бы 401, а intent-replay для жалобы не предусмотрен.
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { IconX } from "@/components/icons";
+import { useModalA11y } from "@/lib/use-modal-a11y";
 import {
   MAX_REPORT_NOTE,
   REPORT_DIALOG_TITLE,
@@ -73,20 +74,12 @@ function ReportDialog({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const dialogRef = useRef<HTMLDivElement>(null);
+  // Escape + автофокус + focus-trap + возврат фокуса — общий хук (backlog Ф6/Ф8/Ф10/Ф12).
+  const dialogRef = useModalA11y<HTMLDivElement>(true, onClose);
   const [reason, setReason] = useState<ReportReason>(REPORT_REASONS[0].id);
   const [note, setNote] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    dialogRef.current?.focus();
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   async function submit() {
     setPending(true);

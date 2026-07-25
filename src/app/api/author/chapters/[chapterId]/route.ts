@@ -16,7 +16,7 @@
 //   • ревью читает ревизию прямо сейчас (requested|in-review) → 409, как и раньше.
 
 import { NextResponse } from "next/server";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { blogs, chapterRevisions, chapters } from "@/lib/db/schema";
 import { requireAuthor } from "@/lib/auth";
@@ -26,6 +26,8 @@ import { stringifyJson } from "@/lib/db/json";
 import { MAX_SKILLS, validateBlocks } from "@/lib/blocks/validate";
 import { resolveAuthorChapter } from "@/lib/queries/author";
 import { isRevisionEditable } from "@/lib/review-status";
+import { createNotifications } from "@/lib/queries/notifications";
+import { REVIEW_NOTIFY, authorReviewHref } from "@/lib/review-links";
 
 /** Патч ревизии: контент + снапшот метаданных (Ф14). */
 type RevisionPatch = {
@@ -153,10 +155,27 @@ export async function PATCH(
           revisionNumber = latest.number + 1;
           // План отложенной публикации предыдущей ревизии (если был) гасим: поверх неё уже
           // лежит черновик, публиковать старую версию по расписанию нельзя.
-          await tx
+          const dropped = await tx
             .update(chapterRevisions)
             .set({ scheduledAt: null })
-            .where(eq(chapterRevisions.id, rev.id));
+            .where(and(eq(chapterRevisions.id, rev.id), isNotNull(chapterRevisions.scheduledAt)))
+            .returning({ id: chapterRevisions.id });
+          // ⚠️ Ф15.1 (backlog Ф13 P3): раньше план снимался МОЛЧА — автор, поставивший публикацию
+          // на дату, узнавал об отмене только по её отсутствию. Уведомляем, и только когда план
+          // действительно был (`returning` пуст, если `scheduled_at` уже null).
+          if (dropped.length > 0) {
+            await createNotifications(tx, [
+              {
+                recipientId: userId,
+                type: REVIEW_NOTIFY.scheduledPublishFailed,
+                payload: {
+                  chapterTitle: target.chapterTitle,
+                  href: authorReviewHref(target.blogSlug, target.chapterSlug),
+                  reason: "revision-superseded",
+                },
+              },
+            ]);
+          }
           await tx.insert(chapterRevisions).values({
             chapterId,
             number: revisionNumber,

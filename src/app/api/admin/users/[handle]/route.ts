@@ -50,6 +50,8 @@ export async function PATCH(
     passwordHash: string;
     canAuthor: boolean;
     isReviewer: boolean;
+    /** Legacy-shim (Ф13): колонка notNull, гейты её не читают — держим синхронной, см. ниже. */
+    role: "reader" | "author" | "reviewer";
   }> = {};
   if (body.canAuthor !== undefined) {
     if (typeof body.canAuthor !== "boolean") {
@@ -88,7 +90,13 @@ export async function PATCH(
     return NextResponse.json({ error: "Нет полей для изменения." }, { status: 400 });
   }
 
-  const target = (await db.select({ id: users.id, role: users.role }).from(users).where(eq(users.handle, handle)).limit(1))[0];
+  const target = (
+    await db
+      .select({ id: users.id, role: users.role, canAuthor: users.canAuthor, isReviewer: users.isReviewer })
+      .from(users)
+      .where(eq(users.handle, handle))
+      .limit(1)
+  )[0];
   if (!target) return NextResponse.json({ error: "Пользователь не найден." }, { status: 404 });
   // Админа из БД не существует (env-based) — но на всякий случай не даём блокировать admin-роль.
   if (target.role === "admin") return NextResponse.json({ error: "Нельзя модерировать администратора." }, { status: 403 });
@@ -98,6 +106,16 @@ export async function PATCH(
   // в неё войти, а его `review_load` не освобождался никогда. Теперь отзыв ещё и освобождает: взятые
   // заявки возвращаются в очередь (их сможет взять другой), назначения на ОТКРЫТЫЕ сессии снимаются,
   // счётчик пересчитывается по факту. Закрытые сессии (кредит, история) не трогаем — они иммутабельны.
+  // ⚠️ Legacy-shim `users.role`: колонка notNull, гейты её НЕ читают (Ф13). До этого фикса
+  // POST её выставлял, а PATCH — нет, и значение дрейфовало относительно реальных возможностей.
+  // Дропнуть колонку нельзя (на `users` завязаны FK ревью-таблиц), поэтому держим её
+  // синхронной с возможностями — единственный способ не иметь заведомо лживых данных.
+  if (set.canAuthor !== undefined || set.isReviewer !== undefined) {
+    const nextCanAuthor = set.canAuthor ?? target.canAuthor;
+    const nextIsReviewer = set.isReviewer ?? target.isReviewer;
+    set.role = nextIsReviewer ? "reviewer" : nextCanAuthor ? "author" : "reader";
+  }
+
   const releasing = set.isReviewer === false;
   await db.transaction(async (tx) => {
     await tx.update(users).set(set).where(eq(users.handle, handle));

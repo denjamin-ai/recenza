@@ -4,21 +4,15 @@
 // Паттерн — как SubmitSheet/settings-popover: overlay-токен, role=dialog/aria-modal, Escape, autofocus.
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import { useModalA11y } from "@/lib/use-modal-a11y";
 import Link from "next/link";
 import type { ReviewReviewer } from "@/lib/queries/review";
 import { Avatar } from "./review-primitives";
 import { ReportButton } from "@/components/reader/report-dialog";
 
-function useEscape(onClose: () => void) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-}
+// ⚠️ Ф15.1: локальный `useEscape` заменён общим `useModalA11y` — он же даёт focus-trap,
+// которого не было ни в одной модалке проекта (backlog Ф6/Ф8/Ф10/Ф12).
 
 /** Локальное время → Unix seconds (datetime-local отдаёт строку без зоны — трактуем как локальную). */
 function localInputToUnix(value: string): number | null {
@@ -48,11 +42,7 @@ export function PublishModal({
   // «now» фиксируем на открытии модалки (lint react-hooks/purity: Date.now в рендере нельзя);
   // это лишь UX-подсказка — сервер валидирует «в будущем» заново на своём времени.
   const [openedAt] = useState(() => Math.floor(Date.now() / 1000));
-  const closeRef = useRef<HTMLButtonElement | null>(null);
-  useEscape(onClose);
-  useEffect(() => {
-    closeRef.current?.focus();
-  }, []);
+  const dialogRef = useModalA11y<HTMLDivElement>(true, onClose);
 
   const whenUnix = localInputToUnix(when);
   const whenValid = whenUnix !== null && whenUnix > openedAt;
@@ -60,6 +50,8 @@ export function PublishModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--overlay)] p-4" onClick={onClose}>
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label="Публикация главы"
@@ -69,8 +61,7 @@ export function PublishModal({
         <div className="mb-1 flex items-start justify-between gap-2">
           <h2 className="text-[length:var(--type-h3)]">Публикация главы</h2>
           <button
-            ref={closeRef}
-            type="button"
+                type="button"
             onClick={onClose}
             aria-label="Закрыть"
             className="min-h-9 px-1 text-[var(--muted-foreground)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
@@ -159,13 +150,15 @@ export function TeamSheet({
   chapterId?: string;
   viewerHandle?: string | null;
 }) {
-  useEscape(onClose);
+  const dialogRef = useModalA11y<HTMLDivElement>(true, onClose);
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-[var(--overlay)] p-3 sm:items-center sm:p-6"
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label="Команда ревью"

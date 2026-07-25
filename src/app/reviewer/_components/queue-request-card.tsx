@@ -25,6 +25,8 @@ export function QueueRequestCard({ item, now }: { item: QueueRequestItem; now: n
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  /** Ф15.1 (backlog Ф14 P3): карточка после claim исчезает молча — объявляем результат вслух. */
+  const [taken, setTaken] = useState(false);
 
   function claim() {
     setError(null);
@@ -47,6 +49,9 @@ export function QueueRequestCard({ item, now }: { item: QueueRequestItem; now: n
         return;
       }
       // Заявка уезжает из «Очереди» в «Мои ревью» — обе секции считает RSC-страница.
+      // ⚠️ Карточка при этом просто исчезает: без объявления скринридер не сообщает, что
+      // действие удалось (backlog Ф14 P3). Сообщение живёт до перерисовки списка.
+      setTaken(true);
       router.refresh();
     });
   }
@@ -142,6 +147,11 @@ export function QueueRequestCard({ item, now }: { item: QueueRequestItem; now: n
         )}
       </div>
 
+      {/* Успех объявляем отдельно от ошибки: карточка исчезнет при refresh, а сообщение
+          должно успеть уйти в скринридер (backlog Ф14 P3). */}
+      <p role="status" aria-live="polite" className="sr-only">
+        {taken ? `Заявка «${item.chapterTitle}» взята в работу — она в разделе «Мои ревью».` : ""}
+      </p>
       {error && (
         <p
           role="alert"

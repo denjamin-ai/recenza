@@ -12,6 +12,7 @@ import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
+import { hitActionRate } from "@/lib/rate-limit";
 import { ClaimError, claimReviewRequest } from "@/lib/queries/review-claim";
 
 export async function POST(
@@ -23,6 +24,16 @@ export async function POST(
 
   const gate = await requireAdmin();
   if (gate instanceof NextResponse) return gate;
+
+  // Лимит символический (actor — только админ), но он есть у всех мутаций назначения:
+  // единообразие важнее, чем «здесь и так безопасно» (backlog Ф15, security-reviewer LOW).
+  const rl = hitActionRate("admin:assign-reviewer");
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: "Слишком часто. Подождите секунду." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfter ?? 1) } },
+    );
+  }
 
   const { requestId } = await params;
 

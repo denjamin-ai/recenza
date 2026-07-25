@@ -28,15 +28,40 @@ import type { PublicUser } from "@/types";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  // absolute: шаблон "%s | Recenza" задублировал бы бренд на главной
-  title: { absolute: "Recenza — девблоги с редакционным ревью" },
-  description:
-    "Девблоги, прошедшие редакционное ревью: подборка проверенных блогов, каталог и подписки.",
-  alternates: { canonical: siteUrl() },
-};
+/**
+ * ⚠️ Ф15.1 (backlog SEO): metadata стала динамической. Раньше она была статической и все
+ * страницы каталога (`?view=all&sort=…&page=N`) канонизировались на `/` — то есть на ДРУГУЮ
+ * страницу с другим содержимым. Теперь canonical самореферентный: витрина указывает на `/`,
+ * каталог — на свой URL с параметрами, а `noindex` на страницах пагинации не ставим (ссылки
+ * на блоги с них должны индексироваться).
+ */
+export async function generateMetadata({ searchParams }: { searchParams: Search }): Promise<Metadata> {
+  const sp = await searchParams;
+  const catalog = sp.view === "all";
+  const { sort, page } = parseCatalogParams(sp);
+
+  const params = new URLSearchParams();
+  if (catalog) {
+    params.set("view", "all");
+    if (sort !== "new") params.set("sort", sort);
+  }
+  if (page > 1) params.set("page", String(page));
+  const qs = params.toString();
+
+  return {
+    // absolute: шаблон "%s | Recenza" задублировал бы бренд на главной
+    title: {
+      absolute: catalog ? "Все блоги | Recenza" : "Recenza — девблоги с редакционным ревью",
+    },
+    description: catalog
+      ? "Полный каталог опубликованных девблогов Recenza — с сортировкой и постраничной навигацией."
+      : "Девблоги, прошедшие редакционное ревью: подборка проверенных блогов, каталог и подписки.",
+    alternates: { canonical: qs ? `${siteUrl()}/?${qs}` : siteUrl() },
+  };
+}
 
 type Search = Promise<{ view?: string; sort?: string; page?: string }>;
+
 
 export default async function HomePage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;

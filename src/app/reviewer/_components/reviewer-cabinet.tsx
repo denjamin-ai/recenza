@@ -47,6 +47,25 @@ export function ReviewerCabinet({
   ];
   const [tab, setTab] = useState<TabId>("queue");
 
+  /**
+   * Стрелки ←/→ (и Home/End) переключают табы — обязательная пара к roving tabindex:
+   * иначе неактивные табы становятся недостижимыми с клавиатуры вовсе.
+   */
+  function onTabKey(e: React.KeyboardEvent, id: TabId) {
+    const keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
+    if (!keys.includes(e.key)) return;
+    e.preventDefault();
+    const i = tabs.findIndex((t) => t.id === id);
+    const next =
+      e.key === "Home"
+        ? 0
+        : e.key === "End"
+          ? tabs.length - 1
+          : (i + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+    setTab(tabs[next].id);
+    document.getElementById(`reviewer-tab-${tabs[next].id}`)?.focus();
+  }
+
   const tabCls = (isActive: boolean) =>
     `min-h-9 border-b-2 px-1 pb-2 text-[length:var(--type-small)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
       isActive
@@ -87,6 +106,10 @@ export function ReviewerCabinet({
               key={t.id}
               type="button"
               role="tab"
+              // Roving tabindex (backlog Ф14 P3): в tablist по Tab заходит ТОЛЬКО активный таб,
+              // между табами переключаются стрелками — иначе скринридер обходит их по одному.
+              tabIndex={tab === t.id ? 0 : -1}
+              onKeyDown={(e) => onTabKey(e, t.id)}
               id={`reviewer-tab-${t.id}`}
               aria-controls={`reviewer-panel-${t.id}`}
               aria-selected={tab === t.id}
