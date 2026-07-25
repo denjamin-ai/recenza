@@ -20,6 +20,7 @@ import {
   IconSearch,
   IconStar,
 } from "@/components/icons";
+import { adminCrumbs } from "@/app/admin/_components/crumbs";
 
 type NavItem = { href: string; label: string; Icon: (p: { className?: string }) => ReactNode };
 const GROUPS: { label: string | null; items: NavItem[] }[] = [
@@ -46,7 +47,8 @@ const GROUPS: { label: string | null; items: NavItem[] }[] = [
   },
 ];
 
-const ALL_ITEMS = GROUPS.flatMap((g) => g.items);
+// Ф15 (З-62): для крошки нужна ещё и ГРУППА раздела, поэтому плоский список несёт её с собой.
+const ALL_ITEMS = GROUPS.flatMap((g) => g.items.map((i) => ({ ...i, group: g.label })));
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/admin/dashboard") return pathname === href || pathname === "/admin";
@@ -59,7 +61,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const [q, setQ] = useState("");
 
   const active = ALL_ITEMS.find((i) => isActive(pathname, i.href));
-  const title = active?.label ?? "Платформа";
+  const crumbs = adminCrumbs(
+    pathname,
+    active ? { group: active.group, section: active.label, href: active.href } : null,
+  );
 
   function search(e: React.FormEvent) {
     e.preventDefault();
@@ -133,10 +138,14 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--bg-elevated)] px-6 py-3">
-          <p className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">
-            Платформа <span aria-hidden="true">·</span>{" "}
-            <span className="text-[var(--foreground)]">{title}</span>
-          </p>
+          <nav aria-label="Хлебные крошки" className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+            {crumbs.map((c, i) => (
+              <span key={c}>
+                {i > 0 && <span aria-hidden="true"> · </span>}
+                <span className={i === crumbs.length - 1 ? "text-[var(--foreground)]" : undefined}>{c}</span>
+              </span>
+            ))}
+          </nav>
           <form onSubmit={search} className="relative">
             <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
             <input

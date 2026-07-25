@@ -24,6 +24,7 @@ import { CommentsSlot } from "@/components/reader/comments-slot";
 import { BlogCommentsSlot } from "@/components/reader/blog-comments-slot";
 import { BlogReviewerCredit } from "@/components/reader/blog-reviewer-credit";
 import { FragmentCommentButton } from "@/components/reader/fragment-comment-button";
+import { ChapterPager, type ChapterPagerItem } from "@/components/reader/chapter-pager";
 import { commentGate, type CommentViewer } from "@/lib/queries/comments";
 import type { ReaderEngagement } from "@/lib/queries/engagement";
 import type { ReadableBlog, ReaderSection } from "@/lib/queries/types";
@@ -215,6 +216,19 @@ export function BlogReaderView({
     active: mode === "single" && c.slug === activeSlug,
   }));
 
+  // Ф15: соседние главы для пейджера под текстом. Считаем здесь, а не в ChapterBody, чтобы не
+  // расширять его контракт седьмым пропом; в single-режиме секция ровно одна, так что позиция
+  // рендера совпадает. Ссылки — канонические (без `?v=`), см. шапку chapter-pager.tsx.
+  const activeIndex = blog.chapters.findIndex((c) => c.slug === activeSlug);
+  const pagerItem = (index: number): ChapterPagerItem | null => {
+    const c = blog.chapters[index];
+    return c ? { slug: c.slug, title: c.title, href: `/blog/${blog.slug}/${c.slug}` } : null;
+  };
+  const pager =
+    mode === "single" && activeIndex >= 0
+      ? { prev: pagerItem(activeIndex - 1), next: pagerItem(activeIndex + 1) }
+      : null;
+
   // ToC: single → заголовки активной главы; whole → заголовки всех глав (с префиксом slug).
   const headings =
     mode === "whole"
@@ -281,6 +295,8 @@ export function BlogReaderView({
                 archived={archived}
               />
             ))}
+
+            {pager && <ChapterPager prev={pager.prev} next={pager.next} />}
 
             {mode === "whole" && (
               <>
