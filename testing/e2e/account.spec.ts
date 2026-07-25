@@ -246,10 +246,14 @@ test.describe("Аккаунт: рабочее место, настройки, п
       const sitemap = await (await guest.get("/sitemap.xml")).text();
       expect(sitemap).not.toContain(BLOG.slug);
 
-      // Профиль остаётся (аккаунт не забанен), но без таба «Блоги».
+      // Профиль остаётся (аккаунт не забанен), но без таба «Блоги» и без портфолио —
+      // «Об авторе» это тоже авторский контент. Био/ссылки как личные данные остаются.
       const profile = await guest.get(`/u/${USERS.author.slug}`);
       expect(profile.status()).toBe(200);
-      expect(await profile.text()).not.toContain('id="profile-tab-blogs"');
+      const html = await profile.text();
+      expect(html).not.toContain('id="profile-tab-blogs"');
+      expect(html).not.toContain("Об авторе");
+      expect(html).toContain("Антон Автор");
     });
 
     await test.step("комментировать скрытую главу нельзя — цель не резолвится", async () => {

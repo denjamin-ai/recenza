@@ -114,13 +114,18 @@ export const getProfileBySlug = cache(async (slug: string): Promise<ProfileView 
   ]);
   const authored = allBlogs.filter((b) => b.author.id === user.id);
 
-  const pf = (
-    await db
-      .select({ blocks: portfolios.blocks })
-      .from(portfolios)
-      .where(and(eq(portfolios.authorId, user.id), eq(portfolios.isVisible, true)))
-      .limit(1)
-  )[0];
+  // Портфолио «Об авторе» — тоже авторский контент, поэтому при снятом `can_author` оно
+  // скрывается вместе с блогами (иначе у скрытого автора осталась бы публичная витрина).
+  // Био и ссылки — личные данные профиля, они остаются.
+  const pf = !row.canAuthor
+    ? undefined
+    : (
+        await db
+          .select({ blocks: portfolios.blocks })
+          .from(portfolios)
+          .where(and(eq(portfolios.authorId, user.id), eq(portfolios.isVisible, true)))
+          .limit(1)
+      )[0];
 
   // Просмотры — агрегат по видимым блогам автора (viewCount не входит в BlogCardView).
   let views = 0;

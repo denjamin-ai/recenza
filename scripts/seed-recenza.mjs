@@ -28,6 +28,10 @@ const users = sqliteTable("users", {
   id: text("id").primaryKey(),
   handle: text("handle").notNull(),
   role: text("role").notNull(),
+  // ⚠️ Ф13: без can_author=1 блог автора НЕВИДИМ (ридер-запросы фильтруют по этому флагу).
+  // DEFAULT колонки — false, поэтому проставляем явно, иначе на свежей БД официальный блог
+  // опубликуется и молча пропадёт из каталога, прямой ссылки и sitemap.
+  canAuthor: integer("can_author", { mode: "boolean" }).notNull().default(false),
   passwordHash: text("password_hash").notNull(),
   displayName: text("display_name").notNull(),
   bio: text("bio"),
@@ -194,14 +198,22 @@ async function seedAboutBlog() {
   await db.transaction(async (tx) => {
     let authorId;
     const existingUser = (
-      await tx.select({ id: users.id, role: users.role }).from(users).where(eq(users.handle, "recenza")).limit(1)
+      await tx
+        .select({ id: users.id, canAuthor: users.canAuthor })
+        .from(users)
+        .where(eq(users.handle, "recenza"))
+        .limit(1)
     )[0];
     if (existingUser) {
-      if (existingUser.role !== "author") {
-        // binding-инвариант: блог может вести только author — не вешаем контент на чужую роль.
-        throw new Error(`пользователь recenza уже существует с ролью "${existingUser.role}" (нужен author) — сид остановлен.`);
-      }
       authorId = existingUser.id;
+      // Ф13: инвариант проверяем по ВОЗМОЖНОСТИ, а не по legacy-роли. Если админ снял флаг —
+      // блог платформы скрыт; чинить это молча нельзя (могло быть намеренным), поэтому останов.
+      if (!existingUser.canAuthor) {
+        throw new Error(
+          'у пользователя recenza снята возможность "вести блоги" (can_author=0) — блог платформы ' +
+            "скрыт. Верните флаг в админке и повторите сид.",
+        );
+      }
       console.log("[seed-recenza] пользователь recenza уже существует — переиспользуем.");
     } else {
       authorId = ulid();
@@ -209,6 +221,7 @@ async function seedAboutBlog() {
         id: authorId,
         handle: "recenza",
         role: "author",
+        canAuthor: true,
         passwordHash: bcrypt.hashSync(randomBytes(24).toString("base64url"), 10),
         displayName: "Recenza",
         bio: "Официальный блог платформы: как устроена Recenza и зачем мы её делаем.",
