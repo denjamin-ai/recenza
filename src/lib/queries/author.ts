@@ -8,7 +8,7 @@
 // Колонок статуса у chapters/blogs нет — выводим из ревизий (см. PLAN §traps).
 
 import { cache } from "react";
-import { and, countDistinct, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   blogs,
@@ -17,7 +17,6 @@ import {
   chapters,
   portfolios,
   recruitRequests,
-  reviewerHistory,
   users,
 } from "@/lib/db/schema";
 import { parseJson } from "@/lib/db/json";

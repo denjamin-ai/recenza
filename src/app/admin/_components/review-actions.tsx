@@ -6,7 +6,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { adminMutate } from "@/app/admin/_components/client";
-import { btnPrimary, btnSecondary, btnText, btnWarning, btnWarningStrong } from "@/app/admin/_components/buttons";
+import { btnText, btnWarning, btnWarningStrong } from "@/app/admin/_components/buttons";
 import type { AdminReviewReviewer } from "@/lib/queries/admin";
 
 export function ReviewActions(props: {

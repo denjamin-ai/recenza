@@ -1,0 +1,16 @@
+# Oneshot-вызов cron SLA заявок на ревью (Фаза 14) → /etc/systemd/system/recenza-review-sla.service
+# Запускается таймером recenza-review-sla.timer раз в час. Bearer — из общего env (тот же CRON_SECRET).
+#
+# Свипы: эскалация заявки в редакцию (14 дней без исполнителя), истечение, автовозврат молчащей
+# заявки в очередь (21 день). Сроки — в src/lib/review-sla.ts; чаще часа гонять смысла нет.
+
+[Unit]
+Description=Recenza: SLA заявок на ревью (/api/cron/review-sla)
+After=recenza.service
+Requisite=recenza.service
+
+[Service]
+Type=oneshot
+User=recenza
+EnvironmentFile=/srv/recenza/shared/env
+ExecStart=/usr/bin/curl -fsS -H "Authorization: Bearer ${CRON_SECRET}" http://127.0.0.1:3000/api/cron/review-sla

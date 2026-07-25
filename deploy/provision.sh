@@ -67,12 +67,15 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 install -m 644 "$HERE/recenza.service" /etc/systemd/system/recenza.service
 install -m 644 "$HERE/recenza-publish.service" /etc/systemd/system/recenza-publish.service
 install -m 644 "$HERE/recenza-publish.timer" /etc/systemd/system/recenza-publish.timer
+# Ф14: SLA заявок на ревью — эскалация и автовозврат зависших заявок.
+install -m 644 "$HERE/recenza-review-sla.service" /etc/systemd/system/recenza-review-sla.service
+install -m 644 "$HERE/recenza-review-sla.timer" /etc/systemd/system/recenza-review-sla.timer
 install -m 644 "$HERE/recenza-backup.service" /etc/systemd/system/recenza-backup.service
 install -m 644 "$HERE/recenza-backup.timer" /etc/systemd/system/recenza-backup.timer
 install -m 755 -o recenza -g recenza "$HERE/backup.sh" /srv/recenza/bin/backup.sh
 install -m 644 "$HERE/Caddyfile" /etc/caddy/Caddyfile
 systemctl daemon-reload
-systemctl enable recenza-publish.timer recenza-backup.timer
+systemctl enable recenza-publish.timer recenza-review-sla.timer recenza-backup.timer
 systemctl restart caddy
 
 echo "== 9. SSH-hardening: только ключи =="
