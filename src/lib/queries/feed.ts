@@ -167,6 +167,8 @@ export async function getVisibleBlogs(filter?: FeedFilter): Promise<BlogCardView
       publishedAt: r.blogPublishedAt,
       author: authorOf(r),
       chapterCount: 1,
+      verifiedTier: r.blogVerifiedTier,
+      verifiedAt: r.blogVerifiedAt,
     });
   }
   return [...byBlog.values()].sort(

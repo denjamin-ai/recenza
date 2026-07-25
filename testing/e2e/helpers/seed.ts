@@ -18,7 +18,8 @@ export const USERS = {
   author: { id: "usr_author", handle: "author", slug: "author", canAuthor: true, isReviewer: false },
   reviewer: { id: "usr_reviewer", handle: "reviewer", slug: "reviewer", canAuthor: false, isReviewer: true },
   lena: { id: "usr_rev_lena", handle: "lena_review", slug: "lena-review", canAuthor: false, isReviewer: true },
-  max: { id: "usr_rev_max", handle: "max_review", slug: "max-review", canAuthor: false, isReviewer: true },
+  /** Ф14: приведён автором (`introduced_by`) — его одобрение даёт бейдж уровня `invited`. */
+  max: { id: "usr_rev_max", handle: "max_review", slug: "max-review", canAuthor: false, isReviewer: true, introducedBy: "author" },
   sergey: { id: "usr_rev_sergey", handle: "sergey_review", slug: "sergey-review", canAuthor: false, isReviewer: true },
   /** Читатель с commentingBlocked=true */
   troll: { id: "usr_troll", handle: "troll", slug: "troll", canAuthor: false, isReviewer: false },
@@ -83,11 +84,25 @@ export const COMMENTS = {
   deleted: "cmt_deleted",
 } as const;
 
-export const INVITATIONS = {
-  /** sergey_review → chp_under_review */
-  pending: "inv_pending",
-  declined: "inv_declined",
-  flagged: "inv_flagged",
+/**
+ * Ф14: приглашения ревьюерам заменены ЗАЯВКАМИ — ревьюер берёт работу из очереди сам.
+ * Сроки подобраны под три свипа `/api/cron/review-sla`.
+ */
+export const REVIEW_REQUESTS = {
+  /** open, срок не вышел — мишень claim-флоу */
+  open: "req_open",
+  /** open, срок ВЫШЕЛ — мишень эскалации в редакцию */
+  stale: "req_stale",
+  /** claimed reviewer'ом, срок ВЫШЕЛ, признаков работы нет — мишень автовозврата */
+  silent: "req_silent",
+  /** исполненная (история; в очереди не показывается) */
+  done: "req_done",
+} as const;
+
+/** Ф14: инвайт-ссылки эксперта (канал 2). Токены детерминированы только в сиде. */
+export const EXPERT_INVITES = {
+  active: { id: "einv_active", token: "e2e-expert-token" },
+  expired: { id: "einv_expired", token: "e2e-expert-expired" },
 } as const;
 
 export const RECRUITS = { pending: "rec_pending", approved: "rec_approved", rejected: "rec_rejected" } as const;
@@ -101,4 +116,3 @@ export const BANNER_TEXTS = {
 } as const;
 export const DONATION_METHODS = { link: "dm_link", qr: "dm_qr" } as const;
 export const REPORT_ID = "rpt_1";
-export const PRIMARY_CHANGE_ID = "pcr_1";

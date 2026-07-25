@@ -7,6 +7,8 @@
 // ui-feedback-5 П1/П4 + ui-feedback-6 П1: engagement — БЛОГОВЫЙ и рендерится один раз НАВЕРХУ
 // (whole — в шапке блога, single — после заголовка/навыков главы, до контента);
 // показывается только гостю (login-intent) и читателю.
+// Ф14: бейдж проверки — в ряду с навыками у заголовка главы; проп `archive` включает read-only
+// чтение проверенной версии (`?v=N`): шапка-предупреждение, без реакций и комментариев.
 
 import Link from "next/link";
 import { BlockRenderer } from "@/components/blocks/block-renderer";
@@ -15,6 +17,7 @@ import { ReadingProgress } from "@/components/reader/reading-progress";
 import { SeriesNav, type ChapterLink } from "@/components/reader/series-nav";
 import { ReaderModeToggle } from "@/components/reader/reader-mode-toggle";
 import { SkillChips } from "@/components/reader/skill-chips";
+import { VerifiedBadge, formatVerifiedDate } from "@/components/reader/verified-badge";
 import { EngagementBar } from "@/components/reader/engagement-bar";
 import { ChapterReviewerCredit } from "@/components/reader/chapter-reviewer-credit";
 import { CommentsSlot } from "@/components/reader/comments-slot";
@@ -31,6 +34,7 @@ function ChapterBody({
   mode,
   engagementBar,
   viewer,
+  archived,
 }: {
   blog: ReadableBlog;
   section: ReaderSection;
@@ -38,10 +42,19 @@ function ChapterBody({
   /** single-режим: бар реакций наверху, до контента (null — зритель без права engagement). */
   engagementBar: React.ReactNode;
   viewer: CommentViewer | null;
+  /** Ф14: читается архивная версия (`?v=N`) — комментарии не рендерим (они у текущей ревизии). */
+  archived: boolean;
 }) {
   const { chapter, credit } = section;
   const prefix = mode === "whole" ? chapter.slug : undefined;
   const titleId = `chapter-${chapter.slug}`;
+  // Ф14: приглушённый бейдж ведёт на чтение проверенной версии; в архивном режиме ссылки нет
+  // (мы уже в ней). Свежий бейдж ссылкой не оборачивается — он про текущую версию.
+  const badgeHref =
+    !archived && chapter.verifiedRevision !== null && chapter.verifiedRevision < chapter.revisionNumber
+      ? `/blog/${blog.slug}/${chapter.slug}?v=${chapter.verifiedRevision}`
+      : undefined;
+  const hasMeta = chapter.skills.length > 0 || chapter.verifiedTier !== null;
 
   return (
     <article className="mb-16" data-chapter-slug={chapter.slug}>
@@ -55,8 +68,16 @@ function ChapterBody({
         </h2>
       )}
 
-      {chapter.skills.length > 0 && (
-        <div className="mt-4">
+      {/* Ф14: бейдж проверки — в одном ряду с навыками главы */}
+      {hasMeta && (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <VerifiedBadge
+            tier={chapter.verifiedTier}
+            verifiedRevision={chapter.verifiedRevision}
+            currentRevision={chapter.revisionNumber}
+            verifiedAt={chapter.verifiedAt}
+            href={badgeHref}
+          />
           <SkillChips skills={chapter.skills} />
         </div>
       )}
@@ -71,20 +92,63 @@ function ChapterBody({
       {/* single: кредит + комментарии у главы; whole: всё после всех глав */}
       {mode === "single" && (
         <>
-          <ChapterReviewerCredit credit={credit} />
-          <CommentsSlot
-            blogSlug={blog.slug}
-            chapterSlug={chapter.slug}
-            chapterId={chapter.id}
-            revision={chapter.revisionNumber}
-            blogAuthorId={blog.author.id}
-            sectionId="comments"
-            viewer={viewer}
+          <ChapterReviewerCredit
+            credit={credit}
+            tier={chapter.verifiedRevision === chapter.revisionNumber ? chapter.verifiedTier : null}
+            verifiedAt={chapter.verifiedAt}
           />
+          {!archived && (
+            <CommentsSlot
+              blogSlug={blog.slug}
+              chapterSlug={chapter.slug}
+              chapterId={chapter.id}
+              revision={chapter.revisionNumber}
+              blogAuthorId={blog.author.id}
+              sectionId="comments"
+              viewer={viewer}
+            />
+          )}
         </>
       )}
     </article>
   );
+}
+
+/**
+ * Ф14: шапка режима «читаю проверенную версию». Read-only — комментарии и реакции в этом режиме
+ * не рендерятся: они привязаны к ТЕКУЩЕЙ ревизии, иначе читатель комментирует «прошлое».
+ */
+function ArchiveNotice({ archive }: { archive: ArchiveView }) {
+  const date = formatVerifiedDate(archive.date);
+  return (
+    <aside
+      aria-label="Вы читаете архивную версию главы"
+      className="mb-6 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--muted)] px-4 py-3 text-[length:var(--type-small)] text-[var(--muted-foreground)]"
+    >
+      <p>
+        Вы читаете проверенную версию {archive.version}
+        {date ? ` от ${date}` : ""}. Текущая версия — {archive.currentVersion}.
+      </p>
+      <Link
+        href={archive.currentHref}
+        className="mt-1.5 inline-flex items-center gap-1 rounded-[var(--radius-sm)] text-[var(--accent)] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+      >
+        Читать текущую версию <span aria-hidden="true">→</span>
+      </Link>
+    </aside>
+  );
+}
+
+/** Ф14: описание архивного режима чтения (`?v=N`); null — обычное чтение текущей версии. */
+export interface ArchiveView {
+  /** Номер читаемой (проверенной) версии. */
+  version: number;
+  /** Дата версии — unix seconds (verified_at, иначе published_at). */
+  date: number | null;
+  /** Номер текущей опубликованной версии. */
+  currentVersion: number;
+  /** Канонический адрес главы без `?v=`. */
+  currentHref: string;
 }
 
 export function BlogReaderView({
@@ -98,6 +162,7 @@ export function BlogReaderView({
   singleHref,
   wholeHref,
   viewer,
+  archive = null,
 }: {
   blog: ReadableBlog;
   mode: "single" | "whole";
@@ -111,14 +176,18 @@ export function BlogReaderView({
   singleHref: string;
   wholeHref: string;
   viewer: CommentViewer | null;
+  /** Ф14: read-only чтение проверенной версии — без реакций и комментариев. */
+  archive?: ArchiveView | null;
 }) {
+  const archived = archive !== null;
   const multiChapter = blog.chapters.length > 1;
   // Право комментировать одинаково для всех глав блога (один автор) — для плавающей кнопки фрагмента.
   // Плавающая кнопка «комментировать фрагмент»: базовый гейт без конфликта интересов —
   // он поглавный и проверяется в слотах (и, авторитетно, в POST /api/comments).
-  const canCommentBlog = commentGate(viewer).canComment;
+  // В архивном режиме комментировать нечего: и слоты, и плавающая кнопка выключены.
+  const canCommentBlog = !archived && commentGate(viewer).canComment;
 
-  const engagementBar = canEngage ? (
+  const engagementBar = canEngage && !archived ? (
     <EngagementBar
       blogId={blog.id}
       authorId={blog.author.id}
@@ -174,6 +243,9 @@ export function BlogReaderView({
 
         <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_15rem]">
           <div className="min-w-0">
+            {/* Ф14: шапка архивного режима — до любого контента */}
+            {archive && <ArchiveNotice archive={archive} />}
+
             {/* Мобильная навигация по главам/ToC */}
             {(multiChapter || headings.length > 0) && (
               <details className="mb-6 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] px-4 py-2 lg:hidden">
@@ -203,23 +275,26 @@ export function BlogReaderView({
                 mode={mode}
                 engagementBar={engagementBar}
                 viewer={viewer}
+                archived={archived}
               />
             ))}
 
             {mode === "whole" && (
               <>
                 <BlogReviewerCredit sections={sections} />
-                <BlogCommentsSlot
-                  blogSlug={blog.slug}
-                  chapters={sections.map((s) => ({
-                    id: s.chapter.id,
-                    slug: s.chapter.slug,
-                    title: s.chapter.title,
-                    revision: s.chapter.revisionNumber,
-                  }))}
-                  blogAuthorId={blog.author.id}
-                  viewer={viewer}
-                />
+                {!archived && (
+                  <BlogCommentsSlot
+                    blogSlug={blog.slug}
+                    chapters={sections.map((s) => ({
+                      id: s.chapter.id,
+                      slug: s.chapter.slug,
+                      title: s.chapter.title,
+                      revision: s.chapter.revisionNumber,
+                    }))}
+                    blogAuthorId={blog.author.id}
+                    viewer={viewer}
+                  />
+                )}
               </>
             )}
           </div>

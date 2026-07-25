@@ -4,12 +4,28 @@
 // БЕЗ нового запроса: чистая агрегация section.credit (RSC).
 
 import Link from "next/link";
+import { VerifiedChip } from "@/components/reader/verified-badge";
+import type { VerifiedTier } from "@/types";
 import type { ReviewerChip } from "@/lib/queries/reviewer-credit";
 import type { ReaderSection } from "@/lib/queries/types";
 
 export interface BlogCredit {
   current: ReviewerChip[];
   past: ReviewerChip[]; // участвовали в прошлых версиях и не входят в current
+}
+
+/**
+ * Ф14: уровень блога = сильнейший уровень среди проверенных глав (independent > invited).
+ * Как и `blogs.verified_*`, это ИСТОРИЧЕСКИЙ факт «блог проходил ревью» — точная правда о
+ * конкретной версии живёт в бейдже у заголовка главы.
+ */
+export function aggregateBlogTier(sections: ReaderSection[]): VerifiedTier | null {
+  let tier: VerifiedTier | null = null;
+  for (const s of sections) {
+    if (s.chapter.verifiedTier === "independent") return "independent";
+    if (s.chapter.verifiedTier === "invited") tier = "invited";
+  }
+  return tier;
 }
 
 /** Чистая агрегация кредитов глав: дедуп по handle (Ф14: иерархии ревьюеров больше нет). */
@@ -49,13 +65,17 @@ function Chip({ chip }: { chip: ReviewerChip }) {
 export function BlogReviewerCredit({ sections }: { sections: ReaderSection[] }) {
   const credit = aggregateBlogCredit(sections);
   if (credit.current.length === 0 && credit.past.length === 0) return null;
+  const tier = aggregateBlogTier(sections);
 
   return (
     <section
       aria-label="Ревьюеры блога"
       className="mt-12 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-secondary)] px-5 py-4"
     >
-      <h2 className="text-[length:var(--type-h4)]">Блог ревьюили</h2>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h2 className="text-[length:var(--type-h4)]">Блог ревьюили</h2>
+        <VerifiedChip tier={tier} />
+      </div>
       {credit.current.length > 0 ? (
         <ul className="mt-3 flex flex-wrap gap-2">
           {credit.current.map((c) => (

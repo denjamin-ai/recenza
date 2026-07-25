@@ -20,6 +20,15 @@ import { CompletedSection } from "@/app/reviewer/_components/completed-section";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Момент рендера в Unix seconds — база для SLA-чипов очереди.
+ * ⚠️ Вынесено из тела компонента: `react-hooks/purity` запрещает звать `Date.now()` прямо в
+ * рендере. Страница `force-dynamic`, так что значение честно пересчитывается на каждый запрос.
+ */
+function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
 export default async function ReviewerPage() {
   const user = await getCurrentUser(); // гарантированно ревьюер (гард в layout)
   const [queue, active, completed, volume] = user
@@ -34,7 +43,7 @@ export default async function ReviewerPage() {
   const activeItems = active.reduce((n, g) => n + g.items.length, 0);
   const awaitingMe = active.reduce((n, g) => n + g.items.filter((i) => i.myVerdict === null).length, 0);
   const completedItems = completed.reduce((n, g) => n + g.chapters.length, 0);
-  const now = Math.floor(Date.now() / 1000);
+  const now = nowSeconds();
 
   const tiles: CabinetTile[] = [
     { label: "Заявок в очереди", value: String(queue.length) },

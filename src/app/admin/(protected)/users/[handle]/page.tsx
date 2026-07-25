@@ -24,9 +24,6 @@ export default async function AdminUserDetailPage({ params }: { params: Promise<
         <CapabilityPills user={u} />
         {u.isBlocked && <Pill tone="danger">Заблокирован</Pill>}
         {u.commentingBlocked && <Pill tone="warning">Комментарии запрещены</Pill>}
-        {u.isReviewer && u.reviewerRating != null && (
-          <Pill tone="info">★ {u.reviewerRating.toFixed(1)} ({u.reviewerRatingsN ?? 0})</Pill>
-        )}
       </div>
 
       {u.bio && <p className="mb-4 max-w-2xl text-[length:var(--type-small)] text-[var(--muted-foreground)] [text-wrap:pretty]">{u.bio}</p>}

@@ -1,7 +1,7 @@
 "use client";
 
 // Редактор главы (Variant B): чистый документ — заголовок + список блоков (BlockListEditor) +
-// сохранение + ⚙ настройки (SettingsPopover) + «Отправить на ревью» (SubmitSheet).
+// сохранение + ⚙ настройки (SettingsPopover) + «Заявка на ревью» (SubmitSheet, Ф14 — пикер снят).
 // RSC грузит черновик → этот клиент правит → PATCH /api/author/chapters/[id].
 // Сохранение (ui-feedback-3, П10): save читает title/blocks из refs (не из замыкания), сейвы
 // сериализованы через цепочку промисов, 429 ретраится один раз по Retry-After; структурные правки
@@ -13,7 +13,7 @@ import { useRouter } from "next/navigation";
 import { BackLink } from "@/components/back-link";
 import type { Block } from "@/types";
 import type { EditorChapter } from "@/lib/queries/author";
-import type { RankedReviewer } from "@/lib/reviewer-match";
+import type { AuthorRequestView } from "@/lib/queries/review-requests";
 import { PUBLICATION_META, isRevisionEditable, reviewMeta } from "@/lib/review-status";
 import { AutoTextarea } from "./auto-textarea";
 import { BlockListEditor } from "./block-list-editor";
@@ -34,7 +34,14 @@ function SaveState({ dirty, savedAt }: { dirty: boolean; savedAt: number | null 
   );
 }
 
-export function ChapterEditor({ data, reviewers }: { data: EditorChapter; reviewers: RankedReviewer[] }) {
+export function ChapterEditor({
+  data,
+  request,
+}: {
+  data: EditorChapter;
+  /** Ф14: живая заявка на текущую ревизию (вместо пикера ревьюеров) — null, если заявки нет. */
+  request: AuthorRequestView | null;
+}) {
   const router = useRouter();
   // Фаза 13: опубликованная глава РЕДАКТИРУЕМА — PATCH заведёт ревизию-черновик поверх.
   // Заблокировано только то, что читают ревьюеры прямо сейчас.
@@ -112,6 +119,13 @@ export function ChapterEditor({ data, reviewers }: { data: EditorChapter; review
     return p;
   }, [data.chapter.id, cancelAutosave]);
 
+  // SubmitSheet сохраняет черновик перед подачей заявки. Безусловный PATCH на published-ревизии
+  // завёл бы черновик-форк поверх (fork-on-edit, Ф13) — поэтому сохраняем только реальные правки.
+  const saveIfDirty = useCallback(
+    (): Promise<boolean> => (editable && dirty ? save() : Promise.resolve(true)),
+    [editable, dirty, save],
+  );
+
   const scheduleAutosave = useCallback(() => {
     if (!editable) return;
     cancelAutosave();
@@ -173,18 +187,21 @@ export function ChapterEditor({ data, reviewers }: { data: EditorChapter; review
               >
                 {saving ? "Сохраняем…" : "Сохранить"}
               </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  if (dirty) await save();
-                  setShowSubmit(true);
-                }}
-                className="min-h-9 rounded-[var(--radius-sm)] bg-[var(--accent)] px-4 py-1.5 text-[length:var(--type-small)] font-medium text-[var(--accent-foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
-              >
-                Отправить на ревью →
-              </button>
             </>
           )}
+          {/* Ф14: заявка доступна в ЛЮБОМ состоянии главы — на опубликованной (ревью не барьер
+              публикации, а бейдж поверх) и пока ревью идёт (шторка покажет состояние и «Отозвать»).
+              Это снимает P3 Ф13: раньше кнопка на published выглядела багом, теперь это валидный путь. */}
+          <button
+            type="button"
+            onClick={async () => {
+              if (editable && dirty) await save();
+              setShowSubmit(true);
+            }}
+            className="min-h-9 rounded-[var(--radius-sm)] bg-[var(--accent)] px-4 py-1.5 text-[length:var(--type-small)] font-medium text-[var(--accent-foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
+          >
+            Заявка на ревью
+          </button>
         </div>
       </div>
 
@@ -209,12 +226,14 @@ export function ChapterEditor({ data, reviewers }: { data: EditorChapter; review
         <SubmitSheet
           chapterId={data.chapter.id}
           chapterTitle={title}
+          blogId={data.blog.id}
+          blogSlug={data.blog.slug}
           blocks={blocks}
           tags={data.blog.tags}
           initialSkills={data.chapter.skills}
           initialComplexity={data.blog.complexity}
-          reviewers={reviewers}
-          onSave={save}
+          request={request}
+          onSave={saveIfDirty}
           onClose={() => setShowSubmit(false)}
         />
       )}

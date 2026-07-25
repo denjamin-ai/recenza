@@ -30,7 +30,6 @@ import {
   follows,
   notifications,
   portfolios,
-  primaryChangeRequests,
   promoBanners,
   publicComments,
   recruitRequests,
@@ -40,8 +39,8 @@ import {
   reviewChecklists,
   reviewerApplications,
   reviewerHistory,
-  reviewerRatings,
-  reviewInvitations,
+  reviewRequests,
+  expertInvites,
   threadReplies,
   threads,
   users,
@@ -56,6 +55,8 @@ const MIN = 60;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 const ago = (seconds: number) => NOW - seconds;
+/** Момент в будущем — дедлайны SLA у заявок (Ф14). */
+const ahead = (seconds: number) => NOW + seconds;
 
 // bcrypt('password', 10) — общий пароль для reader/author/reviewer. Проверено compareSync === true.
 const PWD_HASH = "$2b$10$bv01DQbqre9h.cs.SZZGeO6iCkHnpNdn2ZNeWGbOfsVycBjbKA0ra";
@@ -168,10 +169,9 @@ export async function seedAll(db: Db): Promise<void> {
   await db.delete(reviewChecklists);
   await db.delete(chapterReviewers);
   await db.delete(reviewerHistory);
-  await db.delete(reviewInvitations);
-  await db.delete(reviewerRatings);
+  await db.delete(reviewRequests);
+  await db.delete(expertInvites);
   await db.delete(recruitRequests);
-  await db.delete(primaryChangeRequests);
   await db.delete(removedReviewers);
   await db.delete(reports);
   await db.delete(notifications);
@@ -226,8 +226,6 @@ export async function seedAll(db: Db): Promise<void> {
       slug: "reviewer",
       bio: "Рецензирую статьи по фронтенду и архитектуре.",
       competencies: stringifyJson(["TypeScript", "React", "Архитектура", "Event Loop"]),
-      reviewerRating: 4.6,
-      reviewerRatingsN: 12,
       reviewLoad: 2, // 2/3 → busy (chp_under_review + chp_changes; см. §6/§22)
       reviewCapacity: 3,
       createdAt: ago(100 * DAY),
@@ -241,8 +239,6 @@ export async function seedAll(db: Db): Promise<void> {
       displayName: "Лена Базы",
       slug: "lena-review",
       competencies: stringifyJson(["Базы данных", "SQL", "Производительность"]),
-      reviewerRating: 4.9,
-      reviewerRatingsN: 30,
       reviewLoad: 2, // 2/2 → full (chp_under_review + chp_changes; см. §6/§22)
       reviewCapacity: 2,
       createdAt: ago(95 * DAY),
@@ -252,12 +248,12 @@ export async function seedAll(db: Db): Promise<void> {
       handle: "max_review",
       role: "reviewer",
       isReviewer: true,
+      // Ф14: приведён автором → его одобрение даёт бейдж уровня `invited`, а не `independent`.
+      introducedBy: "author",
       passwordHash: PWD_HASH,
       displayName: "Макс Девопс",
       slug: "max-review",
       competencies: stringifyJson(["DevOps", "Docker", "CI/CD"]),
-      reviewerRating: 4.2,
-      reviewerRatingsN: 5,
       reviewLoad: 0, // 0/4 → free
       reviewCapacity: 4,
       createdAt: ago(90 * DAY),
@@ -271,8 +267,6 @@ export async function seedAll(db: Db): Promise<void> {
       displayName: "Сергей Секьюрити",
       slug: "sergey-review",
       competencies: stringifyJson(["Безопасность", "Криптография"]),
-      reviewerRating: 3.8,
-      reviewerRatingsN: 3,
       reviewLoad: 0, // 0/3 → free (только pending/flagged-приглашения, не в chapter_reviewers)
       reviewCapacity: 3,
       createdAt: ago(85 * DAY),
@@ -333,6 +327,10 @@ export async function seedAll(db: Db): Promise<void> {
       viewCount: 1280,
       rating: 4.7,
       bookmarkCount: 1,
+      // Ф14: денормализованный агрегат бейджа (в проде его считает recomputeBlogVerified;
+      // сид пишет строки напрямую, поэтому проставляем руками — синхронно с §5).
+      verifiedAt: ago(15 * DAY),
+      verifiedTier: "independent",
     },
     {
       // Ф13: блог аккаунта с ОБЕИМИ возможностями — чтобы его профиль показывал и «Блоги», и «Ревью».
@@ -373,7 +371,6 @@ export async function seedAll(db: Db): Promise<void> {
       slug: "event-loop",
       title: "Цикл событий",
       order: 1,
-      primaryHandle: "reviewer",
       skills: stringifyJson(["Event Loop", "Микротаски", "Промисы"]),
     },
     {
@@ -382,7 +379,6 @@ export async function seedAll(db: Db): Promise<void> {
       slug: "promises",
       title: "Промисы изнутри",
       order: 2,
-      primaryHandle: "reviewer",
       skills: stringifyJson(["Промисы", "Then/Catch"]),
     },
     {
@@ -391,7 +387,6 @@ export async function seedAll(db: Db): Promise<void> {
       slug: "async-await",
       title: "Async/await на практике",
       order: 3,
-      primaryHandle: "lena_review",
       skills: stringifyJson(["Async/Await", "Обработка ошибок"]),
     },
     {
@@ -400,7 +395,6 @@ export async function seedAll(db: Db): Promise<void> {
       slug: "generators",
       title: "Генераторы и итераторы",
       order: 4,
-      primaryHandle: null,
       skills: stringifyJson(["Генераторы", "Итераторы"]),
     },
     {
@@ -434,10 +428,19 @@ export async function seedAll(db: Db): Promise<void> {
       number: 1,
       status: "published",
       reviewStatus: "reviewed",
+      // Ф14: снапшот метаданных на момент ревизии. Здесь он НАМЕРЕННО отличается от текущего
+      // названия главы — так видно, что читатель версии 1 видит именно её заголовок и навыки.
+      title: "Событийный цикл",
+      skills: stringifyJson(["Event Loop", "Микротаски"]),
       summary: "Первая опубликованная версия.",
       blocks: stringifyJson(eventLoopBlocksV1),
       submittedAt: ago(70 * DAY),
       publishedAt: ago(65 * DAY),
+      // Ф14: сессия ревью закрыта, бейдж выдан. `independent` — среди кредитованных есть ревьюеры,
+      // которых автор не приводил.
+      reviewClosedAt: ago(65 * DAY),
+      verifiedAt: ago(65 * DAY),
+      verifiedTier: "independent",
     },
     {
       id: "rev_pub_2",
@@ -445,11 +448,16 @@ export async function seedAll(db: Db): Promise<void> {
       number: 2,
       status: "published",
       reviewStatus: "reviewed",
+      title: "Цикл событий",
+      skills: stringifyJson(["Event Loop", "Микротаски", "Промисы"]),
       summary: "Расширенная версия с диаграммами и примерами.",
       blocks: stringifyJson(eventLoopBlocksV2),
       prevBlocks: stringifyJson(eventLoopBlocksV1), // снапшот для инлайн-диффа
       submittedAt: ago(20 * DAY),
       publishedAt: ago(15 * DAY),
+      reviewClosedAt: ago(15 * DAY),
+      verifiedAt: ago(15 * DAY),
+      verifiedTier: "independent",
     },
     {
       id: "rev_ur_1",
@@ -457,6 +465,8 @@ export async function seedAll(db: Db): Promise<void> {
       number: 1,
       status: "draft",
       reviewStatus: "in-review",
+      title: "Промисы изнутри",
+      skills: stringifyJson(["Промисы", "Событийный цикл"]),
       summary: "Отправлено на ревью, ожидает вердиктов.",
       blocks: stringifyJson(promisesBlocks),
       submittedAt: ago(5 * DAY),
@@ -467,7 +477,9 @@ export async function seedAll(db: Db): Promise<void> {
       number: 1,
       status: "draft",
       reviewStatus: "changes-requested",
-      summary: "Запрошены правки ведущим ревьюером.",
+      title: "Async/await на практике",
+      skills: stringifyJson(["Async/Await", "Обработка ошибок"]),
+      summary: "Запрошены правки — ход за автором.",
       blocks: stringifyJson(asyncAwaitBlocks),
       submittedAt: ago(10 * DAY),
     },
@@ -477,6 +489,8 @@ export async function seedAll(db: Db): Promise<void> {
       number: 1,
       status: "draft",
       reviewStatus: "none",
+      title: "Генераторы и итераторы",
+      skills: stringifyJson(["Генераторы", "Итераторы"]),
       summary: "Черновик, ещё не отправлен.",
       blocks: stringifyJson(generatorsBlocks),
     },
@@ -487,9 +501,13 @@ export async function seedAll(db: Db): Promise<void> {
       number: 1,
       status: "published",
       reviewStatus: "none",
+      title: "Как я совмещаю",
+      skills: stringifyJson(["Тайм-менеджмент"]),
       summary: "Первая заметка.",
       blocks: stringifyJson(duoBlocks),
       publishedAt: ago(18 * DAY),
+      // Опубликовано без ревью: сессия закрыта публикацией, бейджа нет.
+      reviewClosedAt: ago(18 * DAY),
     },
     {
       id: "rev_ghost_1",
@@ -501,22 +519,22 @@ export async function seedAll(db: Db): Promise<void> {
     },
   ]);
 
-  // ── 6. РЕВЬЮЕРЫ НА РЕВИЗИЮ (ведущий + вердикты) ──
-  // ⚠️ Инвариант Фазы 9: КАЖДАЯ строка здесь = принятое приглашение (accept пишет chapter_reviewers).
-  // Поэтому у каждого участника есть accepted-приглашение в §22; pending/declined/flagged тут НЕ присутствуют.
+  // ── 6. РЕВЬЮЕРЫ НА РЕВИЗИЮ (вердикты; Ф14 — без «ведущего») ──
+  // ⚠️ Инвариант Ф14: КАЖДАЯ строка здесь = взятая заявка (claim пишет chapter_reviewers).
+  // Приглашений больше нет; открытые заявки живут в §22.
   await db.insert(chapterReviewers).values([
     // опубликованная глава, версия 1 — все approve
-    { chapterId: "chp_published", revisionNumber: 1, handle: "reviewer", isPrimary: true, verdict: "approve", verdictAt: ago(66 * DAY) },
+    { chapterId: "chp_published", revisionNumber: 1, handle: "reviewer", verdict: "approve", verdictAt: ago(66 * DAY) },
     { chapterId: "chp_published", revisionNumber: 1, handle: "lena_review", verdict: "approve", verdictAt: ago(66 * DAY) },
     // опубликованная глава, версия 2 — все approve (публикабельно)
-    { chapterId: "chp_published", revisionNumber: 2, handle: "reviewer", isPrimary: true, verdict: "approve", verdictAt: ago(16 * DAY) },
+    { chapterId: "chp_published", revisionNumber: 2, handle: "reviewer", verdict: "approve", verdictAt: ago(16 * DAY) },
     { chapterId: "chp_published", revisionNumber: 2, handle: "max_review", verdict: "approve", verdictAt: ago(16 * DAY) },
-    // под ревью — приняли reviewer (ведущий) + lena; sergey лишь приглашён (pending, §22) — НЕ здесь.
+    // под ревью — заявку взяли reviewer и lena; свободная заявка на другую главу — в §22.
     // online не сеем: presence — деривация из heartbeat (last_seen_at), сид оставляет всех оффлайн.
-    { chapterId: "chp_under_review", revisionNumber: 1, handle: "reviewer", isPrimary: true },
+    { chapterId: "chp_under_review", revisionNumber: 1, handle: "reviewer" },
     { chapterId: "chp_under_review", revisionNumber: 1, handle: "lena_review", verdict: "request-changes", verdictAt: ago(2 * DAY) },
-    // запрошены правки — ведущий request-changes
-    { chapterId: "chp_changes", revisionNumber: 1, handle: "lena_review", isPrimary: true, verdict: "request-changes", verdictAt: ago(8 * DAY) },
+    // запрошены правки
+    { chapterId: "chp_changes", revisionNumber: 1, handle: "lena_review", verdict: "request-changes", verdictAt: ago(8 * DAY) },
     { chapterId: "chp_changes", revisionNumber: 1, handle: "reviewer", verdict: "approve", verdictAt: ago(9 * DAY) },
   ]);
 
@@ -745,40 +763,91 @@ export async function seedAll(db: Db): Promise<void> {
     { id: "rpt_1", reporterId: "usr_reader", targetType: "comment", targetId: "cmt_deleted", reason: "Спам в комментариях", status: "open", createdAt: ago(1 * DAY) },
   ]);
 
-  // ── 20. ЗАЯВКА НА СМЕНУ ВЕДУЩЕГО (admin-facing) ──
-  await db.insert(primaryChangeRequests).values([
-    { id: "pcr_1", chapterId: "chp_under_review", fromHandle: "reviewer", toHandle: "lena_review", status: "pending", createdAt: ago(1 * DAY) },
-  ]);
-
   // ── 21. СНЯТЫЕ РЕВЬЮЕРЫ (лог админа) ──
   await db.insert(removedReviewers).values([
     { id: "rmv_1", blogSlug: "async-deep-dive", chapterSlug: "promises", handle: "max_review", byAdmin: "admin", reason: "Конфликт интересов", createdAt: ago(6 * DAY) },
   ]);
 
-  // ── 22. ПРИГЛАШЕНИЯ РЕВЬЮЕРАМ (все 4 статуса) ──
-  // ⚠️ Инвариант: каждая accepted-строка соответствует строке chapter_reviewers (§6) той же ревизии,
-  // и наоборот. pending/declined/flagged НЕ создают chapter_reviewers (ревью стартует только после accept).
-  await db.insert(reviewInvitations).values([
-    // опубликованная глава — историч. accepted (для инварианта; в инбоксе не показываются)
-    { id: "inv_pub1_rev", chapterId: "chp_published", revision: 1, toHandle: "reviewer", asLead: true, status: "accepted", invitedAt: ago(71 * DAY), respondedAt: ago(70 * DAY) },
-    { id: "inv_pub1_lena", chapterId: "chp_published", revision: 1, toHandle: "lena_review", status: "accepted", invitedAt: ago(71 * DAY), respondedAt: ago(70 * DAY) },
-    { id: "inv_pub2_rev", chapterId: "chp_published", revision: 2, toHandle: "reviewer", asLead: true, status: "accepted", invitedAt: ago(21 * DAY), respondedAt: ago(20 * DAY) },
-    { id: "inv_pub2_max", chapterId: "chp_published", revision: 2, toHandle: "max_review", status: "accepted", invitedAt: ago(21 * DAY), respondedAt: ago(20 * DAY) },
-    // под ревью — reviewer (ведущий) + lena приняли; sergey ещё pending (виден в инбоксе ревьюера)
-    { id: "inv_accepted", chapterId: "chp_under_review", revision: 1, toHandle: "reviewer", asLead: true, status: "accepted", invitedAt: ago(6 * DAY), respondedAt: ago(5 * DAY) },
-    { id: "inv_ur_lena", chapterId: "chp_under_review", revision: 1, toHandle: "lena_review", status: "accepted", invitedAt: ago(6 * DAY), respondedAt: ago(5 * DAY) },
-    { id: "inv_pending", chapterId: "chp_under_review", revision: 1, toHandle: "sergey_review", asLead: false, note: "Нужен взгляд по безопасности.", status: "pending", invitedAt: ago(3 * DAY) },
-    // запрошены правки — lena (ведущий) + reviewer приняли; max отклонил; sergey пожаловался (flagged)
-    { id: "inv_cr_lena", chapterId: "chp_changes", revision: 1, toHandle: "lena_review", asLead: true, status: "accepted", invitedAt: ago(12 * DAY), respondedAt: ago(11 * DAY) },
-    { id: "inv_cr_rev", chapterId: "chp_changes", revision: 1, toHandle: "reviewer", status: "accepted", invitedAt: ago(12 * DAY), respondedAt: ago(11 * DAY) },
-    { id: "inv_declined", chapterId: "chp_changes", revision: 1, toHandle: "max_review", status: "declined", invitedAt: ago(12 * DAY), respondedAt: ago(11 * DAY) },
-    { id: "inv_flagged", chapterId: "chp_changes", revision: 1, toHandle: "sergey_review", status: "flagged", flagReason: "Навыки не совпадают (match < 50%).", invitedAt: ago(12 * DAY), respondedAt: ago(11 * DAY) },
+  // ── 22. ЗАЯВКИ НА РЕВЬЮ (Ф14) — очередь, из которой ревьюер берёт работу сам ──
+  // ⚠️ Инвариант Ф14: claimed-заявка соответствует строке chapter_reviewers (§6) той же ревизии.
+  // Сроки заведомо просрочены/свежие — под три свипа SLA-крона (эскалация, истечение, возврат).
+  await db.insert(reviewRequests).values([
+    // Открытая заявка, срок ЕЩЁ НЕ вышел — мишень claim-флоу в e2e.
+    {
+      id: "req_open",
+      chapterId: "chp_draft",
+      revisionNumber: 1,
+      byHandle: "author",
+      skills: stringifyJson(["Генераторы", "Итераторы"]),
+      note: "Интересует корректность примеров.",
+      channel: "queue",
+      status: "open",
+      dueAt: ahead(9 * DAY),
+      createdAt: ago(5 * DAY),
+    },
+    // Открытая заявка, срок ВЫШЕЛ — мишень свипа 1 (эскалация в редакцию).
+    {
+      id: "req_stale",
+      chapterId: "chp_duo",
+      revisionNumber: 1,
+      byHandle: "duo",
+      skills: stringifyJson(["Тайм-менеджмент"]),
+      channel: "queue",
+      status: "open",
+      dueAt: ago(1 * DAY),
+      createdAt: ago(15 * DAY),
+    },
+    // Взята и молчит, срок ВЫШЕЛ, признаков работы нет — мишень свипа 3 (возврат в очередь).
+    {
+      id: "req_silent",
+      chapterId: "chp_under_review",
+      revisionNumber: 1,
+      byHandle: "author",
+      skills: stringifyJson(["Промисы", "Событийный цикл"]),
+      channel: "queue",
+      status: "claimed",
+      claimedBy: "reviewer",
+      claimedAt: ago(22 * DAY),
+      dueAt: ago(1 * DAY),
+      createdAt: ago(23 * DAY),
+    },
+    // Исполненная заявка опубликованной главы — история, в очереди не показывается.
+    {
+      id: "req_done",
+      chapterId: "chp_published",
+      revisionNumber: 2,
+      byHandle: "author",
+      skills: stringifyJson(["Событийный цикл"]),
+      channel: "queue",
+      status: "done",
+      claimedBy: "max_review",
+      claimedAt: ago(21 * DAY),
+      createdAt: ago(22 * DAY),
+      resolvedAt: ago(15 * DAY),
+    },
   ]);
 
-  // ── 23. ОЦЕНКИ РЕВЬЮЕРОВ АВТОРОМ (приватно, 1..5) ──
-  await db.insert(reviewerRatings).values([
-    { chapterId: "chp_published", reviewerHandle: "reviewer", byHandle: "author", stars: 5, createdAt: ago(14 * DAY) },
-    { chapterId: "chp_published", reviewerHandle: "max_review", byHandle: "author", stars: 4, createdAt: ago(14 * DAY) },
+  // ── 23. ИНВАЙТ-ССЫЛКИ ЭКСПЕРТА (Ф14, канал 2) ──
+  // Токены детерминированы только в сиде — в проде они из CSPRNG (см. api/author/expert-invites).
+  await db.insert(expertInvites).values([
+    {
+      id: "einv_active",
+      token: "e2e-expert-token",
+      byHandle: "author",
+      chapterId: "chp_draft",
+      status: "pending",
+      expiresAt: ahead(10 * DAY),
+      createdAt: ago(4 * DAY),
+    },
+    {
+      id: "einv_expired",
+      token: "e2e-expert-expired",
+      byHandle: "author",
+      chapterId: null,
+      status: "pending",
+      expiresAt: ago(2 * DAY), // истёк — страница обязана отдать нейтральную заглушку
+      createdAt: ago(30 * DAY),
+    },
   ]);
 
   // ── 24. ЗАПРОСЫ «НАЙДИТЕ РЕВЬЮЕРОВ» (pending/approved/rejected) ──
@@ -809,7 +878,7 @@ export async function seedAll(db: Db): Promise<void> {
 
   // ── 28. СПОСОБЫ ПОЖЕРТВОВАНИЯ (link + qr) + singleton-флаг ──
   await db.insert(donationMethods).values([
-    { id: "dm_link", name: "DonationAlerts", type: "link", url: "https://www.donationalerts.com/r/recenza", hint: "Разовая поддержка", visible: true, isPrimary: true, sort: 0 },
+    { id: "dm_link", name: "DonationAlerts", type: "link", url: "https://www.donationalerts.com/r/recenza", hint: "Разовая поддержка", visible: true, sort: 0 },
     { id: "dm_qr", name: "СБП", type: "qr", qrUrl: "/uploads/donations/sbp-qr.png", hint: "Отсканируйте в приложении банка", visible: true, isPrimary: false, sort: 1 },
   ]);
 

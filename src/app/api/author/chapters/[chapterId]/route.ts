@@ -1,5 +1,11 @@
 // Сохранение главы автором. Поля маршрутизируются по таблицам (PLAN §R6):
-// title/skills → chapters, blocks/summary → revision.
+// title/skills → chapters (рабочее значение автора) + СНАПШОТ в chapter_revisions (Ф14),
+// blocks/summary → revision.
+//
+// Ф14: `chapter_revisions.title/skills` — версионированные метаданные, которые видит читатель.
+// Пишем их в ту же ревизию, в которую ушли блоки: и при правке черновика in place, и при
+// заведении черновика поверх опубликованной. Иначе бейдж «проверена версия N» указывал бы на
+// заголовок/навыки, которых в версии N не было.
 //
 // Фаза 13 — жизнь после публикации. Куда пишем, решает состояние последней ревизии:
 //   • draft + review_status none|changes-requested → правим ревизию IN PLACE (поведение Фазы 6);
@@ -20,6 +26,14 @@ import { stringifyJson } from "@/lib/db/json";
 import { MAX_SKILLS, validateBlocks } from "@/lib/blocks/validate";
 import { resolveAuthorChapter } from "@/lib/queries/author";
 import { isRevisionEditable } from "@/lib/review-status";
+
+/** Патч ревизии: контент + снапшот метаданных (Ф14). */
+type RevisionPatch = {
+  blocks?: string;
+  summary?: string | null;
+  title?: string | null;
+  skills?: string | null;
+};
 
 export async function PATCH(
   req: Request,
@@ -98,6 +112,20 @@ export async function PATCH(
 
   try {
     await db.transaction(async (tx) => {
+      // Ф14: снапшот метаданных = «что будет у главы после этого сохранения». Текущее значение
+      // читаем ВНУТРИ транзакции (а не из resolveAuthorChapter) — оно могло измениться соседним
+      // автосейвом; поля, которых нет в теле запроса, снапшотим как есть.
+      const cur = (
+        await tx
+          .select({ title: chapters.title, skills: chapters.skills })
+          .from(chapters)
+          .where(eq(chapters.id, chapterId))
+          .limit(1)
+      )[0];
+      if (!cur) throw new Error("chapter-vanished");
+      const snapTitle = set.title ?? cur.title;
+      const snapSkills = set.skills ?? cur.skills;
+
       if (forkFromPublished) {
         // Race-safe: номер следующей ревизии перечитываем ВНУТРИ транзакции — параллельный
         // автосейв не должен воткнуть второй черновик и словить unique(chapter_id, number).
@@ -127,32 +155,30 @@ export async function PATCH(
             summary: summary !== undefined ? summary : rev.summary,
             blocks: blocksJson !== undefined ? blocksJson : rev.blocks,
             prevBlocks: rev.blocks, // снапшот опубликованного — для инлайн-диффа
+            title: snapTitle,
+            skills: snapSkills,
           });
         } else {
           // Черновик поверх уже успел появиться (параллельный запрос) — пишем в него.
           revisionNumber = latest.number;
-          const revSet: { blocks?: string; summary?: string | null } = {};
+          const revSet: RevisionPatch = { title: snapTitle, skills: snapSkills };
           if (blocksJson !== undefined) revSet.blocks = blocksJson;
           if (summary !== undefined) revSet.summary = summary;
-          if (Object.keys(revSet).length > 0) {
-            await tx
-              .update(chapterRevisions)
-              .set(revSet)
-              .where(
-                and(
-                  eq(chapterRevisions.chapterId, chapterId),
-                  eq(chapterRevisions.number, latest.number),
-                ),
-              );
-          }
+          await tx
+            .update(chapterRevisions)
+            .set(revSet)
+            .where(
+              and(
+                eq(chapterRevisions.chapterId, chapterId),
+                eq(chapterRevisions.number, latest.number),
+              ),
+            );
         }
       } else {
-        const revSet: { blocks?: string; summary?: string | null } = {};
+        const revSet: RevisionPatch = { title: snapTitle, skills: snapSkills };
         if (blocksJson !== undefined) revSet.blocks = blocksJson;
         if (summary !== undefined) revSet.summary = summary;
-        if (Object.keys(revSet).length > 0) {
-          await tx.update(chapterRevisions).set(revSet).where(eq(chapterRevisions.id, rev.id));
-        }
+        await tx.update(chapterRevisions).set(revSet).where(eq(chapterRevisions.id, rev.id));
       }
 
       if (Object.keys(set).length > 0) {

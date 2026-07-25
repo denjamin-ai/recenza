@@ -46,7 +46,7 @@ export default async function AdminReviewPage() {
                 </div>
               </div>
 
-              <ReviewActions chapterId={it.chapterId} reviewers={it.reviewers} pendingPrimaryChange={it.pendingPrimaryChange} />
+              <ReviewActions chapterId={it.chapterId} reviewers={it.reviewers} />
             </Card>
           ))}
         </div>

@@ -21,6 +21,7 @@ import type { AuthorRequestView } from "@/lib/queries/review-requests";
 import { COMPLEXITY_LABELS } from "@/lib/blocks/constants";
 import { MAX_SKILLS, readinessChecklist } from "@/lib/blocks/validate";
 import { formatDueLabel, slaState, type SlaState } from "@/lib/review-sla";
+import { plural } from "@/lib/plural";
 import { ChipInput } from "./chip-input";
 
 /** Тон таймера: цвет — не единственный сигнификатор, рядом всегда текст срока. */
@@ -74,8 +75,11 @@ export function SubmitSheet({
   // Отозванная заявка: RSC-проп обновится только после refresh, локальный флаг убирает мигание.
   const [withdrawn, setWithdrawn] = useState(false);
 
+  // Точка отсчёта таймера фиксируется на открытии шторки: `Date.now()` в теле рендера запрещён
+  // правилом `react-hooks/purity` (и давал бы «прыгающий» срок на каждый ререндер).
+  const [now] = useState(() => Math.floor(Date.now() / 1000));
+
   const live = withdrawn ? null : request;
-  const now = Math.floor(Date.now() / 1000);
 
   const checks = useMemo(
     () => readinessChecklist({ title: chapterTitle, blocks, tags, skills }),
@@ -186,7 +190,7 @@ export function SubmitSheet({
               {live.returnCount > 0 && (
                 <p className="mt-1.5 text-[length:var(--type-small)] text-[var(--warning)]">
                   Заявка возвращалась в очередь {live.returnCount}{" "}
-                  {live.returnCount === 1 ? "раз" : "раза"}.
+                  {plural(live.returnCount, "раз", "раза", "раз")}.
                 </p>
               )}
               {live.channel === "editorial" && (
@@ -277,13 +281,12 @@ export function SubmitSheet({
                 <h3 className="mb-2 text-[length:var(--type-small)] font-medium text-[var(--muted-foreground)]">
                   Сложность для читателя
                 </h3>
-                <div role="radiogroup" aria-label="Сложность для читателя" className="flex flex-col gap-1.5">
+                <div role="group" aria-label="Сложность для читателя" className="flex flex-col gap-1.5">
                   {COMPLEXITY_ORDER.map((c) => (
                     <button
                       key={c}
                       type="button"
-                      role="radio"
-                      aria-checked={complexity === c}
+                      aria-pressed={complexity === c}
                       onClick={() => setComplexity(c)}
                       className={`min-h-9 rounded-[var(--radius-sm)] border px-3 py-2 text-left text-[length:var(--type-small)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
                         complexity === c

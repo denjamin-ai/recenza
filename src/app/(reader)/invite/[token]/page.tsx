@@ -12,6 +12,11 @@ import { InviteForm } from "./invite-form";
 
 export const dynamic = "force-dynamic";
 
+/** `Date.now()` в теле RSC ловит правило `react-hooks/purity` — выносим за границу компонента. */
+function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
 export const metadata: Metadata = {
   title: "Приглашение эксперта",
   robots: { index: false, follow: false },
@@ -19,7 +24,7 @@ export const metadata: Metadata = {
 
 export default async function InvitePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const invite = await getPublicInvite(token, Math.floor(Date.now() / 1000));
+  const invite = await getPublicInvite(token, nowSeconds());
 
   if (!invite) {
     return (
