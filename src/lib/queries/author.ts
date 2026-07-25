@@ -2,8 +2,10 @@
 // (chapters.ts/feed.ts), которые отдают только published. ВСЕГДА owner-scoped: каждая функция принимает
 // userId и фильтрует/проверяет владение; чужое → null (ролевой binding, CLAUDE.md §гейтинг).
 //
-// Статус главы = статус её последней ревизии (max number). Блог «опубликован» = blogs.publishedAt != null.
-// Колонки chapters/blogs/chapter_revisions есть статуса нет — выводим из ревизий (см. PLAN §traps).
+// Статус главы = состояние её последней ревизии (max number) по ДВУМ осям (Фаза 13):
+// `status` (draft|published) и `review_status` (none|requested|in-review|changes-requested|reviewed).
+// Блог «опубликован» = blogs.publishedAt != null.
+// Колонок статуса у chapters/blogs нет — выводим из ревизий (см. PLAN §traps).
 
 import { cache } from "react";
 import { and, countDistinct, desc, eq, inArray } from "drizzle-orm";
@@ -23,7 +25,78 @@ import {
 import { parseJson } from "@/lib/db/json";
 import { availability as availabilityOf, rankReviewers } from "@/lib/reviewer-match";
 import type { RankedReviewer } from "@/lib/reviewer-match";
-import type { Block, Complexity, RecruitStatus, RevisionStatus, Verdict } from "@/types";
+import type {
+  Block,
+  Complexity,
+  RecruitStatus,
+  ReviewStatus,
+  RevisionStatus,
+  Verdict,
+} from "@/types";
+
+// ───────────────────────────── owner-scoped резолвер главы ─────────────────────────────
+
+/** Глава автора вместе с её последней ревизией — общий вход для author-мутаций (PATCH, publish). */
+export interface AuthorChapterTarget {
+  chapterId: string;
+  chapterSlug: string;
+  chapterTitle: string;
+  blogId: string;
+  blogSlug: string;
+  authorId: string;
+  revision: {
+    id: string;
+    number: number;
+    status: RevisionStatus;
+    reviewStatus: ReviewStatus;
+    blocks: string | null;
+    summary: string | null;
+  };
+}
+
+/**
+ * Владение + последняя ревизия одним резолвером (единый путь для author-мутаций над главой).
+ * Чужая/несуществующая глава → null (вызывающий отдаёт 404, не 403 — не раскрываем существование).
+ */
+export async function resolveAuthorChapter(
+  chapterId: string,
+  userId: string,
+): Promise<AuthorChapterTarget | null> {
+  const row = (
+    await db
+      .select({
+        chapterSlug: chapters.slug,
+        chapterTitle: chapters.title,
+        blogId: blogs.id,
+        blogSlug: blogs.slug,
+        authorId: blogs.authorId,
+      })
+      .from(chapters)
+      .innerJoin(blogs, eq(blogs.id, chapters.blogId))
+      .where(eq(chapters.id, chapterId))
+      .limit(1)
+  )[0];
+  if (!row || row.authorId !== userId) return null;
+
+  const rev = (
+    await db
+      .select({
+        id: chapterRevisions.id,
+        number: chapterRevisions.number,
+        status: chapterRevisions.status,
+        reviewStatus: chapterRevisions.reviewStatus,
+        blocks: chapterRevisions.blocks,
+        summary: chapterRevisions.summary,
+      })
+      .from(chapterRevisions)
+      .where(eq(chapterRevisions.chapterId, chapterId))
+      .orderBy(desc(chapterRevisions.number))
+      .limit(1)
+  )[0];
+  if (!rev) return null;
+
+  return { chapterId, ...row, revision: rev };
+}
 
 // ───────────────────────────── view-типы (сериализуемые) ─────────────────────────────
 
@@ -41,6 +114,7 @@ export interface AuthorChapterRow {
   order: number;
   latestRevisionNumber: number;
   status: RevisionStatus;
+  reviewStatus: ReviewStatus;
   reviewers: AuthorReviewerChip[];
 }
 
@@ -57,8 +131,8 @@ export interface AuthorBlogCard {
   lastActivityAt: number | null;
   chapterCount: number;
   publishedCount: number;
-  /** Статусы глав по порядку — для мини-точек прогресса и счётчиков. */
-  chapterStatuses: { order: number; status: RevisionStatus }[];
+  /** Состояния глав по порядку (обе оси) — для мини-точек прогресса и счётчиков. */
+  chapterStatuses: { order: number; status: RevisionStatus; reviewStatus: ReviewStatus }[];
 }
 
 export interface AuthorCabinet {
@@ -102,6 +176,7 @@ export interface EditorChapter {
     id: string;
     number: number;
     status: RevisionStatus;
+    reviewStatus: ReviewStatus;
     summary: string | null;
     blocks: Block[];
   };
@@ -123,17 +198,19 @@ export interface ReviewerOption {
 
 // ───────────────────────────── helpers ─────────────────────────────
 
-type LatestRev = { revNumber: number; status: RevisionStatus };
+type LatestRev = { revNumber: number; status: RevisionStatus; reviewStatus: ReviewStatus };
 
-/** По строкам (chapterId, number, status) оставляет ревизию с наибольшим number на главу. */
-function latestRevByChapter(
-  rows: { chapterId: string; revNumber: number; status: RevisionStatus }[],
-): Map<string, LatestRev> {
+/** По строкам (chapterId, number, обе оси) оставляет ревизию с наибольшим number на главу. */
+function latestRevByChapter(rows: ({ chapterId: string } & LatestRev)[]): Map<string, LatestRev> {
   const latest = new Map<string, LatestRev>();
   for (const r of rows) {
     const prev = latest.get(r.chapterId);
     if (!prev || r.revNumber > prev.revNumber) {
-      latest.set(r.chapterId, { revNumber: r.revNumber, status: r.status });
+      latest.set(r.chapterId, {
+        revNumber: r.revNumber,
+        status: r.status,
+        reviewStatus: r.reviewStatus,
+      });
     }
   }
   return latest;
@@ -173,14 +250,18 @@ export const getAuthorCabinet = cache(async (userId: string): Promise<AuthorCabi
       order: chapters.order,
       revNumber: chapterRevisions.number,
       status: chapterRevisions.status,
+      reviewStatus: chapterRevisions.reviewStatus,
     })
     .from(chapters)
     .innerJoin(chapterRevisions, eq(chapterRevisions.chapterId, chapters.id))
     .where(inArray(chapters.blogId, blogIds));
 
-  // chapterId → {order, blogId, latest status}
+  // chapterId → {order, blogId, состояние последней ревизии по обеим осям}
   const latest = latestRevByChapter(chRows);
-  const byBlog = new Map<string, { order: number; status: RevisionStatus }[]>();
+  const byBlog = new Map<
+    string,
+    { order: number; status: RevisionStatus; reviewStatus: ReviewStatus }[]
+  >();
   const seen = new Set<string>();
   for (const r of chRows) {
     if (seen.has(r.chapterId)) continue;
@@ -188,7 +269,7 @@ export const getAuthorCabinet = cache(async (userId: string): Promise<AuthorCabi
     const lr = latest.get(r.chapterId);
     if (!lr) continue;
     const arr = byBlog.get(r.blogId) ?? [];
-    arr.push({ order: r.order, status: lr.status });
+    arr.push({ order: r.order, status: lr.status, reviewStatus: lr.reviewStatus });
     byBlog.set(r.blogId, arr);
   }
 
@@ -255,6 +336,7 @@ export const getBlogDetailForAuthor = cache(
         order: chapters.order,
         revNumber: chapterRevisions.number,
         status: chapterRevisions.status,
+        reviewStatus: chapterRevisions.reviewStatus,
       })
       .from(chapters)
       .innerJoin(chapterRevisions, eq(chapterRevisions.chapterId, chapters.id))
@@ -315,6 +397,7 @@ export const getBlogDetailForAuthor = cache(
           order: meta.order,
           latestRevisionNumber: lr?.revNumber ?? 1,
           status: (lr?.status ?? "draft") as RevisionStatus,
+          reviewStatus: (lr?.reviewStatus ?? "none") as ReviewStatus,
           reviewers: (reviewersByChapter.get(id) ?? []).sort(
             (a, b) => Number(b.isPrimary) - Number(a.isPrimary),
           ),
@@ -370,6 +453,7 @@ export const getChapterForEditor = cache(
         id: chapterRevisions.id,
         number: chapterRevisions.number,
         status: chapterRevisions.status,
+        reviewStatus: chapterRevisions.reviewStatus,
         summary: chapterRevisions.summary,
         blocks: chapterRevisions.blocks,
       })
@@ -401,6 +485,7 @@ export const getChapterForEditor = cache(
         id: rev.id,
         number: rev.number,
         status: rev.status as RevisionStatus,
+        reviewStatus: rev.reviewStatus as ReviewStatus,
         summary: rev.summary,
         blocks: parseJson<Block[]>(rev.blocks, []),
       },
@@ -410,7 +495,8 @@ export const getChapterForEditor = cache(
 
 /**
  * Список ревьюеров для базовой формы SubmitSheet (Фаза 6; матчинг/скоринг — Фаза 9).
- * Только role=reviewer, не заблокированные. Доступность выводится из review_load/review_capacity.
+ * Только аккаунты с возможностью «ревьюер» (Ф13), не заблокированные.
+ * Доступность выводится из review_load/review_capacity.
  */
 export const getAvailableReviewers = cache(async (): Promise<ReviewerOption[]> => {
   const rows = await db
@@ -423,7 +509,7 @@ export const getAvailableReviewers = cache(async (): Promise<ReviewerOption[]> =
       capacity: users.reviewCapacity,
     })
     .from(users)
-    .where(and(eq(users.role, "reviewer"), eq(users.isBlocked, false)));
+    .where(and(eq(users.isReviewer, true), eq(users.isBlocked, false)));
 
   return rows.map((r) => {
     const availability: ReviewerOption["availability"] =
@@ -460,7 +546,7 @@ export const getReviewerMatches = cache(async (chapterId: string): Promise<Ranke
       capacity: users.reviewCapacity,
     })
     .from(users)
-    .where(and(eq(users.role, "reviewer"), eq(users.isBlocked, false)));
+    .where(and(eq(users.isReviewer, true), eq(users.isBlocked, false)));
 
   // Объём = число отрецензированных глав (distinct chapter в reviewer_history) на handle.
   const historyRows = await db

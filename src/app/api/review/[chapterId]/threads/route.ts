@@ -16,9 +16,9 @@ import {
   reviewerReviewHref,
   userIdsByHandle,
 } from "@/lib/queries/review";
+import { isReviewOpen } from "@/lib/review-status";
 import type { Suggestion } from "@/types";
 
-const ACTIVE = new Set(["under-review", "changes-requested"]);
 const MAX_TEXT = 4000;
 const MAX_ANCHOR = 600;
 
@@ -42,7 +42,7 @@ export async function POST(
   }
 
   const { session } = access;
-  if (!ACTIVE.has(session.revision.status)) {
+  if (!isReviewOpen(session.revision.status, session.revision.reviewStatus)) {
     return NextResponse.json({ error: "Глава не на активном ревью." }, { status: 409 });
   }
 

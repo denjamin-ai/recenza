@@ -1,11 +1,12 @@
 // Ответ ревьюера на приглашение (Фаза 9, согласие): accept | decline | flag.
 // Гейт: requireReviewer + приглашение адресовано ИМЕННО этому ревьюеру (toHandle) и ещё pending.
 //   accept  → приглашение accepted; ревьюер пишется в chapter_reviewers (ревью стартует только тут);
-//             reviewLoad += 1; автору уведомление. Отказ, если ревьюер уже full (защита от гонок).
+//             review_status: requested → in-review (Фаза 13); reviewLoad += 1; автору уведомление.
+//             Отказ, если ревьюер уже full (защита от гонок).
 //   decline → приглашение declined; автору уведомление. chapter_reviewers/reviewLoad не трогаем.
 //   flag    → ТОЛЬКО при match < 50% (перепроверка на сервере): «навыки не совпадают». Глава снимается
-//             с ревью (ревизия → changes-requested), остальные pending-приглашения этой ревизии гасятся
-//             (declined), уже принявшие остаются. Автору вердикт «исправьте навыки».
+//             с ревью (review_status → changes-requested), остальные pending-приглашения этой ревизии
+//             гасятся (declined), уже принявшие остаются. Автору вердикт «исправьте навыки».
 
 import { NextResponse } from "next/server";
 import { and, eq, ne, sql } from "drizzle-orm";
@@ -18,9 +19,9 @@ import { parseJson } from "@/lib/db/json";
 import { createNotifications } from "@/lib/queries/notifications";
 import { REVIEW_NOTIFY, authorReviewHref } from "@/lib/queries/review";
 import { skillMatch } from "@/lib/reviewer-match";
+import { isReviewOpen } from "@/lib/review-status";
 
 const ACTIONS = new Set(["accept", "decline", "flag"]);
-const ACTIVE = new Set(["under-review", "changes-requested"]);
 
 /** Гонка: приглашение перестало быть pending между внетранзакционной проверкой и записью → 409. */
 class InviteConflict extends Error {}
@@ -115,7 +116,12 @@ export async function POST(
 
   const latestRev = (
     await db
-      .select({ id: chapterRevisions.id, number: chapterRevisions.number, status: chapterRevisions.status })
+      .select({
+        id: chapterRevisions.id,
+        number: chapterRevisions.number,
+        status: chapterRevisions.status,
+        reviewStatus: chapterRevisions.reviewStatus,
+      })
       .from(chapterRevisions)
       .where(eq(chapterRevisions.chapterId, inv.chapterId))
       .orderBy(sql`${chapterRevisions.number} desc`)
@@ -151,7 +157,7 @@ export async function POST(
   }
 
   // Дальше (accept/flag) приглашение должно относиться к ТЕКУЩЕЙ ревизии и активному ревью.
-  if (inv.revision !== latestRev.number || !ACTIVE.has(latestRev.status)) {
+  if (inv.revision !== latestRev.number || !isReviewOpen(latestRev.status, latestRev.reviewStatus)) {
     return NextResponse.json({ error: "Приглашение устарело — есть новая ревизия." }, { status: 409 });
   }
 
@@ -174,11 +180,11 @@ export async function POST(
           .update(reviewInvitations)
           .set({ status: "flagged", flagReason: reason, respondedAt: now })
           .where(eq(reviewInvitations.id, inv.id));
-        // Снимаем главу с ревью: ревизия → changes-requested (автор исправляет навыки и шлёт заново).
-        if (latestRev.status !== "changes-requested") {
+        // Снимаем главу с ревью: ось ревью → changes-requested (автор исправляет навыки и шлёт заново).
+        if (latestRev.reviewStatus !== "changes-requested") {
           await tx
             .update(chapterRevisions)
-            .set({ status: "changes-requested" })
+            .set({ reviewStatus: "changes-requested" })
             .where(eq(chapterRevisions.id, latestRev.id));
         }
         // Гасим остальные pending-приглашения этой ревизии (уже принявшие остаются).
@@ -244,6 +250,14 @@ export async function POST(
         .update(users)
         .set({ reviewLoad: sql`${users.reviewLoad} + 1` })
         .where(eq(users.handle, user.handle));
+      // Ось ревью: «приглашения разосланы» → «ревью идёт». Первый accept и переводит статус
+      // (последующие ничего не меняют — оператор идемпотентен по условию).
+      if (latestRev.reviewStatus === "requested") {
+        await tx
+          .update(chapterRevisions)
+          .set({ reviewStatus: "in-review" })
+          .where(eq(chapterRevisions.id, latestRev.id));
+      }
       await createNotifications(tx, [
         { recipientId: ctx.authorId, type: REVIEW_NOTIFY.inviteAccepted, payload: authorPayload },
       ]);

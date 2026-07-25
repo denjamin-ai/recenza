@@ -75,6 +75,7 @@ function ChapterBody({
           <CommentsSlot
             blogSlug={blog.slug}
             chapterSlug={chapter.slug}
+            chapterId={chapter.id}
             revision={chapter.revisionNumber}
             blogAuthorId={blog.author.id}
             sectionId="comments"
@@ -105,7 +106,7 @@ export function BlogReaderView({
   isAuthed: boolean;
   /** Блоговое engagement-состояние (голос/закладка/подписка) — один бар на страницу. */
   engagement: ReaderEngagement;
-  /** true — гость (login-intent) или reader; author/reviewer/admin бар не видят (ui-feedback-5 П4). */
+  /** true — гость (login-intent) или любой аккаунт; бар не видит только админ (Ф13, З-60). */
   canEngage: boolean;
   singleHref: string;
   wholeHref: string;
@@ -113,13 +114,16 @@ export function BlogReaderView({
 }) {
   const multiChapter = blog.chapters.length > 1;
   // Право комментировать одинаково для всех глав блога (один автор) — для плавающей кнопки фрагмента.
-  const canCommentBlog = commentGate(viewer, blog.author.id).canComment;
+  // Плавающая кнопка «комментировать фрагмент»: базовый гейт без конфликта интересов —
+  // он поглавный и проверяется в слотах (и, авторитетно, в POST /api/comments).
+  const canCommentBlog = commentGate(viewer).canComment;
 
   const engagementBar = canEngage ? (
     <EngagementBar
       blogId={blog.id}
       authorId={blog.author.id}
       isAuthed={isAuthed}
+      isOwnBlog={viewer?.id === blog.author.id}
       className="mt-5"
       initial={{
         score: engagement.score,
@@ -153,8 +157,8 @@ export function BlogReaderView({
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <nav aria-label="Хлебные крошки" className="flex flex-wrap items-center gap-1.5 text-[length:var(--type-small)] text-[var(--muted-foreground)]">
             <Link href="/" className="hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded-[var(--radius-sm)]">
-              {/* ui-feedback-6 П6: для автора «/» — каталог «Все мои блоги», крошка совпадает с ним */}
-              {viewer?.role === "author" ? "Все мои блоги" : "Лента"}
+              {/* Ф13: каталог един для всех — крошка всегда «Лента» (реверс uif-6 П6) */}
+              Лента
             </Link>
             <span aria-hidden="true">/</span>
             <Link href={`/u/${blog.author.slug}`} className="hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded-[var(--radius-sm)]">
@@ -208,6 +212,7 @@ export function BlogReaderView({
                 <BlogCommentsSlot
                   blogSlug={blog.slug}
                   chapters={sections.map((s) => ({
+                    id: s.chapter.id,
                     slug: s.chapter.slug,
                     title: s.chapter.title,
                     revision: s.chapter.revisionNumber,

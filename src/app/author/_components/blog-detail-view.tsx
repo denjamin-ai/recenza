@@ -9,23 +9,20 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { BackLink } from "@/components/back-link";
+import { PUBLICATION_META, isReviewOpen, reviewMeta } from "@/lib/review-status";
 import type { AuthorBlogDetail, AuthorChapterRow } from "@/lib/queries/author";
-import type { RevisionStatus } from "@/types";
 
-const STATUS_META: Record<RevisionStatus, { label: string; cls: string }> = {
-  published: { label: "Опубликовано", cls: "bg-[var(--success-bg)] text-[var(--success)]" },
-  "under-review": { label: "На ревью", cls: "bg-[var(--warning-bg)] text-[var(--warning)]" },
-  "changes-requested": { label: "Нужны правки", cls: "bg-[var(--danger-bg)] text-[var(--danger)]" },
-  draft: { label: "Черновик", cls: "bg-[var(--muted)] text-[var(--muted-foreground)]" },
-};
+// Фаза 13: два независимых бейджа вместо одного. Публикация всегда, ревью — если запрашивалось.
+type Filter = "all" | "draft" | "published" | "in-review" | "changes-requested";
 
-type Filter = "all" | RevisionStatus;
-
-function StatusPill({ status }: { status: RevisionStatus }) {
-  const m = STATUS_META[status];
+function StatusPills({ chapter }: { chapter: AuthorChapterRow }) {
+  const pub = PUBLICATION_META[chapter.status];
+  const rev = reviewMeta(chapter.reviewStatus);
+  const cls = "rounded-[var(--radius-pill)] px-2 py-0.5 text-[length:var(--type-small)]";
   return (
-    <span className={`rounded-[var(--radius-pill)] px-2 py-0.5 text-[length:var(--type-small)] ${m.cls}`}>
-      {m.label}
+    <span className="flex flex-wrap items-center gap-1.5">
+      <span className={`${cls} ${pub.cls}`}>{pub.label}</span>
+      {rev && <span className={`${cls} ${rev.cls}`}>{rev.label}</span>}
     </span>
   );
 }
@@ -113,13 +110,26 @@ export function BlogDetailView({ detail }: { detail: AuthorBlogDetail }) {
     });
   }
 
+  // Счётчики по двум осям: «черновики/опубликовано» — публикация, «на ревью/нужны правки» — ревью.
+  // Главы считаются в обеих группах одновременно (опубликованная глава может быть на новом ревью).
   const counts = useMemo(() => {
-    const c = { all: order.length, draft: 0, "under-review": 0, "changes-requested": 0, published: 0 };
-    for (const ch of order) c[ch.status]++;
+    const c = { all: order.length, draft: 0, published: 0, "in-review": 0, "changes-requested": 0 };
+    for (const ch of order) {
+      c[ch.status]++;
+      if (ch.reviewStatus === "changes-requested") c["changes-requested"]++;
+      else if (ch.reviewStatus === "requested" || ch.reviewStatus === "in-review") c["in-review"]++;
+    }
     return c;
   }, [order]);
 
-  const visible = filter === "all" ? order : order.filter((c) => c.status === filter);
+  const visible =
+    filter === "all"
+      ? order
+      : filter === "draft" || filter === "published"
+        ? order.filter((c) => c.status === filter)
+        : filter === "changes-requested"
+          ? order.filter((c) => c.reviewStatus === "changes-requested")
+          : order.filter((c) => c.reviewStatus === "requested" || c.reviewStatus === "in-review");
 
   function togglePin() {
     start(async () => {
@@ -167,7 +177,7 @@ export function BlogDetailView({ detail }: { detail: AuthorBlogDetail }) {
     { key: "all", label: `Все (${counts.all})` },
     { key: "draft", label: `Черновики (${counts.draft})` },
     { key: "changes-requested", label: `Нужны правки (${counts["changes-requested"]})` },
-    { key: "under-review", label: `На ревью (${counts["under-review"]})` },
+    { key: "in-review", label: `На ревью (${counts["in-review"]})` },
     { key: "published", label: `Опубликовано (${counts.published})` },
   ];
 
@@ -282,7 +292,7 @@ export function BlogDetailView({ detail }: { detail: AuthorBlogDetail }) {
                 </span>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <StatusPill status={ch.status} />
+                    <StatusPills chapter={ch} />
                     {ch.latestRevisionNumber > 1 && (
                       <span className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">
                         rev {ch.latestRevisionNumber}
@@ -319,7 +329,7 @@ export function BlogDetailView({ detail }: { detail: AuthorBlogDetail }) {
                     </button>
                   </span>
                 )}
-                {(ch.status === "under-review" || ch.status === "changes-requested") && (
+                {isReviewOpen(ch.status, ch.reviewStatus) && (
                   <Link
                     href={`/author/blog/${detail.slug}/${ch.slug}/review`}
                     className="min-h-9 rounded-[var(--radius-sm)] border border-[var(--info-border)] bg-[var(--info-bg)] px-3 py-2 text-[length:var(--type-small)] text-[var(--info)] transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"

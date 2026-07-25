@@ -13,7 +13,11 @@ import { assertSameOrigin } from "@/lib/csrf";
 import { hitActionRate } from "@/lib/rate-limit";
 import { stringifyJson } from "@/lib/db/json";
 import { createNotifications } from "@/lib/queries/notifications";
-import { commentGate, resolveCommentTarget } from "@/lib/queries/comments";
+import {
+  commentGate,
+  getConflictedChapterIds,
+  resolveCommentTarget,
+} from "@/lib/queries/comments";
 import type { CommentAnchor } from "@/types";
 
 const MAX_TEXT = 4000;
@@ -88,16 +92,19 @@ export async function POST(req: Request): Promise<NextResponse> {
   const target = await resolveCommentTarget(blogSlug, chapterSlug);
   if (!target) return NextResponse.json({ error: "Глава не найдена." }, { status: 404 });
 
-  // ── Гейтинг ролей (авторитетно на сервере) ──
+  // ── Гейтинг (авторитетно на сервере; Ф13 — конфликт интересов вместо ролевого запрета) ──
   const commenter = await db.query.users.findFirst({
     where: eq(users.id, userId),
-    columns: { handle: true, role: true, commentingBlocked: true },
+    columns: { handle: true, commentingBlocked: true },
   });
   if (!commenter) return NextResponse.json({ error: "Сессия недействительна." }, { status: 401 });
 
+  // Признак конфликта считаем ДЛЯ РЕЗОЛВНУТОЙ главы — клиентскому выбору не доверяем.
+  const conflicted =
+    (await getConflictedChapterIds(commenter.handle, [target.chapterId])).size > 0;
   const gate = commentGate(
-    { id: userId, role: commenter.role, commentingBlocked: commenter.commentingBlocked },
-    target.blogAuthorId,
+    { id: userId, handle: commenter.handle, commentingBlocked: commenter.commentingBlocked },
+    { conflicted },
   );
   if (!gate.canComment) {
     return NextResponse.json({ error: gate.blockedReason ?? "Недостаточно прав." }, { status: 403 });

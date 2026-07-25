@@ -25,7 +25,6 @@ import { reseed } from "../helpers/db";
 import { throttleMutation } from "../helpers/throttle";
 
 /** Точная строка серверного publish-гейта (MCP-FINDINGS §5). */
-const PUBLISH_GATE_ERROR = "Опубликовать можно только когда все ревьюеры одобрили.";
 
 /** Текст правки параграфа async-await для второй версии — по нему сверяем v2 у ревьюера и гостя. */
 const V2_TEXT = "async/await — синтаксический сахар над промисами. Правка автора для второй версии (e2e).";
@@ -87,28 +86,21 @@ test.describe("Флоу публикации: гейт all-approve, force-approv
     reseed();
   });
 
-  test("PUB-GATE @critical: publish без всех approve — 409 на API, у автора нет кнопки «Опубликовать»", async ({
-    api,
+  // ⚠️ Ф13: гейта «все approve» БОЛЬШЕ НЕТ — публикация свободна. Кейс переформулирован:
+  // раньше проверял, что незаапрувленную главу опубликовать нельзя; теперь — что можно,
+  // и что незавершённое ревью при этом не теряется (вердикты и статус ревью остаются на месте).
+  test("PUB-FREE @critical: кнопка «Опубликовать» доступна автору при незакрытом ревью (гейта нет)", async ({
     asAuthor,
   }) => {
-    await test.step("API: POST publish автором на chp_under_review → 409 с точным текстом гейта", async () => {
-      const authorApi = await api("author");
-      const res = await authorApi.post(`/api/review/${CHAPTERS.underReview.id}/publish`);
-      expect(res.status()).toBe(409);
-      const body = (await res.json()) as { error?: string };
-      expect(body.error).toBe(PUBLISH_GATE_ERROR);
-    });
-
-    await test.step("UI: на review-странице автора кнопки «Опубликовать» НЕТ в DOM, есть пилюля «есть запрос правок»", async () => {
-      const review = new ReviewPage(asAuthor.page);
-      await review.gotoAsAuthor(BLOG.slug, CHAPTERS.underReview.slug);
-      // Вердикты v1: lena_review — request-changes (seed) → пилюля запроса правок.
-      await expect(asAuthor.page.getByText("есть запрос правок")).toBeVisible();
-      // Условный рендер action-bar: кнопка отсутствует в DOM, не disabled (MCP-FINDINGS §3б).
-      await expect(review.publishButton).toHaveCount(0);
-      // Вместо неё автору доступна «Отправить v2».
-      await expect(asAuthor.page.getByRole("button", { name: "Отправить v2" })).toBeVisible();
-    });
+    // Сама публикация без ревью и её последствия — flows/publish-free.spec.ts (там свой reseed);
+    // здесь только снимаем прежнее утверждение «кнопки нет, пока не все одобрили».
+    const review = new ReviewPage(asAuthor.page);
+    await review.gotoAsAuthor(BLOG.slug, CHAPTERS.underReview.slug);
+    // Вердикты v1: lena_review — request-changes (seed) → пилюля запроса правок.
+    await expect(asAuthor.page.getByText("есть запрос правок")).toBeVisible();
+    await expect(review.publishButton).toBeVisible();
+    // «Отправить v2» остаётся доступной — треки публикации и ревью независимы.
+    await expect(asAuthor.page.getByRole("button", { name: "Отправить v2" })).toBeVisible();
   });
 
   test("PUB-DRAFT @critical: force-approve админом публикует «Промисы изнутри» в обход гейта, глава читается гостем", async ({
@@ -137,8 +129,10 @@ test.describe("Флоу публикации: гейт all-approve, force-approv
       await expect(
         asGuest.page.getByRole("heading", { name: CHAPTERS.underReview.title, level: 1 }),
       ).toBeVisible();
-      // Кредит команды зафиксирован публикацией (force-approve пишет reviewer_history).
-      await expect(reader.reviewersRegion.getByRole("heading", { name: "Эту версию проверяли" })).toBeVisible();
+      // ⚠️ Ф13: кредит выдаётся ТОЛЬКО за фактический approve. У этой ревизии lena запросила
+      // правки, а reviewer вердикта не ставил — значит публикация посреди ревью кредита не
+      // фабрикует, и карточка «Эту версию проверяли» не появляется.
+      await expect(reader.reviewersRegion.getByRole("heading", { name: "Эту версию проверяли" })).toHaveCount(0);
     });
   });
 

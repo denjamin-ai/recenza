@@ -1,8 +1,8 @@
 // Cron отложенной публикации (Фаза 12). Защита: Authorization: Bearer <CRON_SECRET> ПЕРВОЙ проверкой
-// (конвенция CLAUDE.md §API). Находит активные ревизии с наступившим scheduled_at и публикует каждую
-// через общий publishRevision (гейт «все approve» перепроверяется в транзакции — вердикт мог
-// измениться после планирования). Провал гейта — не ошибка cron: план снимается, автор получает
-// уведомление scheduled_publish_failed. Запускается systemd-timer'ом на сервере каждые 5 минут.
+// (конвенция CLAUDE.md §API). Находит ЧЕРНОВЫЕ ревизии с наступившим scheduled_at и публикует каждую
+// через общий publishRevision. Фаза 13: ревью-гейта больше нет (публикация свободна), поэтому
+// PublishGateError остаётся ровно для одного случая — ревизию успели опубликовать иначе; тогда план
+// снимается и автор получает scheduled_publish_failed. Запускается systemd-timer'ом каждые 5 минут.
 
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
@@ -47,31 +47,51 @@ export async function GET(req: Request): Promise<NextResponse> {
       and(
         isNotNull(chapterRevisions.scheduledAt),
         lte(chapterRevisions.scheduledAt, now),
-        inArray(chapterRevisions.status, ["under-review", "changes-requested"]),
+        eq(chapterRevisions.status, "draft"),
       ),
     );
+
+  // Страховка: публикуем только ПОСЛЕДНЮЮ ревизию главы. Плановые записи гасятся при появлении
+  // новой ревизии (submit-revision и fork в PATCH), но условие дешёвое и снимает целый класс
+  // ошибок «cron опубликовал устаревшую версию».
+  const maxNumber = new Map<string, number>();
+  if (due.length > 0) {
+    const all = await db
+      .select({ chapterId: chapterRevisions.chapterId, number: chapterRevisions.number })
+      .from(chapterRevisions)
+      .where(inArray(chapterRevisions.chapterId, [...new Set(due.map((d) => d.chapterId))]));
+    for (const r of all) {
+      const prev = maxNumber.get(r.chapterId);
+      if (prev == null || r.number > prev) maxNumber.set(r.chapterId, r.number);
+    }
+  }
 
   let published = 0;
   let failed = 0;
   for (const row of due) {
+    if (maxNumber.get(row.chapterId) !== row.revisionNumber) {
+      // Поверх запланированной ревизии уже есть новая — снимаем план молча.
+      await db
+        .update(chapterRevisions)
+        .set({ scheduledAt: null })
+        .where(eq(chapterRevisions.id, row.revisionId));
+      continue;
+    }
     try {
-      await publishRevision(
-        {
-          chapterId: row.chapterId,
-          revisionId: row.revisionId,
-          revisionNumber: row.revisionNumber,
-          blogId: row.blogId,
-          blogSlug: row.blogSlug,
-          chapterSlug: row.chapterSlug,
-          chapterTitle: row.chapterTitle,
-          authorId: row.authorId,
-        },
-        { gate: "all-approve" },
-      );
+      await publishRevision({
+        chapterId: row.chapterId,
+        revisionId: row.revisionId,
+        revisionNumber: row.revisionNumber,
+        blogId: row.blogId,
+        blogSlug: row.blogSlug,
+        chapterSlug: row.chapterSlug,
+        chapterTitle: row.chapterTitle,
+        authorId: row.authorId,
+      });
       published += 1;
     } catch (e) {
       failed += 1;
-      // Гейт перестал проходить (вердикт отозван/сменился состав) → снимаем план и говорим автору.
+      // Ревизию опубликовали иначе (автор вручную) → снимаем план и говорим автору.
       // Прочие ошибки план НЕ снимают — следующий тик попробует снова.
       if (e instanceof PublishGateError) {
         await db

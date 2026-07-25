@@ -4,9 +4,18 @@
 
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { blogs, chapterRevisions, chapters, commentVotes, publicComments, users } from "@/lib/db/schema";
+import {
+  blogs,
+  chapterReviewers,
+  chapterRevisions,
+  chapters,
+  commentVotes,
+  publicComments,
+  reviewerHistory,
+  users,
+} from "@/lib/db/schema";
 import { parseJson } from "@/lib/db/json";
-import type { CommentAnchor, Role } from "@/types";
+import type { CommentAnchor } from "@/types";
 
 /** Окно правки комментария — 15 минут (серверная истина; PATCH-роут проверяет идентично). */
 export const EDIT_WINDOW_S = 900;
@@ -17,7 +26,8 @@ export interface CommentAuthorView {
   slug: string;
   displayName: string;
   avatarUrl: string | null;
-  role: Role;
+  /** Автор блога, в котором оставлен комментарий → бейдж «автор» (Ф13: вместо роли — факт). */
+  isBlogAuthor: boolean;
 }
 
 export interface CommentView {
@@ -48,32 +58,77 @@ export interface ChapterCommentsView {
   total: number; // число живых узлов (для «Комментарии N»)
   canComment: boolean;
   blockedReason: string | null; // причина для UI (null у гостя — это login-prompt, а не ошибка)
+  /** blog-режим (Ф13): главы, где зритель рецензировал — композер их не предлагает. */
+  conflictedChapterSlugs?: string[];
 }
 
 /** Минимальный снимок зрителя для гейтинга/myVote/canEdit. Строится из PublicUser. */
 export interface CommentViewer {
   id: string;
-  role: Role;
+  handle: string;
   commentingBlocked: boolean;
 }
 
 /**
- * Единый гейтинг-предикат (binding, CLAUDE.md): читатель — везде; автор — только в своём блоге;
- * ревьюер — никогда; заблокированный — никогда; гость/админ — нельзя (null viewer). Сервер перевыводит сам.
+ * Единый гейтинг-предикат (binding, CLAUDE.md).
+ *
+ * ⚠️ Фаза 13 — ОБА ролевых запрета сняты:
+ *   • «ревьюер никогда не комментирует» (З-08) заменён на КОНФЛИКТ ИНТЕРЕСОВ: нельзя комментировать
+ *     именно ту главу, которую ты ревьюишь или ревьюил (в остальных блогах ревьюер — обычный читатель);
+ *   • «автор комментирует только свой блог» снят целиком — DoD фазы требует, чтобы ЛЮБОЙ аккаунт
+ *     читал и комментировал (автор перестал быть изолированной ролью).
+ * Остаются: гость/админ — нельзя (null viewer, это login-prompt, а не ошибка); commentingBlocked.
+ *
+ * @param conflicted — зритель участвует/участвовал в ревью этой главы (считается запросом к БД:
+ *   chapter_reviewers ∪ reviewer_history). Вызывающий обязан передать его для целевой главы;
+ *   POST-роут перевыводит признак сам и не доверяет клиенту.
  */
 export function commentGate(
   viewer: CommentViewer | null,
-  blogAuthorId: string,
+  opts: { conflicted?: boolean } = {},
 ): { canComment: boolean; blockedReason: string | null } {
   if (!viewer) return { canComment: false, blockedReason: null }; // гость/админ → login-prompt
   if (viewer.commentingBlocked) return { canComment: false, blockedReason: "Комментирование ограничено." };
-  if (viewer.role === "reviewer") {
-    return { canComment: false, blockedReason: "Ревьюеры не участвуют в публичных обсуждениях." };
+  if (opts.conflicted) {
+    return {
+      canComment: false,
+      blockedReason: "Вы рецензировали эту главу — публичное обсуждение недоступно.",
+    };
   }
-  if (viewer.role === "author" && viewer.id !== blogAuthorId) {
-    return { canComment: false, blockedReason: "Авторы комментируют только в своих блогах." };
-  }
-  return { canComment: true, blockedReason: null }; // reader или author-владелец
+  return { canComment: true, blockedReason: null };
+}
+
+/**
+ * Главы блога, где зритель участвует/участвовал в ревью (конфликт интересов, Ф13).
+ * Один запрос на блог: назначения текущего ревью + исторический кредит.
+ * Пустой Set для гостя/админа и для тех, кто ничего не рецензировал.
+ */
+export async function getConflictedChapterIds(
+  viewerHandle: string | null,
+  chapterIds: string[],
+): Promise<Set<string>> {
+  if (!viewerHandle || chapterIds.length === 0) return new Set();
+  const [assigned, credited] = await Promise.all([
+    db
+      .select({ chapterId: chapterReviewers.chapterId })
+      .from(chapterReviewers)
+      .where(
+        and(
+          eq(chapterReviewers.handle, viewerHandle),
+          inArray(chapterReviewers.chapterId, chapterIds),
+        ),
+      ),
+    db
+      .select({ chapterId: reviewerHistory.chapterId })
+      .from(reviewerHistory)
+      .where(
+        and(
+          eq(reviewerHistory.handle, viewerHandle),
+          inArray(reviewerHistory.chapterId, chapterIds),
+        ),
+      ),
+  ]);
+  return new Set([...assigned, ...credited].map((r) => r.chapterId));
 }
 
 export interface CommentTarget {
@@ -145,7 +200,6 @@ const commentSelection = {
   authorSlug: users.slug,
   authorName: users.displayName,
   authorAvatar: users.avatarUrl,
-  authorRole: users.role,
 };
 
 interface RawCommentRow {
@@ -163,12 +217,12 @@ interface RawCommentRow {
   authorSlug: string | null;
   authorName: string | null;
   authorAvatar: string | null;
-  authorRole: string | null;
 }
 
 interface AssembleOpts {
   viewer: CommentViewer | null;
   gate: { canComment: boolean; blockedReason: string | null };
+  blogAuthorId: string;
   /** Текущая published-ревизия главы комментария (blog-режим — по своей главе). */
   revisionFor: (chapterSlug: string) => number;
   /** blog-режим: подписи глав для eyebrow + chapterSlug у узлов (reply-композер). */
@@ -179,12 +233,14 @@ interface AssembleOpts {
 export async function getChapterComments(args: {
   blogSlug: string;
   chapterSlug: string;
+  chapterId: string;
   currentRevision: number;
   viewer: CommentViewer | null;
   blogAuthorId: string;
 }): Promise<ChapterCommentsView> {
-  const { blogSlug, chapterSlug, currentRevision, viewer, blogAuthorId } = args;
-  const gate = commentGate(viewer, blogAuthorId);
+  const { blogSlug, chapterSlug, chapterId, currentRevision, viewer, blogAuthorId } = args;
+  const conflicted = (await getConflictedChapterIds(viewer?.handle ?? null, [chapterId])).size > 0;
+  const gate = commentGate(viewer, { conflicted });
 
   const rows = (await db
     .select(commentSelection)
@@ -192,7 +248,7 @@ export async function getChapterComments(args: {
     .leftJoin(users, eq(publicComments.authorId, users.id))
     .where(and(eq(publicComments.blogSlug, blogSlug), eq(publicComments.chapterSlug, chapterSlug)))) as RawCommentRow[];
 
-  return assembleThread(rows, { viewer, gate, revisionFor: () => currentRevision });
+  return assembleThread(rows, { viewer, gate, blogAuthorId, revisionFor: () => currentRevision });
 }
 
 /**
@@ -202,14 +258,30 @@ export async function getChapterComments(args: {
  */
 export async function getBlogComments(args: {
   blogSlug: string;
-  chapters: { slug: string; title: string; revision: number }[];
+  chapters: { id: string; slug: string; title: string; revision: number }[];
   viewer: CommentViewer | null;
   blogAuthorId: string;
 }): Promise<ChapterCommentsView> {
   const { blogSlug, chapters, viewer, blogAuthorId } = args;
-  const gate = commentGate(viewer, blogAuthorId);
+  // Конфликт интересов — поглавно (Ф13): ревьюер главы 2 остаётся обычным читателем главы 5.
+  // Гейт всей секции закрывается, только если конфликтны ВСЕ главы блога; иначе композер
+  // ограничивается неконфликтными главами (их список отдаём наружу).
+  const conflictedIds = await getConflictedChapterIds(
+    viewer?.handle ?? null,
+    chapters.map((c) => c.id),
+  );
+  const conflictedChapterSlugs = chapters.filter((c) => conflictedIds.has(c.id)).map((c) => c.slug);
+  const allConflicted = chapters.length > 0 && conflictedChapterSlugs.length === chapters.length;
+  const gate = commentGate(viewer, { conflicted: allConflicted });
   if (chapters.length === 0) {
-    return { current: [], older: [], total: 0, canComment: gate.canComment, blockedReason: gate.blockedReason };
+    return {
+      current: [],
+      older: [],
+      total: 0,
+      canComment: gate.canComment,
+      blockedReason: gate.blockedReason,
+      conflictedChapterSlugs,
+    };
   }
 
   const revisions = new Map(chapters.map((c) => [c.slug, c.revision]));
@@ -229,17 +301,19 @@ export async function getBlogComments(args: {
       ),
     )) as RawCommentRow[];
 
-  return assembleThread(rows, {
+  const view = await assembleThread(rows, {
     viewer,
     gate,
+    blogAuthorId,
     revisionFor: (slug) => revisions.get(slug) ?? 0,
     chapterTitles: titles,
   });
+  return { ...view, conflictedChapterSlugs };
 }
 
 /** Общий сборщик треда: голоса, дерево ≤2, tombstone-prune, split current/older. */
 async function assembleThread(rows: RawCommentRow[], opts: AssembleOpts): Promise<ChapterCommentsView> {
-  const { viewer, gate, revisionFor, chapterTitles } = opts;
+  const { viewer, gate, blogAuthorId, revisionFor, chapterTitles } = opts;
   const now = Math.floor(Date.now() / 1000);
 
   if (rows.length === 0) {
@@ -297,7 +371,7 @@ async function assembleThread(rows: RawCommentRow[], opts: AssembleOpts): Promis
             slug: r.authorSlug ?? r.authorHandle,
             displayName: r.authorName ?? r.authorHandle,
             avatarUrl: r.authorAvatar,
-            role: (r.authorRole ?? "reader") as Role,
+            isBlogAuthor: r.authorId === blogAuthorId,
           }
         : null;
     nodeMap.set(r.id, {

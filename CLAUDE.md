@@ -13,9 +13,11 @@
 ⚠️ **Прочти первым.** Монолит **работает в проде**: `https://recenza.ru` (VPS Ubuntu 24.04, Хельсинки;
 Caddy + Node standalone + systemd; деплой — GH Actions `deploy.yml` на push в `main`). Каркас: Next 16 +
 `src/`, `node_modules/`, `tsconfig.json`, `next.config.ts`, `drizzle.config.ts`, миграции
-`drizzle/0000_*.sql` … `0006_*.sql` (0004: `chapter_revisions.scheduled_at` + `chapter_reviewers.last_seen_at`;
+`drizzle/0000_*.sql` … `0007_*.sql` (0004: `chapter_revisions.scheduled_at` + `chapter_reviewers.last_seen_at`;
 0005: drop `chapter_reviewers.online`; 0006: `blog_votes` + data-миграция голосов с глав на блоги,
-`chapter_votes` deprecated; всего **29 таблиц**), `blog.db`/`blog.test.db`, два стенда, auth/роли,
+`chapter_votes` deprecated; **0007**: `users.is_reviewer/can_author/introduced_by` +
+`chapter_revisions.review_status` + бэкфилл ролей и разведение осей — Фаза 13;
+всего **29 таблиц**), `blog.db`/`blog.test.db`, два стенда, auth/возможности,
 читательский слой, авторский слой (кабинет/редактор/портфолио), review-flow (ReviewPage), публичные
 комментарии, подбор ревьюеров, админка/монетизация, слой качества (Playwright e2e + CI),
 **hardening + прод-деплой (Фаза 12)**. npm-скрипты работают.
@@ -123,12 +125,16 @@ Turso выведен из эксплуатации). Прод-БД — лока�
 - Engagement-таблицы — `uniqueIndex` + `db.transaction()` для race-safe toggle.
 
 ### Auth (`src/lib/auth.ts`)
-- `SessionData { isAdmin, userId?, userRole? }` — инвариант: `isAdmin` и `userId` не одновременно.
+- `SessionData { isAdmin, userId? }` — инвариант: `isAdmin` и `userId` не одновременно.
+  ⚠️ Поле `userRole` удалено в Ф13: возможности НИКОГДА не берутся из cookie.
 - **Две семьи гардов — не путать:**
-  - **Handler-гарды** (для `app/api/**`): `requireAdmin` / `requireUser(role?)` / `requireAuthor` / `requireReviewer`
-    возвращают `SessionData | NextResponse` — в хендлере результат **нужно вернуть**:
-    `const s = await requireAuthor(); if (s instanceof NextResponse) return s;`.
-  - **Page-гарды** (для `(protected)/layout.tsx`): `requireAdminPage` / `requireAuthorPage` / `requireReviewerPage`
+  - **Handler-гарды** (для `app/api/**`): `requireAdmin` / `requireUser()` / `requireCapability(cap)` /
+    `requireAuthor` / `requireReviewer` возвращают `SessionData | NextResponse` — в хендлере результат
+    **нужно вернуть**: `const s = await requireAuthor(); if (s instanceof NextResponse) return s;`.
+    ⚠️ У `requireUser()` **намеренно нет параметра роли** — всё, что требует возможности, идёт через
+    `requireCapability` (`requireAuthor`/`requireReviewer` — его алиасы, имена сохранены).
+  - **Page-гарды** (для `(protected)/layout.tsx`): `requireAdminPage` / `requireUserPage` /
+    `requireCapabilityPage(cap)` / `requireAuthorPage` / `requireReviewerPage`
     **редиректят** (`next/navigation`), не возвращают `NextResponse`.
 - `getSession` (чтение — безопасно в RSC и API; **запись** `save()/destroy()` — только в route handler).
   `getCurrentUser()` → `PublicUser | null` (self-heal: гасит сессию заблокированного/удалённого).
@@ -140,15 +146,38 @@ Turso выведен из эксплуатации). Прод-БД — лока�
   `GET /api/auth/user`. Rate-limit логина (`src/lib/rate-limit.ts`, 5/15мин). CSRF — same-origin
   (`src/lib/csrf.ts`) на мутациях.
 
-### Ролевой гейтинг (binding — нарушать нельзя)
-- **Читатель** комментирует везде, голосует, закладывает, подписывается.
-- **Автор** видит/читает/комментирует **только свои** блоги; чужие фильтруются из ленты/каталога и
-  блокируются в ридере. Не комментирует чужое, не рецензирует. Приглашает ревьюеров и оценивает их.
-- **Ревьюер** только рецензирует (треды/вердикты/правки/чат); **никогда не комментирует**, нет блогов;
-  публичный профиль — «что отрецензировал». Принимает/отклоняет приглашения; имеет компетенции и рейтинг.
-- **Админ** модерирует; **не создаёт блоги/главы**; роль пользователя не меняется обычным API.
-  Ведёт доску «Ищем ревьюеров», разбирает запросы/заявки ревьюеров, баннеры и пожертвования.
-  Админка — полноэкранная (шапка сайта скрыта), своя навигация: Модерация / Люди / Платформа.
+### Гейтинг по возможностям (binding — нарушать нельзя; Фаза 13 заменила ролевую модель)
+- **Базовый уровень есть у всех.** Любой аккаунт читает, комментирует, голосует, закладывает,
+  подписывается. Отдельной роли «читатель» больше нет — это отсутствие возможностей.
+- **Возможности** (`users.can_author`, `users.is_reviewer`) **выдаёт и отзывает только админ**
+  (`PATCH /api/admin/users/[handle]` + чекбоксы в карточке пользователя). Отзыв — не бан: аккаунт
+  остаётся читателем, опубликованное и кредит ревью сохраняются. Возможности читаются **из БД
+  на каждый запрос** (в cookie их нет) — отзыв действует без перелогина. Хелперы — `src/lib/roles.ts`.
+- **`can_author`** — вести блоги/главы, отправлять на ревью, публиковать. Ownership обязателен
+  всегда: `requireAuthor()` + `blog.authorId === session.userId`.
+- **`is_reviewer`** — рецензировать (треды/вердикты/правки/чат), принимать приглашения, компетенции.
+  Ревьюер **комментирует чужие блоги как обычный читатель**; закрыта только та глава, которую он
+  ревьюит или ревьюил — **конфликт интересов** (`getConflictedChapterIds`, проверка серверная).
+- **Колонка `users.role` — legacy**: не дропнута, пишется shim'ом при создании, **гейты её не читают**.
+- **Админ** модерирует; **не создаёт блоги/главы**; сам возможностей не имеет (env-based, без строки
+  в `users`) — бар «Реакции» ему не рендерится. Ведёт доску «Ищем ревьюеров», разбирает запросы/заявки,
+  баннеры и пожертвования. Админка — полноэкранная, навигация: Модерация / Люди / Платформа.
+
+### Две оси состояния главы (binding; Фаза 13)
+`chapter_revisions.status` = `draft|published` (публикация) и `chapter_revisions.review_status` =
+`none|requested|in-review|changes-requested|reviewed` (ревью) — **независимы**. Единый источник
+предикатов и подписей — `src/lib/review-status.ts` (`isReviewOpen`, `isRevisionEditable`,
+`PUBLICATION_META`, `REVIEW_META`, `statusDotClass`); локальных копий множества активных статусов
+заводить нельзя (до Ф13 их было девять).
+- **Публикация свободна**: ревьюеры не нужны никогда, гейт «все approve» удалён.
+  Роут — `POST /api/author/chapters/[chapterId]/publish` (он же принимает `scheduledAt`).
+- **Публикация не трогает ось ревью**; `reviewed` переживает публикацию — это основание кредита.
+- **Кредит `reviewer_history` — только за `approve`** (публиковать можно посреди ревью);
+  `reviewLoad −1` — всем назначенным.
+- **Правка опубликованной главы** заводит ревизию-черновик поверх; читатель видит опубликованную,
+  пока автор не опубликует новую (ридер-селекторы фильтруют `status='published'` ДО `max(number)`).
+- Удаление блога требует `status='draft' AND review_status='none'` по всем ревизиям —
+  одной проверки `draft` НЕДОСТАТОЧНО (глава на ревью тоже `draft`).
 
 ### Review-flow
 - Назначение ревьюеров на главу + **ведущий (primary)**; вердикты на handle/ревизию; `reviewer_history`
@@ -307,7 +336,9 @@ DPI-инцидент 2026-07-11, продление LE-сертификата) �
   `chapter_reviewers` (`reviewLoad +1`). Все downstream-гейты (verdict/threads/chat/publish/инбокс/queue)
   опираются на `chapter_reviewers`, поэтому согласие соблюдается без их правок. publish делает `reviewLoad −1`.
   `submit-revision` (Ф7) переносит уже принявших напрямую — намеренный carry-forward (re-consent не нужен,
-  backlog P2 Ф10). Главу `under-review`/`published` редактор править не даёт (`409`). match%/«Топ» (навыки
+  backlog P2 Ф10). ⚠️ Ф13: submit ставит `review_status='requested'` и **обнуляет вердикты своей ревизии**
+  (фикс З-05); первый accept переводит в `in-review`; редактор не даёт править только пока ревью открыто
+  (published — даёт, заводя черновик поверх). match%/«Топ» (навыки
   50%+рейтинг 30%+объём 20%) — чистый `src/lib/reviewer-match.ts`; flag «навыки не совпадают» доступен лишь
   при match<50% (перепроверка на сервере) → ревизия `changes-requested`. Оценки приватны: наружу только
   агрегат `users.reviewerRating`.
@@ -318,24 +349,28 @@ DPI-инцидент 2026-07-11, продление LE-сертификата) �
   `src/components/blocks/anchors.ts`); не перепутать.
 - **Review-flow (Фаза 7) — POV серверный.** Доступ к `app/api/review/**` — через `resolveReviewAccess()`
   (`src/lib/queries/review.ts`): автор-владелец ИЛИ назначенный ревьюер. Вердикт — только ревьюер;
-  apply/publish/submit-revision/primary-change — только автор. Демо-дропдаута POV из прототипа нет.
-  Review-`threads` ≠ публичные `public_comments` (Фаза 8) — разные таблицы/роуты; ревьюер участвует в
-  ревью-тредах, но **никогда** не в публичных комментариях.
-- **Apply-and-close правит блоки текущей under-review ревизии in-place** (не плодит ревизии). Новая
-  ревизия — только «Отправить v{N+1}» (`submit-revision`: snapshot блоков, `prev_blocks`=последняя
-  published, вердикты обнулены). Публикация — гейт «все approve» (перепроверяется в БД) + `reviewer_history`.
+  apply/submit-revision/primary-change — только автор. Демо-дропдаута POV из прототипа нет.
+  ⚠️ Ф13: **публикация вышла из review-flow** — это `POST /api/author/chapters/[id]/publish`
+  (ownership, а не позиция в ревью-сессии). Review-`threads` ≠ публичные `public_comments` (Фаза 8) —
+  разные таблицы/роуты; ревьюер участвует в ревью-тредах и **в публичных комментариях тоже**,
+  кроме глав, которые ревьюит/ревьюил (конфликт интересов).
+- **Apply-and-close правит блоки текущей ревизии на ревью in-place** (не плодит ревизии). Новые
+  ревизии — «Отправить v{N+1}» (`submit-revision`: snapshot блоков, `prev_blocks`=последняя published,
+  вердикты обнулены) **и правка опубликованной главы** (`PATCH` заводит черновик поверх, Ф13).
 - **`router.refresh()` в клиентских ревью-действиях оборачивать в `startTransition`** — иначе он ловит
   Suspense-границу `loading.tsx`, ReviewScreen перемонтируется и теряет тост/локальный UI-стейт, а статус
   не обновляется без hard reload (`src/components/review/review-screen.tsx`). Кросс-экранный sync = поллинг
   (30с) + refresh; вебсокетов нет. Presence (Фаза 12) — heartbeat: ревьюер шлёт
   `POST /api/review/[id]/heartbeat` при открытии и в каждом поллинге; `online = last_seen_at ≥ now−90с`
   (деривация в `queries/review.ts`); typing-индикатора нет (backlog).
-- **Публикация (Фаза 12) — единый `publishRevision()`** (`src/lib/queries/publish.ts`): его используют
-  author-publish, admin force-approve и cron. Внутри транзакции: гейт all-approve (для gate="all-approve"),
-  снапшот кредита, `reviewLoad −1`, fan-out `new_chapter` подписчикам автора, void pending
-  `primary_change_requests`. Отложенная публикация: `publish`-роут принимает `{scheduledAt}` (или `null`
-  для отмены), `/api/cron/publish` (Bearer `CRON_SECRET`, constant-time) публикует наступившие, перепроверяя
-  гейт; провал гейта снимает план + уведомление `scheduled_publish_failed`. Снятие ведущего админом
+- **Публикация — единый `publishRevision()`** (`src/lib/queries/publish.ts`): его используют
+  author-publish, admin force-approve и cron. ⚠️ Ф13: параметра `gate` НЕТ — ревью-гейт удалён,
+  осталась одна race-safe перепроверка «ревизия ещё не published». Внутри транзакции: кредит
+  `reviewer_history` **только за `approve`**, `reviewLoad −1` всем назначенным, fan-out `new_chapter`
+  подписчикам **только при первой публикации главы**, void pending `primary_change_requests`.
+  Отложенная публикация: author-`publish`-роут принимает `{scheduledAt}` (или `null` для отмены),
+  `/api/cron/publish` (Bearer `CRON_SECRET`, constant-time) публикует наступившие **только у последней
+  ревизии**; при появлении новой ревизии план гасится в `submit-revision`/fork. Снятие ведущего админом
   переназначает primary детерминированно (первый по handle из оставшихся).
 - **Прод-деплой (Фаза 12)**: standalone-сборка ТОЛЬКО с `BUILD_STANDALONE=1` (иначе ломается `next start`);
   `outputFileTracingExcludes` в `next.config.ts` ОБЯЗАТЕЛЕН — без него трейсер утаскивает `.env*`/`.git`/
@@ -344,12 +379,14 @@ DPI-инцидент 2026-07-11, продление LE-сертификата) �
   (БЕЗ `\$`-экранирования). Строго один Node-инстанс (in-memory rate-limit). На VPS рядом AmneziaWG
   в Docker (51820/udp, 51821/tcp) — ufw-правила не трогать.
 - **Создание пользователей — только админом** (`POST /api/admin/users` + форма в «Люди»);
-  self-registration нет по построению (альфа). Роль задаётся один раз при создании; admin-роль через
-  API не создаётся. Смена пароля пользователю — `password` в `PATCH /api/admin/users/[handle]`
+  self-registration нет по построению (альфа). ⚠️ Ф13: вместо роли задаются **возможности**
+  (чекбоксы `canAuthor`/`isReviewer`, обе выключены = читатель) и их можно менять позже —
+  `PATCH /api/admin/users/[handle]`. Смена пароля пользователю — `password` там же
   (ui-feedback-3); активные сессии при этом НЕ гасятся (backlog; немедленный разлогин — бан).
 - **Удаление блога автором** (`DELETE /api/author/blogs/[blogId]`, ui-feedback-3) — только полностью
-  черновиковый блог: все ревизии всех глав `draft` и `publishedAt IS NULL`, иначе 409; гейт
-  перечитывается ВНУТРИ транзакции (анти-TOCTOU). `public_comments`/`removed_reviewers` ссылаются по
+  черновиковый блог: все ревизии всех глав `status='draft' AND review_status='none'` и
+  `publishedAt IS NULL`, иначе 409 (⚠️ Ф13: одной проверки `draft` мало — глава на ревью тоже `draft`);
+  гейт перечитывается ВНУТРИ транзакции (анти-TOCTOU). `public_comments`/`removed_reviewers` ссылаются по
   `blogSlug` без FK — чистятся явно; остальное сносят каскады схемы. Published-блоги не удаляются
   никогда (кредит `reviewer_history`); их скрывает админ через `hidden`.
 - **Автосейв редактора (ui-feedback-3)**: только СТРУКТУРНЫЕ правки блоков

@@ -111,7 +111,10 @@ timestamps — **Unix seconds**, JSON-поля — строки/`JSONB`, чит�
 
 ```
 users
-  id, handle (uniq), role(reader|author|reviewer|admin), password_hash,
+  id, handle (uniq), role(reader|author|reviewer|admin) -- LEGACY, гейты не читают (Ф13),
+  is_reviewer, can_author,         -- ВОЗМОЖНОСТИ (Ф13): выдаёт админ; обе false = читатель
+  introduced_by→users.handle|NULL, -- кто пригласил (уровень бейджа, Ф14)
+  password_hash,
   display_name, bio, avatar_url, links(JSON), slug(uniq),
   is_blocked, commenting_blocked, created_at,
   competencies(JSON[]),            -- что ревьюер может рецензировать (этап «подбор»)
@@ -127,11 +130,15 @@ chapters
   skills(JSON[])               -- ключевые навыки статьи: обяз. для отправки, видны читателю
   UNIQUE(blog_id, slug)
 
-chapter_revisions
-  id, chapter_id→chapters(CASCADE), number, status(draft|under-review|changes-requested|published),
+chapter_revisions            -- ДВЕ независимые оси состояния (Ф13)
+  id, chapter_id→chapters(CASCADE), number,
+  status(draft|published),                                     -- ось публикации
+  review_status(none|requested|in-review|changes-requested|reviewed),  -- ось ревью
   summary, blocks(JSONB), prev_blocks(JSONB),  -- снапшот последней публикации (для инлайн-диффа)
-  submitted_at, published_at
+  submitted_at, published_at, scheduled_at
   UNIQUE(chapter_id, number)
+  -- До Ф13 status совмещал обе оси (under-review/changes-requested); миграция 0007 их развела.
+  -- Мёртвые значения в данных не остались (бэкфилл), но на уровне SQLite колонка — свободный text.
 
 chapter_reviewers            -- назначения + вердикты на ревизию
   chapter_id→chapters, revision_number, handle→users.handle,

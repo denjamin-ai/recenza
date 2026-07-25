@@ -246,23 +246,32 @@ test("COM-STALE @regression: комментарий к прошлой ревиз
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// COM-GATING — серверный commentGate по ролям (негативы через API-контексты)
+// COM-GATING — серверный commentGate (Ф13: конфликт интересов вместо ролевых запретов)
 // ─────────────────────────────────────────────────────────────────────────────
-test("COM-GATING @critical: серверный гейт комментирования — ревьюер 403, troll 403, гость 401, чужая глава 404", async ({
+test("COM-GATING @critical: серверный гейт комментирования — конфликт интересов 403, troll 403, гость 401, чужая глава 404", async ({
   api,
   asReviewer,
 }) => {
   const target = { blogSlug: BLOG.slug, chapterSlug: CHAPTERS.published.slug };
 
-  await test.step("(а) Ревьюер: POST /api/comments → 403 «Ревьюеры не участвуют…»", async () => {
+  await test.step("(а) Рецензировавший эту главу: POST /api/comments → 403 (конфликт интересов)", async () => {
     const ctx = await api("reviewer");
     const res = await ctx.post("/api/comments", {
       data: { ...target, text: "попытка ревьюера e2e" },
     });
     expect(res.status()).toBe(403);
     expect(((await res.json()) as { error?: string }).error).toBe(
-      "Ревьюеры не участвуют в публичных обсуждениях.",
+      "Вы рецензировали эту главу — публичное обсуждение недоступно.",
     );
+  });
+
+  await test.step("(а2) Автор блога комментирует свою главу (ролевого запрета нет)", async () => {
+    const ctx = await api("author");
+    await throttleMutation(USERS.author.handle);
+    const res = await ctx.post("/api/comments", {
+      data: { ...target, text: "автор отвечает читателям e2e" },
+    });
+    expect(res.status()).toBe(200);
   });
 
   await test.step("(б) troll (commentingBlocked): POST → 403 «Комментирование ограничено.»", async () => {
@@ -289,6 +298,8 @@ test("COM-GATING @critical: серверный гейт комментирова
 
   await test.step("(г) Автор в чужую главу (hidden-blog/intro): POST → 404", async () => {
     const ctx = await api("author");
+    // Шаг (а2) уже потратил action-limit автора 1/сек — иначе прилетит 429 вместо 404.
+    await throttleMutation(USERS.author.handle);
     const res = await ctx.post("/api/comments", {
       data: {
         blogSlug: HIDDEN_BLOG.slug,
@@ -302,12 +313,12 @@ test("COM-GATING @critical: серверный гейт комментирова
     expect(((await res.json()) as { error?: string }).error).toBe("Глава не найдена.");
   });
 
-  await test.step("(д) UI: у ревьюера нет формы комментария, виден гейт-текст", async () => {
+  await test.step("(д) UI: у рецензировавшего нет формы комментария, виден гейт-текст конфликта", async () => {
     const comments = new CommentsPage(asReviewer.page, USERS.reviewer.handle);
     await asReviewer.goto(CHAPTER_PATH);
     await expect(comments.heading).toBeVisible();
     await expect(
-      asReviewer.page.getByText("Ревьюеры не участвуют в публичных обсуждениях."),
+      asReviewer.page.getByText("Вы рецензировали эту главу — публичное обсуждение недоступно."),
     ).toBeVisible();
     await expect(comments.composer).toHaveCount(0);
   });

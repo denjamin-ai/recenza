@@ -7,6 +7,7 @@ import { CommentsSection } from "./comments-section";
 export async function CommentsSlot({
   blogSlug,
   chapterSlug,
+  chapterId,
   revision,
   blogAuthorId,
   sectionId,
@@ -14,6 +15,7 @@ export async function CommentsSlot({
 }: {
   blogSlug: string;
   chapterSlug: string;
+  chapterId: string;
   revision: number;
   blogAuthorId: string;
   sectionId: string;
@@ -22,6 +24,7 @@ export async function CommentsSlot({
   const data = await getChapterComments({
     blogSlug,
     chapterSlug,
+    chapterId,
     currentRevision: revision,
     viewer,
     blogAuthorId,

@@ -235,17 +235,23 @@ test.describe("Подбор ревьюеров (MATCH-*)", () => {
       }).toPass({ timeout: 20_000 });
     });
 
-    await test.step("reader теперь reviewer: логин ведёт роль reviewer", async () => {
+    await test.step("аккаунт получил ВОЗМОЖНОСТЬ «ревьюер» и доступ к кабинету", async () => {
       const ctx = await newApiContext();
       const login = await ctx.post("/api/auth/user", { data: { handle: USERS.reader.handle, password: PASSWORD } });
       expect(login.ok()).toBe(true);
       const me = await ctx.get("/api/auth/user");
-      const body = (await me.json()) as { user?: { role?: string } };
-      expect(body.user?.role).toBe("reviewer");
+      const body = (await me.json()) as { user?: { isReviewer?: boolean; canAuthor?: boolean } };
+      // Ф13: приём заявки выдаёт возможность, а не legacy-роль.
+      expect(body.user?.isReviewer).toBe(true);
+      // Базовые возможности не тронуты — аккаунт не «сменил роль», а получил новую.
+      expect(body.user?.canAuthor).toBe(false);
+      // Гейт кабинета читает возможность из БД — редиректа на / больше нет.
+      const cabinet = await ctx.get("/reviewer", { maxRedirects: 0 });
+      expect(cabinet.status()).toBe(200);
       await ctx.dispose();
     });
 
-    // Возвращаем роль reader для последующих прогонов/спеков.
+    // Возвращаем исходные возможности для последующих прогонов/спеков.
     reseed();
   });
 });

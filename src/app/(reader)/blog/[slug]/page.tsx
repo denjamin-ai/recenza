@@ -3,7 +3,7 @@
 
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, getSession } from "@/lib/auth";
 import { getReadableBlog } from "@/lib/queries/chapters";
 import { getReaderEngagement } from "@/lib/queries/engagement";
 import { buildReaderSections } from "@/lib/queries/reader-sections";
@@ -39,9 +39,13 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 export default async function BlogPage({ params, searchParams }: { params: Params; searchParams: Search }) {
   const { slug } = await params;
   const { mode } = await searchParams;
-  const [blog, viewer] = await Promise.all([getReadableBlog(slug), getCurrentUser()]);
+  // Фаза 13: ролевой изоляции автора больше нет — любой аккаунт читает любой видимый блог (З-07).
+  const [blog, viewer, session] = await Promise.all([
+    getReadableBlog(slug),
+    getCurrentUser(),
+    getSession(),
+  ]);
   if (!blog) notFound();
-  if (viewer?.role === "author" && blog.author.id !== viewer.id) notFound();
   // Явный guard: getReadableBlog уже возвращает null при нуле published-глав, но защищаемся от
   // обращения blog.chapters[0] по любой будущей ветке (code-review P1).
   if (blog.chapters.length === 0) notFound();
@@ -64,10 +68,14 @@ export default async function BlogPage({ params, searchParams }: { params: Param
       sections={sections}
       isAuthed={!!viewer}
       engagement={engagement}
-      canEngage={!viewer || viewer.role === "reader"}
+      canEngage={!session.isAdmin}
       singleHref={`/blog/${slug}/${blog.chapters[0].slug}`}
       wholeHref={`/blog/${slug}?mode=whole`}
-      viewer={viewer ? { id: viewer.id, role: viewer.role, commentingBlocked: viewer.commentingBlocked } : null}
+      viewer={
+        viewer
+          ? { id: viewer.id, handle: viewer.handle, commentingBlocked: viewer.commentingBlocked }
+          : null
+      }
     />
   );
 }

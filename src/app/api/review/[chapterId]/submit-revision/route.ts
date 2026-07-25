@@ -1,5 +1,6 @@
-// «Отправить v{N+1}» (Фаза 7) — author-only. Создаёт НОВУЮ ревизию (number+1) на основе текущих блоков,
-// статус under-review, переносит назначения ревьюеров с обнулёнными вердиктами. prev_blocks новой ревизии
+// «Отправить v{N+1}» (Фаза 7) — author-only. Создаёт НОВУЮ ревизию (number+1) на основе текущих блоков
+// (Фаза 13: status='draft' + review_status='in-review' — ревьюеры уже приняты и переносятся сюда),
+// переносит назначения ревьюеров с обнулёнными вердиктами. prev_blocks новой ревизии
 // = блоки последней ОПУБЛИКОВАННОЙ ревизии (или []), чтобы инлайн-дифф показывал изменения с публикации.
 // Предыдущая ревизия сохраняется как история (снапшот-до-записи соблюдён). Уведомляем ревьюеров.
 
@@ -12,8 +13,8 @@ import { hitActionRate } from "@/lib/rate-limit";
 import { stringifyJson } from "@/lib/db/json";
 import { createNotifications } from "@/lib/queries/notifications";
 import { REVIEW_NOTIFY, resolveReviewAccess, reviewerReviewHref, userIdsByHandle } from "@/lib/queries/review";
+import { isReviewOpen } from "@/lib/review-status";
 
-const ACTIVE = new Set(["under-review", "changes-requested"]);
 const MAX_SUMMARY = 2000;
 
 export async function POST(
@@ -39,7 +40,7 @@ export async function POST(
   }
 
   const { session } = access;
-  if (!ACTIVE.has(session.revision.status)) {
+  if (!isReviewOpen(session.revision.status, session.revision.reviewStatus)) {
     return NextResponse.json({ error: "Главу нельзя пересдать из текущего статуса." }, { status: 409 });
   }
   if (session.reviewers.length === 0) {
@@ -77,12 +78,19 @@ export async function POST(
       await tx.insert(chapterRevisions).values({
         chapterId,
         number: newNumber,
-        status: "under-review",
+        status: "draft",
+        reviewStatus: "in-review", // ревьюеры переносятся уже принявшими — re-consent не требуется
         summary,
         blocks: stringifyJson(session.revision.blocks),
         prevBlocks,
         submittedAt: now,
       });
+      // Отложенная публикация ПРЕДЫДУЩЕЙ ревизии теряет смысл: cron опубликовал бы устаревший
+      // текст (и выдал кредит/декремент reviewLoad не за ту версию). Гасим план.
+      await tx
+        .update(chapterRevisions)
+        .set({ scheduledAt: null })
+        .where(eq(chapterRevisions.id, session.revision.id));
       // Переносим назначения на новую ревизию с обнулёнными вердиктами.
       for (const r of session.reviewers) {
         await tx.insert(chapterReviewers).values({

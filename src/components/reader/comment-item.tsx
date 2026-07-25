@@ -115,7 +115,7 @@ export function CommentItem({
                 <span className="font-medium text-[var(--foreground)]">
                   {comment.author?.displayName ?? "Аноним"}
                 </span>
-                {comment.author?.role === "author" && (
+                {comment.author?.isBlogAuthor && (
                   <span className="rounded-[var(--radius-pill)] border border-[var(--accent)] px-1.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--accent)]">
                     автор
                   </span>

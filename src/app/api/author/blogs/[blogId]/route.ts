@@ -16,11 +16,15 @@ import { hitActionRate } from "@/lib/rate-limit";
 import { stringifyJson } from "@/lib/db/json";
 import { slugify, uniqueSlug } from "@/lib/slug";
 import { COMPLEXITIES, type Complexity } from "@/types";
-import type { RevisionStatus } from "@/types";
+import type { ReviewStatus, RevisionStatus } from "@/types";
 
-// Гейт удаления: какие статусы ревизий допустимы у удаляемого блога. Расширение политики
-// (напр. разрешить under-review с отзывом приглашений) = правка этого набора + чистка леджера.
-const DELETABLE_REVISION_STATUSES: readonly RevisionStatus[] = ["draft"];
+// Гейт удаления: удалить можно только полностью черновиковый блог, по КОТОРОМУ НЕ ИДЁТ РЕВЬЮ.
+// ⚠️ Ф13: одной проверки `status === "draft"` теперь НЕДОСТАТОЧНО — после разведения осей глава
+// на активном ревью тоже `draft`. Без второй оси автор снёс бы блог из-под ревьюеров, а их
+// `users.review_load` остался бы завышенным навсегда (декремент делает только публикация).
+function isDeletableRevision(status: RevisionStatus, reviewStatus: ReviewStatus): boolean {
+  return status === "draft" && reviewStatus === "none";
+}
 
 export async function PATCH(
   req: Request,
@@ -188,11 +192,11 @@ export async function DELETE(
   let blocked = false;
   await db.transaction(async (tx) => {
     const revisionStatuses = await tx
-      .select({ status: chapterRevisions.status })
+      .select({ status: chapterRevisions.status, reviewStatus: chapterRevisions.reviewStatus })
       .from(chapterRevisions)
       .innerJoin(chapters, eq(chapterRevisions.chapterId, chapters.id))
       .where(eq(chapters.blogId, blogId));
-    blocked = revisionStatuses.some((r) => !DELETABLE_REVISION_STATUSES.includes(r.status));
+    blocked = revisionStatuses.some((r) => !isDeletableRevision(r.status, r.reviewStatus));
     if (blocked) return;
     await tx.delete(publicComments).where(eq(publicComments.blogSlug, blog.slug));
     await tx.delete(removedReviewers).where(eq(removedReviewers.blogSlug, blog.slug));

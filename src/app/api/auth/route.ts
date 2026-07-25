@@ -56,8 +56,7 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   const session = await getSession();
   session.isAdmin = true;
-  delete session.userId; // инвариант: admin без userId/userRole
-  delete session.userRole;
+  delete session.userId; // инвариант: admin без userId
   await session.save();
 
   clearLoginRate(key);

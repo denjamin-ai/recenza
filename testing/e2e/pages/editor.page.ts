@@ -85,9 +85,9 @@ export class EditorPage {
     }).toPass({ timeout: 20_000 });
   }
 
-  /** «Готовность N/7» в шапке шторки. */
+  /** «Готовность N/5» в шапке шторки (Ф13: было 7 — пункты «ревьюеры»/«ведущий» ушли из чек-листа). */
   get readinessHeading(): Locator {
-    return this.submitSheet.getByRole("heading", { name: /Готовность \d+\/7/ });
+    return this.submitSheet.getByRole("heading", { name: /Готовность \d+\/5/ });
   }
 
   get skillsInput(): Locator {

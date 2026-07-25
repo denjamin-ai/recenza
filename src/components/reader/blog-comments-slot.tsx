@@ -12,11 +12,15 @@ export async function BlogCommentsSlot({
   viewer,
 }: {
   blogSlug: string;
-  chapters: { slug: string; title: string; revision: number }[];
+  chapters: { id: string; slug: string; title: string; revision: number }[];
   blogAuthorId: string;
   viewer: CommentViewer | null;
 }) {
   const data = await getBlogComments({ blogSlug, chapters, viewer, blogAuthorId });
+  // Ф13: главы, которые зритель рецензировал, не предлагаются композеру (конфликт интересов).
+  // Сервер всё равно перепроверяет цель в POST /api/comments — это только UX-фильтр.
+  const conflicted = new Set(data.conflictedChapterSlugs ?? []);
+  const commentable = chapters.filter((c) => !conflicted.has(c.slug));
 
   return (
     <section id="comments" aria-label="Комментарии" className="mt-12 border-t border-[var(--border)] pt-8">
@@ -26,7 +30,7 @@ export async function BlogCommentsSlot({
       <CommentsSection
         blogSlug={blogSlug}
         chapterSlug={null}
-        chapters={chapters.map((c) => ({ slug: c.slug, title: c.title }))}
+        chapters={commentable.map((c) => ({ slug: c.slug, title: c.title }))}
         sectionId="comments"
         current={data.current}
         older={data.older}

@@ -1,7 +1,11 @@
 // Главная (ui-feedback-4 П2, прототип public/feed.jsx): БЕЗ табов/поиска/фильтров, карточки БЛОГОВ.
-// Ролевой сплит (решение владельца): reader → «Ваша лента» (hero + секции «Подписки»/«Свежее»);
-// гость/автор/ревьюер (и reader по ?view=all) → каталог «Все блоги».
-// Ролевая изоляция автора: viewer-author видит ТОЛЬКО свои блоги (restrictAuthorId).
+// Вошедший пользователь → «Ваша лента» (hero + секции «Подписки»/«Свежее»);
+// гость (и любой пользователь по ?view=all) → каталог «Все блоги».
+//
+// ⚠️ Фаза 13: ролевой изоляции автора БОЛЬШЕ НЕТ. `restrictAuthorId` снят (З-07) — автор читает
+// чужие блоги наравне со всеми, поэтому и заголовок каталога всегда «Все блоги» (пункт из 15.3
+// вынужденно поднят сюда: «Все мои блоги» над чужими блогами было бы ложью). Свои блоги автора
+// живут в его кабинете /author.
 
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -29,21 +33,17 @@ type Search = Promise<{ view?: string }>;
 export default async function HomePage({ searchParams }: { searchParams: Search }) {
   const { view } = await searchParams;
   const user = await getCurrentUser();
-  const restrictAuthorId = user?.role === "author" ? user.id : undefined;
-  const blogs = await getVisibleBlogs(restrictAuthorId ? { restrictAuthorId } : undefined);
+  const blogs = await getVisibleBlogs();
 
-  if (user?.role === "reader" && view !== "all") {
-    return <ReaderHome user={user} blogs={blogs} />;
-  }
-  // ui-feedback-6 П6: автор видит только свои блоги — каталог называется «Все мои блоги».
-  return <Catalog blogs={blogs} title={user?.role === "author" ? "Все мои блоги" : "Все блоги"} />;
+  if (user && view !== "all") return <ReaderHome user={user} blogs={blogs} />;
+  return <Catalog blogs={blogs} />;
 }
 
-/** Каталог — гость/ревьюер и reader по «Все блоги →»; автор — «Все мои блоги» (прототип ArticleIndexScreen). */
-function Catalog({ blogs, title }: { blogs: BlogCardView[]; title: string }) {
+/** Каталог — гость и любой пользователь по «Все блоги →» (прототип ArticleIndexScreen). */
+function Catalog({ blogs }: { blogs: BlogCardView[] }) {
   return (
     <div className="mx-auto w-full max-w-[var(--max-content)] px-6 py-10">
-      <h1 className="mb-3">{title}</h1>
+      <h1 className="mb-3">Все блоги</h1>
       <p className="mb-6 text-[var(--muted-foreground)]">
         {blogs.length} {plural(blogs.length, "публикация", "публикации", "публикаций")}
       </p>

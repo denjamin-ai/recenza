@@ -68,7 +68,8 @@ export async function POST(req: Request): Promise<NextResponse> {
   const session = await getSession();
   session.isAdmin = false; // инвариант: пользователь без isAdmin=true
   session.userId = row.id;
-  session.userRole = row.role;
+  // Возможности в cookie НЕ кладём (Фаза 13): гарды перечитывают их из БД, иначе отзыв
+  // возможности админом не действовал бы до перелогина.
   await session.save();
 
   clearLoginRate(key);

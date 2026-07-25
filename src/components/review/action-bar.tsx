@@ -1,13 +1,16 @@
 // Нижняя панель действий ReviewPage (Фаза 7), завязана на POV (D1, серверная роль).
-// Ревьюер: «Нужны правки» / «Одобрить» (только активный статус). Автор: «Сменить ведущего» /
-// «Опубликовать» (при всех approve) / «Отправить v{N+1}».
+// Ревьюер: «Нужны правки» / «Одобрить» (только пока ревью открыто).
+// Автор: «Сменить ведущего» / «Опубликовать» / «Отправить v{N+1}».
+// ⚠️ Фаза 13: «Опубликовать» больше НЕ требует всех approve — публикация свободна.
 "use client";
 
-import type { RevisionStatus, Verdict } from "@/types";
+import { isReviewOpen } from "@/lib/review-status";
+import type { ReviewStatus, RevisionStatus, Verdict } from "@/types";
 
 export function ActionBar({
   pov,
   status,
+  reviewStatus,
   reviewerCount,
   openThreadCount,
   allApproved,
@@ -24,6 +27,7 @@ export function ActionBar({
 }: {
   pov: "author" | "reviewer";
   status: RevisionStatus;
+  reviewStatus: ReviewStatus;
   reviewerCount: number;
   openThreadCount: number;
   allApproved: boolean;
@@ -38,7 +42,7 @@ export function ActionBar({
   onPublish: () => void;
   onRequestPrimaryChange: () => void;
 }) {
-  const active = status === "under-review" || status === "changes-requested";
+  const active = isReviewOpen(status, reviewStatus);
 
   return (
     <div className="flex min-h-[60px] items-center gap-2 border-t border-[var(--border)] bg-[var(--background)] px-3 py-2 sm:px-5">
@@ -68,7 +72,8 @@ export function ActionBar({
           >
             Сменить ведущего
           </button>
-          {allApproved && active && (
+          {/* Фаза 13: публикация свободна — кнопка доступна автору всегда, пока версия не опубликована. */}
+          {status !== "published" && (
             <button
               type="button"
               onClick={onPublish}

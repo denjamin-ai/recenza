@@ -180,7 +180,9 @@ export async function seedAll(db: Db): Promise<void> {
   await db.delete(donationMethods);
   await db.delete(appSettings);
 
-  // ── 2. ПОЛЬЗОВАТЕЛИ (4 роли + доп. ревьюеры free/busy/full + заблокированные) ──
+  // ── 2. ПОЛЬЗОВАТЕЛИ (возможности + доп. ревьюеры free/busy/full + заблокированные) ──
+  // Фаза 13: гейтинг идёт по `canAuthor`/`isReviewer`; `role` остаётся legacy-полем (notNull)
+  // и держится в синхроне только чтобы отражать «главную» возможность аккаунта.
   await db.insert(users).values([
     {
       id: "usr_reader",
@@ -198,6 +200,7 @@ export async function seedAll(db: Db): Promise<void> {
       id: "usr_author",
       handle: "author",
       role: "author",
+      canAuthor: true,
       passwordHash: PWD_HASH,
       displayName: "Антон Автор",
       slug: "author",
@@ -210,6 +213,7 @@ export async function seedAll(db: Db): Promise<void> {
       id: "usr_reviewer",
       handle: "reviewer",
       role: "reviewer",
+      isReviewer: true,
       passwordHash: PWD_HASH,
       displayName: "Раиса Ревьюер",
       slug: "reviewer",
@@ -225,6 +229,7 @@ export async function seedAll(db: Db): Promise<void> {
       id: "usr_rev_lena",
       handle: "lena_review",
       role: "reviewer",
+      isReviewer: true,
       passwordHash: PWD_HASH,
       displayName: "Лена Базы",
       slug: "lena-review",
@@ -239,6 +244,7 @@ export async function seedAll(db: Db): Promise<void> {
       id: "usr_rev_max",
       handle: "max_review",
       role: "reviewer",
+      isReviewer: true,
       passwordHash: PWD_HASH,
       displayName: "Макс Девопс",
       slug: "max-review",
@@ -253,6 +259,7 @@ export async function seedAll(db: Db): Promise<void> {
       id: "usr_rev_sergey",
       handle: "sergey_review",
       role: "reviewer",
+      isReviewer: true,
       passwordHash: PWD_HASH,
       displayName: "Сергей Секьюрити",
       slug: "sergey-review",
@@ -277,11 +284,29 @@ export async function seedAll(db: Db): Promise<void> {
       id: "usr_ghost",
       handle: "ghost",
       role: "author",
+      canAuthor: true,
       passwordHash: PWD_HASH,
       displayName: "Гость Призрак",
       slug: "ghost",
       isBlocked: true, // негативный кейс: блог автора скрыт везде
       createdAt: ago(30 * DAY),
+    },
+    {
+      // Фаза 13: доказательство «единого аккаунта» — ОБЕ возможности сразу.
+      // Ведёт свой блог и одновременно рецензирует чужие (в старой модели было невозможно).
+      id: "usr_duo",
+      handle: "duo",
+      role: "author", // legacy-shim
+      canAuthor: true,
+      isReviewer: true,
+      passwordHash: PWD_HASH,
+      displayName: "Дуня Универсал",
+      slug: "duo",
+      bio: "Пишу и рецензирую.",
+      competencies: stringifyJson(["TypeScript", "Тестирование"]),
+      reviewLoad: 0,
+      reviewCapacity: 2,
+      createdAt: ago(25 * DAY),
     },
   ]);
 
@@ -366,13 +391,19 @@ export async function seedAll(db: Db): Promise<void> {
     },
   ]);
 
-  // ── 5. РЕВИЗИИ (опубликованная глава с 2 ревизиями + prev_blocks; остальные статусы) ──
+  // ── 5. РЕВИЗИИ — ДВЕ ОСИ (Фаза 13): status = публикация, reviewStatus = ревью.
+  // Покрыты все сочетания, которые тестам нужно различать:
+  //   published+reviewed  — опубликовано с кредитом ревьюеров;
+  //   draft+in-review     — ревью идёт;
+  //   draft+changes-requested — ход за автором;
+  //   draft+none          — черновик, ревью не запрашивалось (и он же — путь свободной публикации).
   await db.insert(chapterRevisions).values([
     {
       id: "rev_pub_1",
       chapterId: "chp_published",
       number: 1,
       status: "published",
+      reviewStatus: "reviewed",
       summary: "Первая опубликованная версия.",
       blocks: stringifyJson(eventLoopBlocksV1),
       submittedAt: ago(70 * DAY),
@@ -383,6 +414,7 @@ export async function seedAll(db: Db): Promise<void> {
       chapterId: "chp_published",
       number: 2,
       status: "published",
+      reviewStatus: "reviewed",
       summary: "Расширенная версия с диаграммами и примерами.",
       blocks: stringifyJson(eventLoopBlocksV2),
       prevBlocks: stringifyJson(eventLoopBlocksV1), // снапшот для инлайн-диффа
@@ -393,7 +425,8 @@ export async function seedAll(db: Db): Promise<void> {
       id: "rev_ur_1",
       chapterId: "chp_under_review",
       number: 1,
-      status: "under-review",
+      status: "draft",
+      reviewStatus: "in-review",
       summary: "Отправлено на ревью, ожидает вердиктов.",
       blocks: stringifyJson(promisesBlocks),
       submittedAt: ago(5 * DAY),
@@ -402,7 +435,8 @@ export async function seedAll(db: Db): Promise<void> {
       id: "rev_cr_1",
       chapterId: "chp_changes",
       number: 1,
-      status: "changes-requested",
+      status: "draft",
+      reviewStatus: "changes-requested",
       summary: "Запрошены правки ведущим ревьюером.",
       blocks: stringifyJson(asyncAwaitBlocks),
       submittedAt: ago(10 * DAY),
@@ -412,6 +446,7 @@ export async function seedAll(db: Db): Promise<void> {
       chapterId: "chp_draft",
       number: 1,
       status: "draft",
+      reviewStatus: "none",
       summary: "Черновик, ещё не отправлен.",
       blocks: stringifyJson(generatorsBlocks),
     },
@@ -420,6 +455,7 @@ export async function seedAll(db: Db): Promise<void> {
       chapterId: "chp_ghost",
       number: 1,
       status: "draft",
+      reviewStatus: "none",
       blocks: stringifyJson(ghostBlocks),
     },
   ]);

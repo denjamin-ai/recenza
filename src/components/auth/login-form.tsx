@@ -1,15 +1,14 @@
 "use client";
 
-// Форма входа пользователя (reader/author/reviewer) → POST /api/auth/user.
-// После входа — полный переход (window.location) по роли, чтобы серверная шапка перерисовалась с сессией.
-// Гостевой intent (vote/bookmark/follow) реплеится через авторизованный API; next — относительный (anti-open-redirect).
+// Форма входа пользователя → POST /api/auth/user.
+// После входа — полный переход (window.location), чтобы серверная шапка перерисовалась с сессией.
+// Куда именно — решают ВОЗМОЖНОСТИ аккаунта (Ф13): обе → «Рабочее место», одна → её кабинет,
+// ни одной → лента. Гостевой intent (vote/bookmark/follow) реплеится через авторизованный API;
+// next — относительный (anti-open-redirect).
 
 import { useState } from "react";
 import { parseIntent, safeNext } from "@/lib/intent";
-
-function roleHome(role?: string): string {
-  return role === "author" ? "/author" : role === "reviewer" ? "/reviewer" : "/";
-}
+import { homeForCapabilities } from "@/lib/roles";
 
 // Реплей одного гостевого намерения (best-effort, идемпотентно — toggle-API не задваивает).
 async function replayIntent(raw?: string): Promise<void> {
@@ -51,10 +50,15 @@ export function LoginForm({ next, intent }: { next?: string; intent?: string }) 
         body: JSON.stringify({ handle: handle.trim(), password }),
       });
       if (res.ok) {
-        const data = (await res.json().catch(() => null)) as { user?: { role?: string } } | null;
-        const role = data?.user?.role;
+        const data = (await res.json().catch(() => null)) as {
+          user?: { canAuthor?: boolean; isReviewer?: boolean };
+        } | null;
+        const home = homeForCapabilities({
+          canAuthor: data?.user?.canAuthor === true,
+          isReviewer: data?.user?.isReviewer === true,
+        });
         await replayIntent(intent);
-        const dest = next ? safeNext(next, roleHome(role)) : roleHome(role);
+        const dest = next ? safeNext(next, home) : home;
         window.location.assign(dest);
         return;
       }

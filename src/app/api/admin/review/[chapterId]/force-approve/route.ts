@@ -1,17 +1,16 @@
-// Force-approve главы админом (Фаза 10; Фаза 12 — общий сервис publishRevision). ОБХОДИТ гейт
-// «все approve» (gate="force"), но сохраняет всё остальное: ревизия → published, кредит ревьюеров,
-// reviewLoad −1, publishedAt блога, уведомления (автору force_approved, ревьюерам published,
-// подписчикам new_chapter), гашение pending-запросов смены ведущего. Только админ.
+// Публикация главы админом (Фаза 10; Фаза 12 — общий сервис publishRevision). Ревизия → published,
+// кредит ревьюеров, reviewLoad −1, publishedAt блога, уведомления (автору force_approved, ревьюерам
+// published, подписчикам new_chapter), гашение pending-запросов смены ведущего. Только админ.
+//
+// ⚠️ Фаза 13: «обход гейта» больше не является смыслом этого роута — публикация свободна и для автора.
+// Роут остаётся как административное действие «опубликовать за автора» (с уведомлением автору);
+// пересмотр админского UI ревью — Ф15.
 
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { getReviewSession } from "@/lib/queries/review";
-import {
-  ACTIVE_REVISION_STATUSES,
-  PublishGateError,
-  publishRevision,
-} from "@/lib/queries/publish";
+import { PublishGateError, publishRevision } from "@/lib/queries/publish";
 
 export async function POST(
   req: Request,
@@ -26,8 +25,8 @@ export async function POST(
   const { chapterId } = await params;
   const session = await getReviewSession(chapterId);
   if (!session) return NextResponse.json({ error: "Глава не найдена." }, { status: 404 });
-  if (!ACTIVE_REVISION_STATUSES.has(session.revision.status)) {
-    return NextResponse.json({ error: "Главу нельзя опубликовать из текущего статуса." }, { status: 409 });
+  if (session.revision.status === "published") {
+    return NextResponse.json({ error: "Эта версия главы уже опубликована." }, { status: 409 });
   }
 
   try {
@@ -42,7 +41,7 @@ export async function POST(
         chapterTitle: session.chapter.title,
         authorId: session.blog.authorId,
       },
-      { gate: "force", notifyAuthorForceApproved: true },
+      { notifyAuthorForceApproved: true },
     );
   } catch (e) {
     if (e instanceof PublishGateError) return NextResponse.json({ error: e.reason }, { status: 409 });

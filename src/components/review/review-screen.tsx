@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { ReviewSession, ReviewThread } from "@/lib/queries/review";
+import { isReviewOpen } from "@/lib/review-status";
 import { ReviewHeader } from "./review-header";
 import { ConvoCanvas } from "./convo-canvas";
 import { ThreadsRail } from "./threads-rail";
@@ -47,7 +48,7 @@ export function ReviewScreen({
   const [flashKey, setFlashKey] = useState(0);
 
   const status = revision.status;
-  const active = status === "under-review" || status === "changes-requested";
+  const active = isReviewOpen(status, revision.reviewStatus);
   const myVerdict = reviewers.find((r) => r.handle === viewerHandle)?.verdict ?? null;
   const allApproved = session.allApproved;
   const anyChanges = reviewers.some((r) => r.verdict === "request-changes");
@@ -218,8 +219,11 @@ export function ReviewScreen({
     );
   };
 
+  // Фаза 13: публикация — авторский роут вне review-flow (ревьюеры для неё не нужны).
+  const publishHref = `/api/author/chapters/${chapter.id}/publish`;
+
   const publishNow = async () => {
-    const ok = await post(`/api/review/${chapter.id}/publish`, {}, {
+    const ok = await post(publishHref, {}, {
       kind: "ok",
       text: `Глава «${chapter.title}» опубликована.`,
       href: `/blog/${blog.slug}/${chapter.slug}`,
@@ -230,19 +234,18 @@ export function ReviewScreen({
 
   const schedulePublish = async (unixSeconds: number) => {
     const ok = await post(
-      `/api/review/${chapter.id}/publish`,
+      publishHref,
       { scheduledAt: unixSeconds },
-      { kind: "ok", text: "Публикация запланирована. Одобрения перепроверятся в момент публикации." },
+      { kind: "ok", text: "Публикация запланирована." },
     );
     if (ok) setPublishOpen(false);
   };
 
   const cancelSchedule = async () => {
-    await post(
-      `/api/review/${chapter.id}/publish`,
-      { scheduledAt: null },
-      { kind: "ok", text: "Отложенная публикация отменена." },
-    );
+    await post(publishHref, { scheduledAt: null }, {
+      kind: "ok",
+      text: "Отложенная публикация отменена.",
+    });
   };
 
   const submitPrimaryChange = async (toHandle: string, reason: string) => {
@@ -334,6 +337,7 @@ export function ReviewScreen({
       <ActionBar
         pov={pov}
         status={status}
+        reviewStatus={revision.reviewStatus}
         reviewerCount={reviewers.length}
         openThreadCount={openCount}
         allApproved={allApproved}

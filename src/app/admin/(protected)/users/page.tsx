@@ -1,8 +1,8 @@
-// Пользователи (Фаза 10): плотная таблица со sticky-заголовком, поиск (?q=), роль/статус-pill.
-// Модерация (баны/ёмкость) — на детальной странице /admin/users/[handle].
+// Пользователи (Фаза 10): плотная таблица со sticky-заголовком, поиск (?q=), возможности/статус-pill.
+// Модерация (баны/ёмкость/выдача возможностей) — на детальной странице /admin/users/[handle].
 import Link from "next/link";
 import { getAdminUsers } from "@/lib/queries/admin";
-import { ScreenHead, RolePill, Pill } from "@/app/admin/_components/primitives";
+import { ScreenHead, CapabilityPills, Pill } from "@/app/admin/_components/primitives";
 import { UserCreate } from "@/app/admin/_components/user-create";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,11 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
 
   return (
     <div>
-      <ScreenHead eyebrow="Люди" title="Пользователи" description="Роли, баны и ограничение комментирования. Роль меняется только через приём заявки с доски." />
+      <ScreenHead
+        eyebrow="Люди"
+        title="Пользователи"
+        description="Возможности, баны и ограничение комментирования. Возможности «автор» и «ревьюер» выдаёт и отзывает администратор в карточке пользователя."
+      />
 
       <UserCreate />
 
@@ -33,7 +37,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
           <thead className="sticky top-0 bg-[var(--bg-secondary)]">
             <tr className="text-left text-[var(--muted-foreground)]">
               <th className="px-3 py-2 font-medium">Пользователь</th>
-              <th className="px-3 py-2 font-medium">Роль</th>
+              <th className="px-3 py-2 font-medium">Возможности</th>
               <th className="px-3 py-2 font-medium">Статус</th>
               <th className="px-3 py-2 font-medium">Нагрузка</th>
             </tr>
@@ -50,7 +54,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
                   </Link>
                   <span className="ml-1 text-[var(--muted-foreground)]">@{u.handle}</span>
                 </td>
-                <td className="px-3 py-2"><RolePill role={u.role} /></td>
+                <td className="px-3 py-2"><CapabilityPills user={u} /></td>
                 <td className="px-3 py-2">
                   <span className="flex flex-wrap gap-1">
                     {u.isBlocked && <Pill tone="danger">Заблокирован</Pill>}
@@ -59,7 +63,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: P
                   </span>
                 </td>
                 <td className="px-3 py-2 text-[var(--muted-foreground)]">
-                  {u.role === "reviewer" ? `${u.reviewLoad}/${u.reviewCapacity}` : "—"}
+                  {u.isReviewer ? `${u.reviewLoad}/${u.reviewCapacity}` : "—"}
                 </td>
               </tr>
             ))}

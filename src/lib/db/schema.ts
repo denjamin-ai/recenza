@@ -21,12 +21,34 @@ import {
 import { ulid } from "ulid";
 
 // --- Перечисления (единый источник; src/types/index.ts выводит из них union-типы) ---
+/**
+ * @deprecated Фаза 13: ролевая модель заменена возможностями (`users.is_reviewer`/`can_author`).
+ * Колонка `users.role` НЕ дропается (деструктивных миграций нет) и пишется как legacy-shim при
+ * создании пользователя, но НИ ОДИН гейт её больше не читает. Возможности — `src/lib/roles.ts`.
+ */
 export const ROLES = ["reader", "author", "reviewer", "admin"] as const;
-export const REVISION_STATUSES = [
-  "draft",
-  "under-review",
+/**
+ * Ось ПУБЛИКАЦИИ (Фаза 13). Раньше сюда были подмешаны состояния ревью
+ * (`under-review`/`changes-requested`) — они уехали в `chapter_revisions.review_status`.
+ * Миграция 0007 перевела данные; на уровне SQLite колонка остаётся свободным `text`,
+ * поэтому сужение union'а — не деструктивное изменение.
+ */
+export const REVISION_STATUSES = ["draft", "published"] as const;
+/**
+ * Ось РЕВЬЮ (Фаза 13) — независима от публикации: главу можно опубликовать с `none`,
+ * а заявку на ревью оставить на уже опубликованную ревизию.
+ *   none              — ревью не запрашивалось
+ *   requested         — приглашения отправлены, никто ещё не принял
+ *   in-review         — есть принявший ревьюер, идёт ревью
+ *   changes-requested — ревьюер запросил правки (ход за автором)
+ *   reviewed          — все назначенные ревьюеры одобрили эту ревизию
+ */
+export const REVIEW_STATUSES = [
+  "none",
+  "requested",
+  "in-review",
   "changes-requested",
-  "published",
+  "reviewed",
 ] as const;
 export const VERDICTS = ["approve", "request-changes"] as const;
 export const THREAD_STATUSES = ["open", "resolved"] as const;
@@ -50,7 +72,13 @@ const id = () => text("id").primaryKey().$defaultFn(() => ulid());
 export const users = sqliteTable("users", {
   id: id(),
   handle: text("handle").notNull().unique(), // иммутабелен (см. PLAN §decisions); на него ссылаются ревью-таблицы
+  /** @deprecated Фаза 13 — legacy-shim (колонка notNull, пишется при создании). Гейты читают возможности ниже. */
   role: text("role", { enum: ROLES }).notNull(),
+  // Возможности аккаунта (Фаза 13). Читатель — базовый уровень: обе false. Выдаёт админ.
+  isReviewer: integer("is_reviewer", { mode: "boolean" }).notNull().default(false),
+  canAuthor: integer("can_author", { mode: "boolean" }).notNull().default(false),
+  /** Handle автора, пригласившего этого пользователя (уровень бейджа в Ф14). */
+  introducedBy: text("introduced_by").references((): AnySQLiteColumn => users.handle),
   passwordHash: text("password_hash").notNull(),
   displayName: text("display_name").notNull(),
   bio: text("bio"),
@@ -126,7 +154,9 @@ export const chapterRevisions = sqliteTable(
       .notNull()
       .references(() => chapters.id, { onDelete: "cascade" }),
     number: integer("number").notNull(),
+    // Две независимые оси (Фаза 13): публикация и ревью.
     status: text("status", { enum: REVISION_STATUSES }).notNull().default("draft"),
+    reviewStatus: text("review_status", { enum: REVIEW_STATUSES }).notNull().default("none"),
     summary: text("summary"),
     blocks: text("blocks"), // JSON Block[] (текущий контент) → parseJson
     prevBlocks: text("prev_blocks"), // JSON Block[] (снапшот последней публикации, для инлайн-диффа)

@@ -6,6 +6,7 @@ import * as schema from "@/lib/db/schema";
 export {
   ROLES,
   REVISION_STATUSES,
+  REVIEW_STATUSES,
   VERDICTS,
   THREAD_STATUSES,
   REPORT_STATUSES,
@@ -18,8 +19,11 @@ export {
 } from "@/lib/db/schema";
 
 // --- union-типы перечислений ---
+/** @deprecated Фаза 13 — гейтинг идёт по возможностям (`Capability`, src/lib/roles.ts). */
 export type Role = (typeof schema.ROLES)[number];
+/** Ось публикации: `draft | published`. Ось ревью — отдельный `ReviewStatus`. */
 export type RevisionStatus = (typeof schema.REVISION_STATUSES)[number];
+export type ReviewStatus = (typeof schema.REVIEW_STATUSES)[number];
 export type Verdict = (typeof schema.VERDICTS)[number];
 export type ThreadStatus = (typeof schema.THREAD_STATUSES)[number];
 export type ReportStatus = (typeof schema.REPORT_STATUSES)[number];
@@ -79,13 +83,16 @@ export type PublicUser = Omit<User, "passwordHash">;
  * Данные сессии iron-session (cookie `blog_session`).
  * Инвариант (binding): `isAdmin` и `userId` НИКОГДА не заданы одновременно
  *   — админ аутентифицируется по env-паролю и не имеет строки `users`;
- *   — пользователь (reader/author/reviewer) имеет `userId` + `userRole`, `isAdmin: false`.
+ *   — пользователь имеет `userId`, `isAdmin: false`.
+ *
+ * ⚠️ Фаза 13: поле `userRole` удалено. Возможности аккаунта НИКОГДА не берутся из cookie —
+ * они перечитываются из БД в гардах (`requireCapability`), иначе отзыв возможности админом
+ * не действовал бы до перелогина. Старые cookie с лишним полем расшифровываются штатно.
  * Канонический источник типа — здесь (общие типы импортируются из @/types). Логика — в src/lib/auth.ts.
  */
 export interface SessionData {
   isAdmin: boolean;
   userId?: string;
-  userRole?: Role;
 }
 export type AppSetting = typeof schema.appSettings.$inferSelect;
 export type NewAppSetting = typeof schema.appSettings.$inferInsert;

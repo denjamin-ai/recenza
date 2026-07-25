@@ -1,9 +1,12 @@
 // Модерация пользователя (Фаза 10) — только админ. Тумблеры isBlocked / commentingBlocked +
 // reviewCapacity + смена пароля (password → bcrypt-хэш; активные сессии не гасятся — backlog P2,
-// при необходимости немедленного разлогина есть бан). СТРОГИЙ allowlist полей: роль НИКОГДА не
-// редактируется обычным API (binding, CLAUDE.md §гейтинг) — единственный путь смены роли в
-// Фазе 10 — accept заявки с доски. Бан = soft (FK на users.handle запрещает hard-delete).
-// Бан автора скрывает его блоги (фильтр users.isBlocked в getReadableChapters/getReadableBlog).
+// при необходимости немедленного разлогина есть бан). Бан = soft (FK на users.handle запрещает
+// hard-delete). Бан автора скрывает его блоги (фильтр users.isBlocked в getReadableChapters).
+//
+// ⚠️ Фаза 13: сюда добавлены ВОЗМОЖНОСТИ `canAuthor` / `isReviewer` — решение владельца «роли выдаёт
+// администратор». Allowlist остаётся СТРОГИМ: спред тела в update() запрещён, поля перечислены явно.
+// Ни `role` (legacy-колонка), ни `handle`/`slug` через это API не редактируются никогда.
+// Отзыв возможности действует сразу, без перелогина: гарды перечитывают её из БД на каждый запрос.
 
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
@@ -25,14 +28,40 @@ export async function PATCH(
 
   const { handle } = await params;
 
-  let body: { isBlocked?: unknown; commentingBlocked?: unknown; reviewCapacity?: unknown; password?: unknown };
+  let body: {
+    isBlocked?: unknown;
+    commentingBlocked?: unknown;
+    reviewCapacity?: unknown;
+    password?: unknown;
+    canAuthor?: unknown;
+    isReviewer?: unknown;
+  };
   try {
     body = (await req.json()) as typeof body;
   } catch {
     return NextResponse.json({ error: "Некорректное тело запроса." }, { status: 400 });
   }
 
-  const set: Partial<{ isBlocked: boolean; commentingBlocked: boolean; reviewCapacity: number; passwordHash: string }> = {};
+  const set: Partial<{
+    isBlocked: boolean;
+    commentingBlocked: boolean;
+    reviewCapacity: number;
+    passwordHash: string;
+    canAuthor: boolean;
+    isReviewer: boolean;
+  }> = {};
+  if (body.canAuthor !== undefined) {
+    if (typeof body.canAuthor !== "boolean") {
+      return NextResponse.json({ error: "canAuthor: ожидается boolean." }, { status: 400 });
+    }
+    set.canAuthor = body.canAuthor;
+  }
+  if (body.isReviewer !== undefined) {
+    if (typeof body.isReviewer !== "boolean") {
+      return NextResponse.json({ error: "isReviewer: ожидается boolean." }, { status: 400 });
+    }
+    set.isReviewer = body.isReviewer;
+  }
   if (body.isBlocked !== undefined) {
     if (typeof body.isBlocked !== "boolean") return NextResponse.json({ error: "isBlocked: ожидается boolean." }, { status: 400 });
     set.isBlocked = body.isBlocked;

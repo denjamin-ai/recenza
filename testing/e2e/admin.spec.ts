@@ -568,11 +568,12 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
     });
   });
 
-  test("TC-ADMIN-23 @critical: «Новый пользователь» — создание reader из формы, вход созданного, дубль handle → 409", async ({
+  test("TC-ADMIN-23 @critical: «Новый пользователь» — создание читателя из формы, выдача возможности, дубль handle → 409", async ({
     asAdmin,
     api,
   }) => {
     // Фаза 12 (альфа-модель доступа): self-registration нет, аккаунты выдаёт админ.
+    // Ф13: вместо селекта роли — чекбоксы возможностей; без отметок аккаунт = читатель.
     const handle = "e2e_newbie";
     const password = "e2e-password-12";
 
@@ -587,8 +588,9 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
       await asAdmin.page.getByRole("textbox", { name: "Хэндл" }).fill(handle);
       await asAdmin.page.getByRole("textbox", { name: "Отображаемое имя" }).fill("Новичок E2E");
       await asAdmin.page.getByRole("textbox", { name: /Пароль/ }).fill(password);
-      // exact: «Роль» — подстрока «Пароль…» (getByLabel матчит подстрокой без exact).
-      await asAdmin.page.getByLabel("Роль", { exact: true }).selectOption("reader");
+      // Возможности не отмечаем — создаётся читатель (базовый уровень).
+      await expect(asAdmin.page.getByRole("checkbox", { name: "Автор" })).not.toBeChecked();
+      await expect(asAdmin.page.getByRole("checkbox", { name: "Ревьюер" })).not.toBeChecked();
       await asAdmin.page.getByRole("button", { name: "Создать пользователя" }).click();
 
       await expect(asAdmin.page.getByRole("status").filter({ hasText: `@${handle} создан` })).toBeVisible();
@@ -596,13 +598,41 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
       await expect(asAdmin.page.getByText(`@${handle}`, { exact: true })).toBeVisible();
     });
 
-    await test.step("Созданный пользователь логинится, роль reader", async () => {
+    await test.step("Созданный аккаунт логинится и не имеет возможностей (читатель)", async () => {
       const ctx = await apiLoginUser(handle, password);
       const me = await ctx.get("/api/auth/user");
       expect(me.ok()).toBeTruthy();
-      const body = (await me.json()) as { user: { handle: string; role: string } };
+      const body = (await me.json()) as {
+        user: { handle: string; canAuthor: boolean; isReviewer: boolean };
+      };
       expect(body.user.handle).toBe(handle);
-      expect(body.user.role).toBe("reader");
+      expect(body.user.canAuthor).toBe(false);
+      expect(body.user.isReviewer).toBe(false);
+      // Без возможности «автор» создание блога закрыто.
+      const blog = await ctx.post("/api/author/blogs", { data: { title: "Не должно создаться" } });
+      expect(blog.status()).toBe(403);
+      await ctx.dispose();
+    });
+
+    await test.step("Админ выдаёт возможность «автор» — создание блога открывается без перелогина", async () => {
+      const adminApi = await api("admin");
+      await expect(async () => {
+        const res = await adminApi.patch(`/api/admin/users/${handle}`, { data: { canAuthor: true } });
+        expect(res.status()).toBe(200);
+      }).toPass({ timeout: 10_000 });
+
+      const ctx = await apiLoginUser(handle, password);
+      const blog = await ctx.post("/api/author/blogs", { data: { title: "Блог нового автора E2E" } });
+      expect(blog.status()).toBe(200);
+      // Отзыв возможности действует сразу — тот же контекст сессии снова получает 403.
+      await expect(async () => {
+        const res = await adminApi.patch(`/api/admin/users/${handle}`, { data: { canAuthor: false } });
+        expect(res.status()).toBe(200);
+      }).toPass({ timeout: 10_000 });
+      await expect(async () => {
+        const again = await ctx.post("/api/author/blogs", { data: { title: "После отзыва" } });
+        expect(again.status()).toBe(403);
+      }).toPass({ timeout: 10_000 });
       await ctx.dispose();
     });
 
@@ -611,14 +641,14 @@ test.describe("TC-ADMIN — админка, модерация и монетиз
       // Создание из формы выше потратило action-limit 1/сек → 429 ретраится (паттерн негативных API).
       await expect(async () => {
         const dup = await adminApi.post("/api/admin/users", {
-          data: { handle, displayName: "Дубль", password: "another-pass-12", role: "reader" },
+          data: { handle, displayName: "Дубль", password: "another-pass-12" },
         });
         expect(dup.status()).toBe(409);
       }).toPass({ timeout: 10_000 });
 
       const readerApi = await api("reader");
       const forbidden = await readerApi.post("/api/admin/users", {
-        data: { handle: "sneaky", displayName: "Хакер", password: "hack-pass-123", role: "author" },
+        data: { handle: "sneaky", displayName: "Хакер", password: "hack-pass-123", canAuthor: true },
       });
       expect(forbidden.status()).toBe(403);
     });

@@ -72,7 +72,7 @@ export async function POST(
 
       const u = (
         await tx
-          .select({ id: users.id, role: users.role, competencies: users.competencies })
+          .select({ id: users.id, competencies: users.competencies })
           .from(users)
           .where(eq(users.handle, app.byHandle))
           .limit(1)
@@ -80,10 +80,14 @@ export async function POST(
       if (!u) return; // заявитель удалён — заявка просто закрыта
 
       if (action === "accept") {
-        if (u.role !== "admin") {
-          const merged = [...new Set([...parseJson<string[]>(u.competencies, []), ...appSkills])].slice(0, MAX_SKILLS);
-          await tx.update(users).set({ role: "reviewer", competencies: stringifyJson(merged) }).where(eq(users.id, u.id));
-        }
+        // ⚠️ Ф13: выдаём ВОЗМОЖНОСТЬ, а не legacy-роль. Раньше здесь писался `role: "reviewer"`,
+        // который после перехода на возможности не читает ни один гейт — принятый с доски
+        // заявитель не получал доступ к кабинету ревьюера вовсе.
+        const merged = [...new Set([...parseJson<string[]>(u.competencies, []), ...appSkills])].slice(0, MAX_SKILLS);
+        await tx
+          .update(users)
+          .set({ isReviewer: true, competencies: stringifyJson(merged) })
+          .where(eq(users.id, u.id));
         await createNotifications(tx, [
           { recipientId: u.id, type: ADMIN_NOTIFY.applicationAccepted, payload: { href: "/reviewer" } },
         ]);
