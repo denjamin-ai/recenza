@@ -12,13 +12,27 @@
 // Мутирует seed → serial + reseed в beforeAll И afterAll.
 
 import { test, expect } from "../fixtures";
-import { BLOG, CHAPTERS, COMMENTS, FEATURED_BLOG, REPORTS, USERS } from "../helpers/seed";
+import { BLOG, CHAPTERS, COMMENTS, FEATURED_BLOG, REPORTS, USERS, VERIFIED_BLOGS } from "../helpers/seed";
 import { reseed } from "../helpers/db";
 import { throttleMutation } from "../helpers/throttle";
+import type { APIRequestContext, APIResponse } from "@playwright/test";
 
-/** Rate-limit жалоб — 1/10с на пользователя, поэтому подряд идущие жалобы разносим по времени. */
-async function pauseReports(key: string) {
-  await throttleMutation(`report-${key}`, 11_000);
+/**
+ * Жалобы ограничены 1/10с НА ПОЛЬЗОВАТЕЛЯ, а спека шлёт их подряд (в т.ч. после отправки из UI).
+ * Ждать фиксированные паузы бессмысленно — окно общее на все вызовы одного аккаунта. Поэтому
+ * используем принятый в проекте приём: 429 считается ретраибельным (CLAUDE.md §флак-обходы).
+ */
+async function postReport(
+  ctx: APIRequestContext,
+  data: Record<string, unknown>,
+  expected: number,
+): Promise<APIResponse> {
+  let last!: APIResponse;
+  await expect(async () => {
+    last = await ctx.post("/api/reports", { data });
+    expect(last.status(), `ожидали ${expected}, получили ${last.status()}`).toBe(expected);
+  }).toPass({ timeout: 40_000 });
+  return last;
 }
 
 test.describe("REPORT — жалобы модератору (Фаза 15)", () => {
@@ -37,14 +51,21 @@ test.describe("REPORT — жалобы модератору (Фаза 15)", () =
   }) => {
     const { page } = asReader;
 
+    // ⚠️ В сиде `cmt_root` принадлежит САМОМУ читателю, поэтому жалуемся на ответ автора:
+    // на свой комментарий кнопки нет по построению (его можно просто удалить).
+    const OTHERS_COMMENT = "Спасибо! Рад, что зашло.";
+
     await test.step("кнопка «Пожаловаться» есть у чужого комментария", async () => {
       await page.goto(`/blog/${BLOG.slug}/${CHAPTERS.published.slug}`);
-      const comment = page.locator("article").filter({ hasText: "Отличный разбор" }).first();
-      await expect(comment.getByRole("button", { name: "Пожаловаться" }).first()).toBeVisible();
+      const others = page.locator("article").filter({ hasText: OTHERS_COMMENT }).first();
+      await expect(others.getByRole("button", { name: "Пожаловаться" }).first()).toBeVisible();
+      // ⚠️ «У своего комментария кнопки нет» проверяется НЕ здесь: карточка root-комментария
+      // содержит вложенные article ответов, и любой DOM-локатор по тексту root'а захватывает
+      // кнопку из ответа. Авторитетная проверка этого правила — серверная, в REPORT-02.
     });
 
     await test.step("модалка: причина + комментарий модератору → отправка", async () => {
-      const comment = page.locator("article").filter({ hasText: "Отличный разбор" }).first();
+      const comment = page.locator("article").filter({ hasText: OTHERS_COMMENT }).first();
       await comment.getByRole("button", { name: "Пожаловаться" }).first().click();
       const dialog = page.getByRole("dialog", { name: "Пожаловаться на комментарий" });
       await expect(dialog).toBeVisible();
@@ -69,39 +90,25 @@ test.describe("REPORT — жалобы модератору (Фаза 15)", () =
     const reader = await api("reader");
 
     await test.step("гость → 401", async () => {
-      const res = await guest.post("/api/reports", {
-        data: { targetType: "comment", targetId: COMMENTS.root, reason: "spam" },
-      });
-      expect(res.status()).toBe(401);
+      await postReport(guest, { targetType: "comment", targetId: COMMENTS.root, reason: "spam" }, 401);
     });
 
     await test.step("неизвестный тип цели → 400", async () => {
-      await pauseReports("bad-type");
-      const res = await reader.post("/api/reports", {
-        data: { targetType: "user", targetId: COMMENTS.root, reason: "spam" },
-      });
-      expect(res.status()).toBe(400);
+      await postReport(reader, { targetType: "user", targetId: COMMENTS.root, reason: "spam" }, 400);
     });
 
     await test.step("причина не из каталога → 400", async () => {
-      await pauseReports("bad-reason");
-      const res = await reader.post("/api/reports", {
-        data: { targetType: "comment", targetId: COMMENTS.root, reason: "потому что" },
-      });
-      expect(res.status()).toBe(400);
+      await postReport(reader, { targetType: "comment", targetId: COMMENTS.root, reason: "потому что" }, 400);
+    });
+
+    await test.step("свой комментарий → 404 (жаловаться на себя нечего — можно удалить)", async () => {
+      // `cmt_root` в сиде принадлежит самому читателю.
+      await postReport(reader, { targetType: "comment", targetId: COMMENTS.root, reason: "spam" }, 404);
     });
 
     await test.step("удалённый комментарий → 404 (тот же ответ, что и у несуществующего)", async () => {
-      await pauseReports("deleted");
-      const res = await reader.post("/api/reports", {
-        data: { targetType: "comment", targetId: COMMENTS.deleted, reason: "spam" },
-      });
-      expect(res.status()).toBe(404);
-      await pauseReports("missing");
-      const missing = await reader.post("/api/reports", {
-        data: { targetType: "comment", targetId: "no-such-comment", reason: "spam" },
-      });
-      expect(missing.status()).toBe(404);
+      await postReport(reader, { targetType: "comment", targetId: COMMENTS.deleted, reason: "spam" }, 404);
+      await postReport(reader, { targetType: "comment", targetId: "no-such-comment", reason: "spam" }, 404);
     });
   });
 
@@ -112,43 +119,33 @@ test.describe("REPORT — жалобы модератору (Фаза 15)", () =
     const author = await api("author");
 
     await test.step("посторонний читатель на чужое ревью → 404 (существование сессии не раскрываем)", async () => {
-      await pauseReports("outsider");
-      const res = await reader.post("/api/reports", {
-        data: {
-          targetType: "review",
-          targetId: CHAPTERS.underReview.id,
-          aboutHandle: USERS.lena.handle,
-          reason: "abuse",
-        },
-      });
-      expect(res.status()).toBe(404);
+      await postReport(
+        reader,
+        { targetType: "review", targetId: CHAPTERS.underReview.id, aboutHandle: USERS.lena.handle, reason: "abuse" },
+        404,
+      );
     });
 
     await test.step("автор главы на её ревьюера → 201", async () => {
-      await pauseReports("author-ok");
-      const res = await author.post("/api/reports", {
-        data: {
+      await postReport(
+        author,
+        {
           targetType: "review",
           targetId: CHAPTERS.changesRequested.id,
           aboutHandle: USERS.lena.handle,
           reason: "abuse",
           note: "Тон замечаний.",
         },
-      });
-      expect(res.status()).toBe(201);
+        201,
+      );
     });
 
     await test.step("на участника, которого в этой сессии нет → 404", async () => {
-      await pauseReports("not-participant");
-      const res = await author.post("/api/reports", {
-        data: {
-          targetType: "review",
-          targetId: CHAPTERS.changesRequested.id,
-          aboutHandle: USERS.sergey.handle,
-          reason: "abuse",
-        },
-      });
-      expect(res.status()).toBe(404);
+      await postReport(
+        author,
+        { targetType: "review", targetId: CHAPTERS.changesRequested.id, aboutHandle: USERS.sergey.handle, reason: "abuse" },
+        404,
+      );
     });
   });
 
@@ -157,17 +154,13 @@ test.describe("REPORT — жалобы модератору (Фаза 15)", () =
   }) => {
     const reader = await api("reader");
 
-    await pauseReports("dup-1");
-    const first = await reader.post("/api/reports", {
-      data: { targetType: "blog", targetId: FEATURED_BLOG.id, reason: "offtopic" },
-    });
-    expect(first.status()).toBe(201);
+    // ⚠️ Цель — блог, на который в сиде ЖАЛОБЫ НЕТ: на `FEATURED_BLOG` уже есть открытая жалоба
+    // этого же читателя (`REPORTS.blog`), и первый же вызов вернул бы дедуп-200 вместо 201.
+    const target = VERIFIED_BLOGS.guide.id;
 
-    await pauseReports("dup-2");
-    const second = await reader.post("/api/reports", {
-      data: { targetType: "blog", targetId: FEATURED_BLOG.id, reason: "spam" },
-    });
-    expect(second.status()).toBe(200);
+    await postReport(reader, { targetType: "blog", targetId: target, reason: "offtopic" }, 201);
+
+    const second = await postReport(reader, { targetType: "blog", targetId: target, reason: "spam" }, 200);
     expect(await second.json()).toMatchObject({ duplicate: true });
   });
 

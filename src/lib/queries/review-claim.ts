@@ -19,7 +19,7 @@ import {
   users,
 } from "@/lib/db/schema";
 import { createNotifications } from "@/lib/queries/notifications";
-import { REVIEW_NOTIFY, authorReviewHref } from "@/lib/queries/review";
+import { REVIEW_NOTIFY, authorReviewHref, reviewerReviewHref } from "@/lib/queries/review";
 import { SLA_SILENT_DAYS, dueAtFrom } from "@/lib/review-sla";
 import type { db as dbType } from "@/lib/db";
 
@@ -41,9 +41,11 @@ export interface ClaimArgs {
   /** Кто становится ревьюером (он же — владелец слота нагрузки). */
   reviewer: { id: string; handle: string; displayName: string };
   /**
-   * Назначает админ, а не сам ревьюер. Влияет ровно на одно: гейт «нельзя рецензировать свой
-   * блог» сравнивает автора с НАЗНАЧАЕМЫМ, а не с инициатором запроса. Ёмкость и актуальность
-   * ревизии проверяются одинаково — админ не может «продавить» перегруженного ревьюера.
+   * Назначает админ, а не сам ревьюер. Гейты одинаковы (админ не может «продавить» перегруженного
+   * ревьюера), но два различия есть:
+   *   • формулировка ошибки о ёмкости — во втором лице для self-claim, нейтральная для админа;
+   *   • при назначении админом ревьюер ПОЛУЧАЕТ уведомление: он эту работу не выбирал и иначе
+   *     узнал бы о ней, только зайдя в кабинет.
    */
   byAdmin?: boolean;
   now: number;
@@ -51,7 +53,11 @@ export interface ClaimArgs {
 
 /** Успешный захват: id главы, куда ведёт ревью-сессия. */
 export async function claimReviewRequest(tx: Executor, args: ClaimArgs): Promise<{ chapterId: string }> {
-  const { requestId, reviewer, now } = args;
+  const { requestId, reviewer, now, byAdmin = false } = args;
+  // Ревьюер, берущий заявку сам, читает сообщение про СЕБЯ; админ — про назначаемого.
+  const capacityError = byAdmin
+    ? "Ревьюер загружен до предела — сначала нужно закрыть текущие ревью."
+    : "Вы уже загружены до предела — завершите текущие ревью.";
 
   const row = (
     await tx
@@ -98,7 +104,7 @@ export async function claimReviewRequest(tx: Executor, args: ClaimArgs): Promise
       .limit(1)
   )[0];
   if (me && me.load >= me.capacity) {
-    throw new ClaimError("Ревьюер загружен до предела — сначала нужно закрыть текущие ревью.", 409);
+    throw new ClaimError(capacityError, 409);
   }
 
   // Заявка должна относиться к АКТУАЛЬНОЙ ревизии: автор мог сдать новую, пока заявка ждала.
@@ -145,7 +151,7 @@ export async function claimReviewRequest(tx: Executor, args: ClaimArgs): Promise
     .where(and(eq(users.handle, reviewer.handle), sql`${users.reviewLoad} < ${users.reviewCapacity}`))
     .returning({ handle: users.handle });
   if (loaded.length === 0) {
-    throw new ClaimError("Ревьюер загружен до предела — сначала нужно закрыть текущие ревью.", 409);
+    throw new ClaimError(capacityError, 409);
   }
 
   await tx
@@ -164,6 +170,21 @@ export async function claimReviewRequest(tx: Executor, args: ClaimArgs): Promise
         reviewer: reviewer.displayName,
       },
     },
+    // Ф15: при ручном назначении ревьюер работу не выбирал — без этого уведомления он узнал бы
+    // о ней, только заглянув в кабинет. При self-claim оно избыточно (он сам только что нажал).
+    ...(byAdmin
+      ? [
+          {
+            recipientId: reviewer.id,
+            type: REVIEW_NOTIFY.requestAssigned,
+            payload: {
+              href: reviewerReviewHref(row.chapterId),
+              chapterTitle: row.chapterTitle,
+              revision: row.revisionNumber,
+            },
+          },
+        ]
+      : []),
   ]);
 
   return { chapterId: row.chapterId };

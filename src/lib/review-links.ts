@@ -14,6 +14,7 @@ export const REVIEW_NOTIFY = {
   revisionSubmitted: "review_revision_submitted", // ревьюеру: автор сдал новую версию
   // ── заявки на ревью (Фаза 14) ──
   requestClaimed: "review_request_claimed", // автору: ревьюер взял заявку
+  requestAssigned: "review_request_assigned", // ревьюеру: админ назначил его на заявку (Ф15)
   requestReturned: "review_request_returned", // автору+ревьюеру: заявка вернулась в очередь по SLA
   requestEscalated: "review_request_escalated", // админу: заявку никто не взял в срок
   requestExpired: "review_request_expired", // автору: заявка не нашла ревьюера и закрыта

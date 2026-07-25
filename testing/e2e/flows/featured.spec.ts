@@ -160,8 +160,9 @@ test.describe("FEATURED — витрина главной (Фаза 15)", () => 
     const admin = await api("admin");
 
     await test.step("гость и автор не могут закреплять", async () => {
+      // requireAdmin различает: гость — 401 («войдите»), вошедший не-админ — 403 («не ваше»).
       expect((await guest.patch(`/api/admin/blogs/${BLOG.id}`, { data: { featured: true } })).status()).toBe(401);
-      expect((await author.patch(`/api/admin/blogs/${BLOG.id}`, { data: { featured: true } })).status()).toBe(401);
+      expect((await author.patch(`/api/admin/blogs/${BLOG.id}`, { data: { featured: true } })).status()).toBe(403);
     });
 
     await test.step("пустое тело → 400 (нужно hidden или featured)", async () => {
@@ -180,6 +181,9 @@ test.describe("FEATURED — витрина главной (Фаза 15)", () => 
   test("FEATURED-07 @regression: feed.xml — только проверенное, sitemap.xml — всё опубликованное", async ({
     api,
   }) => {
+    // ⚠️ Идём по ЧИСТОМУ сиду: предыдущие тесты этого serial-describe скрывают проверенные блоги,
+    // а скрытый блог выпадает и из RSS, и из sitemap — проверять на нём отбор бессмысленно.
+    reseed();
     const guest = await api();
 
     const rss = await (await guest.get("/feed.xml")).text();
