@@ -15,6 +15,7 @@ import { buildReaderSections } from "@/lib/queries/reader-sections";
 import { BlogReaderView } from "@/components/reader/blog-reader-view";
 import { BlogTocView } from "@/components/reader/blog-toc-view";
 import { EngagementBar } from "@/components/reader/engagement-bar";
+import { ReportButton } from "@/components/reader/report-dialog";
 import { absoluteUrl, truncate } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
@@ -83,7 +84,22 @@ export default async function BlogPage({ params, searchParams }: { params: Param
   ) : null;
 
   if (mode !== "whole") {
-    return <BlogTocView blog={blog} engagementBar={engagementBar} />;
+    // Ф15: пожаловаться на блог может любой вошедший, кроме его автора (гостю роут ответил бы 401).
+    const canReport = !!viewer && viewer.id !== blog.author.id;
+    return (
+      <BlogTocView
+        blog={blog}
+        engagementBar={engagementBar}
+        reportButton={
+          canReport ? (
+            <ReportButton
+              target={{ targetType: "blog", targetId: blog.id, excerpt: blog.title }}
+              className="inline-flex min-h-[44px] items-center rounded-[var(--radius-sm)] px-2 text-[length:var(--type-small)] text-[var(--muted-foreground)] transition-colors hover:text-[var(--danger)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            />
+          ) : null
+        }
+      />
+    );
   }
 
   const sections = await buildReaderSections(blog, blog.chapters);

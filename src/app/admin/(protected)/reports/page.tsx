@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getAdminReports } from "@/lib/queries/admin";
 import { ScreenHead, Pill, Card, SectionTitle, EmptyState } from "@/app/admin/_components/primitives";
 import { formatRelativeTime } from "@/lib/format";
+import { REPORT_TARGET_LABEL, reasonLabel } from "@/lib/reports";
 import type { AdminReportRow } from "@/lib/queries/admin";
 
 export const dynamic = "force-dynamic";
@@ -15,9 +16,11 @@ function ReportLink({ r }: { r: AdminReportRow }) {
         className="flex items-center justify-between gap-3 py-2.5 transition-colors hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
       >
         <span className="min-w-0">
-          <span className="text-[length:var(--type-small)] text-[var(--foreground)]">{r.reason}</span>
+          {/* Ф15 (З-61): подпись цели — из общего словаря, а не сырой `target_type` «как есть» */}
+          <span className="text-[length:var(--type-small)] text-[var(--foreground)]">{reasonLabel(r.reason)}</span>
           <span className="ml-2 text-[0.7rem] text-[var(--muted-foreground)]">
-            {r.targetType === "comment" ? "комментарий" : r.targetType} · от {r.reporterName ?? "—"}
+            {REPORT_TARGET_LABEL[r.targetType]}
+            {r.aboutHandle ? ` · о @${r.aboutHandle}` : ""} · от {r.reporterName ?? "—"}
           </span>
         </span>
         <span className="shrink-0 text-[0.7rem] text-[var(--muted-foreground)]">{formatRelativeTime(r.createdAt)}</span>
@@ -53,7 +56,9 @@ export default async function AdminReportsPage() {
             <ul className="divide-y divide-[var(--border-secondary)]">
               {resolved.map((r) => (
                 <li key={r.id} className="flex items-center justify-between gap-3 py-2.5">
-                  <span className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">{r.reason}</span>
+                  <span className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+                    {reasonLabel(r.reason)}
+                  </span>
                   <Pill tone="success">Закрыта</Pill>
                 </li>
               ))}

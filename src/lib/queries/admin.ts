@@ -29,6 +29,7 @@ import type {
   DonationType,
   RecruitStatus,
   ReportStatus,
+  ReportTargetType,
   ReviewStatus,
   RevisionStatus,
   VerifiedTier,
@@ -217,27 +218,37 @@ export async function getAdminUserDetail(handle: string): Promise<AdminUserDetai
 
 export interface AdminReportRow {
   id: string;
-  targetType: string;
+  /** Ф15 (З-61): типизирована. Раньше — свободная строка, которая печаталась в UI «как есть». */
+  targetType: ReportTargetType;
   targetId: string;
   reason: string;
+  note: string | null;
+  /** Ф15: «о ком» — только у жалоб на ревью (приватная жалоба на участника сессии). */
+  aboutHandle: string | null;
   status: ReportStatus;
   createdAt: number;
+  resolvedAt: number | null;
   reporterHandle: string | null;
   reporterName: string | null;
 }
 
+const REPORT_ROW_COLUMNS = {
+  id: reports.id,
+  targetType: reports.targetType,
+  targetId: reports.targetId,
+  reason: reports.reason,
+  note: reports.note,
+  aboutHandle: reports.aboutHandle,
+  status: reports.status,
+  createdAt: reports.createdAt,
+  resolvedAt: reports.resolvedAt,
+  reporterHandle: users.handle,
+  reporterName: users.displayName,
+} as const;
+
 export async function getAdminReports(status?: ReportStatus): Promise<AdminReportRow[]> {
   const rows = await db
-    .select({
-      id: reports.id,
-      targetType: reports.targetType,
-      targetId: reports.targetId,
-      reason: reports.reason,
-      status: reports.status,
-      createdAt: reports.createdAt,
-      reporterHandle: users.handle,
-      reporterName: users.displayName,
-    })
+    .select(REPORT_ROW_COLUMNS)
     .from(reports)
     .leftJoin(users, eq(users.id, reports.reporterId))
     .where(status ? eq(reports.status, status) : undefined)
@@ -245,32 +256,42 @@ export async function getAdminReports(status?: ReportStatus): Promise<AdminRepor
   return rows;
 }
 
+/**
+ * Контекст цели жалобы. Ф15: раньше карточка умела показывать только комментарий, а для любой
+ * другой цели детальная страница оставалась вообще без контекста (З-61).
+ */
+export type AdminReportTarget =
+  | {
+      kind: "comment";
+      id: string;
+      text: string;
+      deletedAt: number | null;
+      blogSlug: string;
+      chapterSlug: string;
+      revision: number;
+      authorName: string | null;
+    }
+  | { kind: "blog"; id: string; slug: string; title: string; authorName: string; hidden: boolean }
+  | {
+      kind: "review";
+      chapterId: string;
+      chapterTitle: string;
+      blogSlug: string;
+      chapterSlug: string;
+      authorName: string;
+      aboutName: string | null;
+    }
+  /** Цель удалена или тип неизвестен — жалобу всё равно нужно уметь закрыть. */
+  | { kind: "unknown" };
+
 export interface AdminReportDetail extends AdminReportRow {
-  // Для targetType='comment' — контекст: текст, статус удаления, координаты главы.
-  comment: {
-    id: string;
-    text: string;
-    deletedAt: number | null;
-    blogSlug: string;
-    chapterSlug: string;
-    revision: number;
-    authorName: string | null;
-  } | null;
+  target: AdminReportTarget;
 }
 
 export async function getAdminReportDetail(id: string): Promise<AdminReportDetail | null> {
   const base = (
     await db
-      .select({
-        id: reports.id,
-        targetType: reports.targetType,
-        targetId: reports.targetId,
-        reason: reports.reason,
-        status: reports.status,
-        createdAt: reports.createdAt,
-        reporterHandle: users.handle,
-        reporterName: users.displayName,
-      })
+      .select(REPORT_ROW_COLUMNS)
       .from(reports)
       .leftJoin(users, eq(users.id, reports.reporterId))
       .where(eq(reports.id, id))
@@ -278,8 +299,15 @@ export async function getAdminReportDetail(id: string): Promise<AdminReportDetai
   )[0];
   if (!base) return null;
 
-  let comment: AdminReportDetail["comment"] = null;
-  if (base.targetType === "comment") {
+  return { ...base, target: await resolveReportTarget(base.targetType, base.targetId, base.aboutHandle) };
+}
+
+async function resolveReportTarget(
+  targetType: ReportTargetType,
+  targetId: string,
+  aboutHandle: string | null,
+): Promise<AdminReportTarget> {
+  if (targetType === "comment") {
     const c = (
       await db
         .select({
@@ -293,12 +321,52 @@ export async function getAdminReportDetail(id: string): Promise<AdminReportDetai
         })
         .from(publicComments)
         .leftJoin(users, eq(users.id, publicComments.authorId))
-        .where(eq(publicComments.id, base.targetId))
+        .where(eq(publicComments.id, targetId))
         .limit(1)
     )[0];
-    comment = c ?? null;
+    return c ? { kind: "comment", ...c } : { kind: "unknown" };
   }
-  return { ...base, comment };
+
+  if (targetType === "blog") {
+    const b = (
+      await db
+        .select({
+          id: blogs.id,
+          slug: blogs.slug,
+          title: blogs.title,
+          hidden: blogs.hidden,
+          authorName: users.displayName,
+        })
+        .from(blogs)
+        .innerJoin(users, eq(users.id, blogs.authorId))
+        .where(eq(blogs.id, targetId))
+        .limit(1)
+    )[0];
+    return b ? { kind: "blog", ...b } : { kind: "unknown" };
+  }
+
+  const ch = (
+    await db
+      .select({
+        chapterId: chapters.id,
+        chapterTitle: chapters.title,
+        chapterSlug: chapters.slug,
+        blogSlug: blogs.slug,
+        authorName: users.displayName,
+      })
+      .from(chapters)
+      .innerJoin(blogs, eq(chapters.blogId, blogs.id))
+      .innerJoin(users, eq(users.id, blogs.authorId))
+      .where(eq(chapters.id, targetId))
+      .limit(1)
+  )[0];
+  if (!ch) return { kind: "unknown" };
+
+  const about = aboutHandle
+    ? (await db.select({ name: users.displayName }).from(users).where(eq(users.handle, aboutHandle)).limit(1))[0]
+    : undefined;
+
+  return { kind: "review", ...ch, aboutName: about?.name ?? aboutHandle };
 }
 
 // ───────────────────────────── Очередь ревью (Ф14: без «ведущего») ─────────────────────────────
