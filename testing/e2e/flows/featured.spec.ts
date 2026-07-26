@@ -80,7 +80,8 @@ test.describe("FEATURED — витрина главной (Фаза 15)", () => 
     const reader = new ReaderPage(page);
     await reader.gotoCatalog();
 
-    await expect(reader.homeHeading("Все блоги")).toBeVisible();
+    // uif-9: h1 ленты един — «Лента»; что это каталог, говорят URL и чипы.
+    await expect(reader.homeHeading("Лента")).toBeVisible();
     await expect(reader.blogCard(INVITED_BLOG.title)).toBeVisible();
     await expect(reader.blogCard(FEATURED_BLOG.title)).toBeVisible();
 
@@ -121,7 +122,7 @@ test.describe("FEATURED — витрина главной (Фаза 15)", () => 
         "/?view=all&sort=%D0%BC%D1%83%D1%81%D0%BE%D1%80&filter=%D0%BC%D1%83%D1%81%D0%BE%D1%80&page=999",
       );
       expect(res?.status()).toBe(200);
-      await expect(reader.homeHeading("Все блоги")).toBeVisible();
+      await expect(reader.homeHeading("Лента")).toBeVisible();
       // Мусорный ?filter молча становится «все» — непроверенный блог в выдаче.
       await expect(reader.blogCard(FEATURED_BLOG.title)).toBeVisible();
     });
@@ -181,7 +182,8 @@ test.describe("FEATURED — витрина главной (Фаза 15)", () => 
       await reader.gotoFeed();
       await expect(page.getByText("Здесь появятся проверенные блоги")).toBeVisible();
       await expect(page.getByText(INVITED_BLOG.title)).toHaveCount(0);
-      await expect(page.getByRole("link", { name: "Все блоги →" }).first()).toBeVisible();
+      // uif-9: arrow-ссылок больше нет — путь в каталог даёт чип «Все» над пустым состоянием.
+      await expect(reader.feedFilterNav.getByRole("link", { name: "Все", exact: true })).toBeVisible();
     });
 
     await test.step("каталог по-прежнему отдаёт опубликованное", async () => {

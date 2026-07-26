@@ -1,21 +1,21 @@
 // Главная (ui-feedback-4 П2, прототип public/feed.jsx): без поиска, карточки БЛОГОВ.
-// ui-feedback-8 (решение владельца): у вошедшего — ЕДИНАЯ лента с чип-рядом «Подписки/Все/
-// Проверенные» (nav «Фильтр ленты» — НЕ «Разделы ленты», на то имя негативные e2e-ассерты);
-// витрина гостя — без изменений (Ф15).
+// ui-feedback-8/9 (решение владельца): ЕДИНАЯ лента с чип-рядом «Подписки/Все/Проверенные»
+// (nav «Фильтр ленты» — НЕ «Разделы ленты», на то имя негативные e2e-ассерты). h1 един —
+// «Лента» и на подписках, и в каталоге: состояние показывают чипы, а не заголовок; arrow-ссылок
+// («Все блоги →» и т.п.) на лентовых поверхностях больше нет — чипы есть и на витрине гостя
+// (без активного).
 //
-// ⚠️ Фаза 15 сменила смысл главной: это ВИТРИНА, а не каталог. На неё попадают только блоги с
-// независимым бейджем («Проверено на Recenza»); уровень `invited` — прозрачность, а не пропуск
+// ⚠️ Фаза 15 сменила смысл главной ГОСТЯ: это ВИТРИНА, а не каталог. На неё попадают только блоги
+// с независимым бейджем («Проверено на Recenza»); уровень `invited` — прозрачность, а не пропуск
 // (З-19/З-24). Пока проверенных меньше порога, подборку ведёт редакция («Выбор редакции»,
-// `blogs.featured_at`) — страховка R-2. Если нет ни проверенных, ни закреплённых, показываем
-// пустое состояние со ссылкой на каталог: отката на «показать всё подряд» НЕТ (решение владельца).
-// Каталог «Все блоги» никуда не делся — он живёт на `/?view=all` с сортировкой и пагинацией (З-25).
+// `blogs.featured_at`) — страховка R-2. Если нет ни проверенных, ни закреплённых — пустое
+// состояние (путь в каталог — чип «Все»): отката на «показать всё подряд» НЕТ (решение владельца).
+// Каталог никуда не делся — `/?view=all` с сортировкой и пагинацией (З-25).
 //
 // ⚠️ Фаза 13: ролевой изоляции автора БОЛЬШЕ НЕТ. `restrictAuthorId` снят (З-07) — автор читает
-// чужие блоги наравне со всеми, поэтому и заголовок каталога всегда «Все блоги». Свои блоги автора
-// живут в его кабинете /author.
+// чужие блоги наравне со всеми, каталог у всех общий. Свои блоги автора живут в кабинете /author.
 
 import type { Metadata } from "next";
-import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { getFollowedAuthorIds, getVisibleBlogs } from "@/lib/queries/feed";
 import { getCatalog, getShowcase, type ShowcaseView } from "@/lib/queries/showcase";
@@ -111,7 +111,8 @@ function Catalog({
 }) {
   return (
     <div className="mx-auto w-full max-w-[var(--max-content)] px-6 py-10">
-      <h1 className="mb-3">Все блоги</h1>
+      {/* ui-feedback-9: h1 един со страницей подписок — состояние показывают чипы, не заголовок. */}
+      <h1 className="mb-3">Лента</h1>
       <p className="mb-6 text-[var(--muted-foreground)]">
         {catalog.total} {plural(catalog.total, "публикация", "публикации", "публикаций")}
       </p>
@@ -150,16 +151,14 @@ function Showcase({ showcase, page }: { showcase: ShowcaseView; page: number }) 
       <p className="mb-6 max-w-2xl text-[length:var(--type-small)] leading-relaxed text-[var(--muted-foreground)]">
         {editorialLed
           ? "Блогов, прошедших независимое ревью, пока немного — подборку ведёт редакция."
-          : "Блоги, главы которых прошли независимое ревью на Recenza."}{" "}
-        <Link
-          href="/?view=all"
-          className="rounded-[var(--radius-sm)] font-medium text-[var(--accent)] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          Все блоги →
-        </Link>
+          : "Блоги, главы которых прошли независимое ревью на Recenza."}
       </p>
 
       <PromoCarouselSlot />
+
+      {/* ui-feedback-9: вместо лид-ссылки «Все блоги →» — тот же чип-ряд, что на ленте/каталоге.
+          Без активного чипа: витрина — не состояние каталога, aria-current здесь врал бы. */}
+      <FeedFilterNav showSubs={false} />
 
       {featured.length > 0 && (
         <section className="py-6">
@@ -199,16 +198,11 @@ function ShowcaseEmpty() {
       <p className="mb-2 font-[family-name:var(--font-display)] text-[length:var(--type-h3)]">
         Здесь появятся проверенные блоги
       </p>
-      <p className="mx-auto mb-5 max-w-md text-[length:var(--type-small)] leading-relaxed text-[var(--muted-foreground)]">
-        На витрину попадают блоги, главы которых прошли независимое ревью. Пока таких нет — загляните
-        в каталог: там всё опубликованное.
+      {/* ui-feedback-9: без собственной кнопки — путь в каталог даёт чип «Все» над пустым состоянием. */}
+      <p className="mx-auto max-w-md text-[length:var(--type-small)] leading-relaxed text-[var(--muted-foreground)]">
+        На витрину попадают блоги, главы которых прошли независимое ревью. Пока таких нет —
+        переключитесь на «Все»: там всё опубликованное.
       </p>
-      <Link
-        href="/?view=all"
-        className="inline-flex min-h-[44px] items-center rounded-[var(--radius-sm)] border border-[var(--border)] px-4 font-medium text-[var(--accent)] transition-colors hover:border-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-      >
-        Все блоги →
-      </Link>
     </div>
   );
 }
@@ -234,7 +228,7 @@ async function ReaderHome({ user }: { user: PublicUser }) {
           <p className="mb-2 text-[0.7rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
             @{user.handle}
           </p>
-          <h1 className="mb-3">Ваша лента</h1>
+          <h1 className="mb-3">Лента</h1>
           <p className="max-w-xl text-[length:var(--type-small)] leading-relaxed text-[var(--muted-foreground)]">
             {hasFollows
               ? "Свежие главы из блогов, на которые вы подписаны."
@@ -253,18 +247,15 @@ async function ReaderHome({ user }: { user: PublicUser }) {
       <FeedFilterNav active="subs" showSubs />
 
       {hasFollows ? (
-        <section className="py-4">
+        <section className="py-6">
           <BlogGrid blogs={followed} />
         </section>
       ) : (
-        <section className="py-10 text-center">
-          <p className="mb-4 text-[length:var(--type-small)] text-[var(--muted-foreground)]">У вас пока нет подписок.</p>
-          <Link
-            href="/?view=all"
-            className="rounded-[var(--radius-sm)] font-medium text-[var(--accent)] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          >
-            Найти блоги в каталоге →
-          </Link>
+        <section className="py-16 text-center">
+          {/* ui-feedback-9: без arrow-ссылки — путь к блогам даёт чип «Все» над пустым состоянием. */}
+          <p className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+            У вас пока нет подписок — переключитесь на «Все», чтобы найти блоги.
+          </p>
         </section>
       )}
     </div>

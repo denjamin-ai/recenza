@@ -577,16 +577,21 @@ test.describe("Автор (author)", () => {
 
   // ── TC-AUTHOR-23 — автор читает каталог наравне со всеми; скрыт только блог забаненного ─────
 
-  test("TC-AUTHOR-23 @regression: каталог автора — общий «Все блоги» без блога забаненного, прямые URL → 404", async ({
+  test("TC-AUTHOR-23 @regression: каталог автора — общий, без блога забаненного, прямые URL → 404", async ({
     asAuthor,
   }) => {
     const { page } = asAuthor;
     const reader = new ReaderPage(page, USERS.author.handle);
 
     await test.step("каталог автора — общий: свои и чужие блоги; блога забаненного ghost нет", async () => {
-      // ⚠️ Ф13 (З-07): ролевой изоляции автора нет — restrictAuthorId снят, h1 общий «Все блоги».
+      // ⚠️ Ф13 (З-07): ролевой изоляции автора нет — restrictAuthorId снят, каталог общий
+      // (uif-9: h1 везде «Лента», состояние каталога подтверждает активный чип «Все»).
       await reader.gotoCatalog();
-      await expect(reader.homeHeading("Все блоги")).toBeVisible();
+      await expect(reader.homeHeading("Лента")).toBeVisible();
+      await expect(reader.feedFilterNav.getByRole("link", { name: "Все", exact: true })).toHaveAttribute(
+        "aria-current",
+        "true",
+      );
       await expect(page.getByText(BLOG.title).first()).toBeVisible();
       // Скрыт по модерации (ghost.isBlocked), а не по роли зрителя.
       await expect(page.getByText(HIDDEN_BLOG.title)).toHaveCount(0);

@@ -289,7 +289,7 @@ test.describe("Гость (аноним)", () => {
     const reader = new ReaderPage(page);
 
     await test.step("главная-каталог: «Скрытый блог» отсутствует", async () => {
-      // ui-feedback-4 П2: главная гостя = каталог «Все блоги» (табов больше нет).
+      // Ф15: главная гостя — витрина проверенных (BLOG в сиде проверен, поэтому он здесь есть).
       await reader.gotoFeed();
       await expect(page.getByText(BLOG.title).first()).toBeVisible(); // каталог загрузился
       await expect(page.getByText(HIDDEN_BLOG.title)).toHaveCount(0);
