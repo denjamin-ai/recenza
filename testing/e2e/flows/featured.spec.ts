@@ -84,10 +84,42 @@ test.describe("FEATURED — витрина главной (Фаза 15)", () => 
     await expect(reader.blogCard(INVITED_BLOG.title)).toBeVisible();
     await expect(reader.blogCard(FEATURED_BLOG.title)).toBeVisible();
 
-    await test.step("сортировка и пагинация не ломают каталог (мусор в ?sort → дефолт, не 404)", async () => {
-      const res = await page.goto("/?view=all&sort=%D0%BC%D1%83%D1%81%D0%BE%D1%80&page=999");
+    await test.step("фильтр «Проверенные» — любой бейдж (independent + invited), без бейджа — мимо (ui-feedback-7)", async () => {
+      // «Проверенные» — подстрока чипа сортировки «Сначала проверенные»: скоупим на nav фильтра.
+      await page
+        .getByRole("navigation", { name: "Фильтр каталога" })
+        .getByRole("link", { name: "Проверенные" })
+        .click();
+      await page.waitForURL(/filter=verified/);
+      await expect(reader.blogCard(BLOG.title)).toBeVisible();
+      await expect(reader.blogCard(INVITED_BLOG.title)).toBeVisible();
+      // Закреплён редакцией, но бейджа нет: закрепление — пропуск на витрину, а не «проверен».
+      await expect(reader.blogCard(FEATURED_BLOG.title)).toHaveCount(0);
+    });
+
+    await test.step("смена сортировки сохраняет фильтр; чип «Все» сбрасывает его", async () => {
+      await page
+        .getByRole("navigation", { name: "Сортировка каталога" })
+        .getByRole("link", { name: "Популярные" })
+        .click();
+      await page.waitForURL(/sort=top/);
+      expect(page.url()).toContain("filter=verified");
+      await expect(reader.blogCard(FEATURED_BLOG.title)).toHaveCount(0);
+      await page
+        .getByRole("navigation", { name: "Фильтр каталога" })
+        .getByRole("link", { name: "Все", exact: true })
+        .click();
+      await expect(reader.blogCard(FEATURED_BLOG.title)).toBeVisible();
+    });
+
+    await test.step("сортировка, фильтр и пагинация не ломают каталог (мусор → дефолт, не 404)", async () => {
+      const res = await page.goto(
+        "/?view=all&sort=%D0%BC%D1%83%D1%81%D0%BE%D1%80&filter=%D0%BC%D1%83%D1%81%D0%BE%D1%80&page=999",
+      );
       expect(res?.status()).toBe(200);
       await expect(reader.homeHeading("Все блоги")).toBeVisible();
+      // Мусорный ?filter молча становится «все» — непроверенный блог в выдаче.
+      await expect(reader.blogCard(FEATURED_BLOG.title)).toBeVisible();
     });
   });
 

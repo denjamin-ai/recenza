@@ -394,7 +394,7 @@ REV-BADGE (бейдж двух уровней и его привязка к но
 | `flows/reviewer-matching.spec.ts` | MATCH-RECRUIT, MATCH-BOARD, MATCH-APPLY |
 | `flows/review-queue.spec.ts` | **Ф14:** RQ-01…07 (заявка → claim → вердикт → бейдж) |
 | `flows/expert-invite.spec.ts` | **Ф14:** EXP-01…05 (инвайт-ссылка эксперта, канал 2) |
-| **`flows/featured.spec.ts`** | **Ф15:** FEATURED-01…07 — витрина, порог, «Выбор редакции», SEO |
+| **`flows/featured.spec.ts`** | **Ф15:** FEATURED-01…07 — витрина, порог, «Выбор редакции», SEO; + фильтр каталога «Проверенные» (ui-feedback-7, внутри FEATURED-03) |
 | **`flows/reports.spec.ts`** | **Ф15:** REPORT-01…05 — жалоба → уведомление → разбор |
 
 ⚠️ **Точное число `test()` намеренно НЕ дублируется в этой таблице.** Оно устаревало каждую фазу

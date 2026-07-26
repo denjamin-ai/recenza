@@ -24,7 +24,9 @@ interface GuideSection {
   intro: string;
   icon: React.ReactNode;
   capabilities: { glyph: string; title: string; text: string }[];
-  cta: { label: string; href: string };
+  // ui-feedback-7: CTA есть только у reader-секции («Доска») — кабинетные CTA убраны,
+  // в кабинеты ведёт «Рабочее место» из меню аватара.
+  cta?: { label: string; href: string };
 }
 
 const GUIDE_CONTENT: Record<GuideSectionKey, GuideSection> = {
@@ -54,7 +56,6 @@ const GUIDE_CONTENT: Record<GuideSectionKey, GuideSection> = {
       { glyph: "↑", title: "Ревью — по желанию", text: "Укажите навыки статьи и оставьте заявку — ревьюер возьмёт её из очереди сам, по своим компетенциям. Заявку можно оставить и на уже опубликованную главу; ревью не блокирует выход." },
       { glyph: "◷", title: "Версии", text: "Правка опубликованной главы создаёт новую версию поверх: читатель видит текущую, пока вы не опубликуете новую." },
     ],
-    cta: { label: "Кабинет автора", href: "/author" },
   },
   reviewer: {
     title: "Гид ревьюера",
@@ -67,7 +68,6 @@ const GUIDE_CONTENT: Record<GuideSectionKey, GuideSection> = {
       { glyph: "✓", title: "Вердикт", text: "«Одобрить» или «Нужны правки» по каждой ревизии; для обсуждения есть чат сессии." },
       { glyph: "⌘", title: "Без конфликта интересов", text: "В чужих блогах вы обычный читатель, но главу, которую рецензировали, публично не комментируете. Профиль показывает, что вы отрецензировали." },
     ],
-    cta: { label: "Кабинет ревьюера", href: "/reviewer" },
   },
 };
 
@@ -83,8 +83,14 @@ export function GuideButton({ user }: { user: CapabilityHolder | null }) {
   const sections = sectionKeys.map((k) => GUIDE_CONTENT[k]);
   const lead = sections[sections.length - 1];
   const title = caps.length > 0 ? "Ваши возможности" : "Гид читателя";
-  // CTA ведёт в кабинет последней возможности; гостю — на вход, читателю — на доску.
-  const cta = user == null ? { label: "Войти", href: "/login" } : lead.cta;
+  // ui-feedback-7: CTA остаётся только у аккаунта без кабинетов — гостю вход, читателю доска.
+  // Автору/ревьюеру дублирующая кнопка кабинета убрана: туда ведёт «Рабочее место».
+  const cta =
+    user == null
+      ? { label: "Войти", href: "/login" }
+      : caps.length === 0
+        ? (GUIDE_CONTENT.reader.cta ?? null)
+        : null;
 
   useEffect(() => {
     if (!open) return;
@@ -197,13 +203,15 @@ export function GuideButton({ user }: { user: CapabilityHolder | null }) {
               >
                 Понятно
               </button>
-              <Link
-                href={cta.href}
-                onClick={() => setOpen(false)}
-                className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent)] px-3.5 py-2 text-center text-[length:var(--type-small)] font-medium text-[var(--accent-foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 sm:min-h-9 sm:py-1.5"
-              >
-                {cta.label} →
-              </Link>
+              {cta && (
+                <Link
+                  href={cta.href}
+                  onClick={() => setOpen(false)}
+                  className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-[var(--radius-md)] bg-[var(--accent)] px-3.5 py-2 text-center text-[length:var(--type-small)] font-medium text-[var(--accent-foreground)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 sm:min-h-9 sm:py-1.5"
+                >
+                  {cta.label} →
+                </Link>
+              )}
             </div>
           </div>
         </div>

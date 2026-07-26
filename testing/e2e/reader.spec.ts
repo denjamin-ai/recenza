@@ -7,7 +7,7 @@
 import { type Locator } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { loginViaUi, newApiContext, uniqueXff } from "./helpers/auth";
-import { BASE_URL, BLOG, CHAPTERS, COMMENTS, PASSWORD, USERS } from "./helpers/seed";
+import { BASE_URL, BLOG, CHAPTERS, COMMENTS, FEATURED_BLOG, PASSWORD, USERS } from "./helpers/seed";
 import { ReaderPage } from "./pages/reader.page";
 import { CommentsPage } from "./pages/comments.page";
 
@@ -402,6 +402,17 @@ test.describe("Читатель", () => {
       await page.waitForURL(/\/\?view=all/);
       await expect(reader.homeHeading("Все блоги")).toBeVisible();
       await expect(reader.blogCard(BLOG.title)).toBeVisible();
+    });
+
+    await test.step("«Проверенные →» из hero — каталог с фильтром по бейджу (ui-feedback-7)", async () => {
+      await reader.gotoFeed();
+      await page.getByRole("link", { name: "Проверенные →" }).click();
+      await page.waitForURL(/filter=verified/);
+      await expect(reader.homeHeading("Все блоги")).toBeVisible();
+      // BLOG — независимый бейдж, фильтр проходит; FEATURED_BLOG закреплён редакцией, но
+      // бейджа не имеет — из «Проверенных» выпадает (закрепление ≠ ревью).
+      await expect(reader.blogCard(BLOG.title)).toBeVisible();
+      await expect(reader.blogCard(FEATURED_BLOG.title)).toHaveCount(0);
     });
   });
 

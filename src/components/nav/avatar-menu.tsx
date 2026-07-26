@@ -1,14 +1,15 @@
 "use client";
 
 // Меню аватара (Фаза 13, по прототипу shared/components.jsx AvatarMenu): профиль и закладки — ВСЕМ
-// (публичный профиль есть у любого аккаунта, реверс uif-6 П6/uif-5 П4); кабинеты — по возможностям;
-// подзаголовок = возможности через « · », иначе «Читатель».
+// (публичный профиль есть у любого аккаунта, реверс uif-6 П6/uif-5 П4).
+// ui-feedback-7: пунктов «Кабинет автора»/«Кабинет ревьюера» и строки возможностей в шапке НЕТ —
+// вход в кабинеты только через «Рабочее место» (оно видно при наличии возможностей).
 // «Сменить аватар» убран по ui-feedback-6 П2 — смена аватарки осталась на своей /u/-странице.
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { capabilitiesLabel, capabilitiesOf } from "@/lib/roles";
+import { capabilitiesOf } from "@/lib/roles";
 
 type AvatarUser = {
   displayName: string;
@@ -18,11 +19,6 @@ type AvatarUser = {
   isReviewer: boolean;
   avatarUrl: string | null;
 };
-
-const PORTAL = {
-  author: "/author",
-  reviewer: "/reviewer",
-} as const;
 
 export function AvatarMenu({ user }: { user: AvatarUser }) {
   const [open, setOpen] = useState(false);
@@ -59,7 +55,7 @@ export function AvatarMenu({ user }: { user: AvatarUser }) {
   const caps = capabilitiesOf(user);
   const initial = (user.displayName || user.handle).charAt(0).toUpperCase();
   const menuItem =
-    "block w-full rounded-[var(--radius-md)] px-3 py-2 text-left text-[length:var(--type-small)] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]";
+    "flex min-h-9 w-full items-center rounded-[var(--radius-md)] px-3 py-2 text-left text-[length:var(--type-small)] text-[var(--foreground)] transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]";
 
   return (
     <div
@@ -99,9 +95,6 @@ export function AvatarMenu({ user }: { user: AvatarUser }) {
             <p className="truncate font-mono text-[11px] text-[var(--muted-foreground)]">
               @{user.handle}
             </p>
-            <p className="truncate text-[11px] text-[var(--muted-foreground)]">
-              {capabilitiesLabel(user)}
-            </p>
           </div>
 
           <div className="pt-1">
@@ -109,29 +102,19 @@ export function AvatarMenu({ user }: { user: AvatarUser }) {
             <Link role="menuitem" href={`/u/${user.slug}`} className={menuItem} onClick={() => setOpen(false)}>
               Мой профиль
             </Link>
+            {/* Ф13.6: «Рабочее место» — приватный хаб, только при наличии возможностей.
+                ui-feedback-7: единственный вход в кабинеты — карточки на /workspace. */}
+            {caps.length > 0 && (
+              <Link role="menuitem" href="/workspace" className={menuItem} onClick={() => setOpen(false)}>
+                Рабочее место
+              </Link>
+            )}
             <Link role="menuitem" href="/bookmarks" className={menuItem} onClick={() => setOpen(false)}>
               Закладки
             </Link>
             <Link role="menuitem" href="/settings" className={menuItem} onClick={() => setOpen(false)}>
               Настройки
             </Link>
-            {/* Ф13.6: «Рабочее место» — приватный хаб, только при наличии возможностей. */}
-            {caps.length > 0 && (
-              <Link role="menuitem" href="/workspace" className={menuItem} onClick={() => setOpen(false)}>
-                Рабочее место
-              </Link>
-            )}
-            {caps.map((c) => (
-              <Link
-                key={c}
-                role="menuitem"
-                href={PORTAL[c]}
-                className={menuItem}
-                onClick={() => setOpen(false)}
-              >
-                Кабинет {c === "author" ? "автора" : "ревьюера"}
-              </Link>
-            ))}
             <button role="menuitem" type="button" onClick={logout} className={menuItem}>
               Выйти
             </button>
