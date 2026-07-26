@@ -2317,6 +2317,12 @@ in-place, `router.refresh()` в `startTransition`); скилл `review-flow-doma
 - **Проверка:** `npm run lint` + `npm run build` зелёные; полный `npx playwright test` — **182
   passed, 0 skipped**. Вручную на стенде: ротация XFF, пер-аккаунтный лимит, CSP-заголовок с
   nonce, комментарий/голос/закладка к скрытому админом блогу → 404, политика ссылок.
+- **Инфра применена на сервере 2026-07-26** (после мержа PR): `chmod 700` на `shared/data`
+  (проверено: `caddy` доступ потерял, `recenza` сохранил), заголовки на `/uploads/*` (валидация
+  конфига → `systemctl reload caddy`), `NODE_ENV=production` в юните (`daemon-reload` + restart,
+  подтверждено в `/proc/<pid>/environ`). Сайт после перезапуска: `/`, `/board`, `/about` → 200.
+  ⚠️ **Найдено попутно и записано в `ENVIRONMENTS.md` §6.3: `deploy.yml` конфиги из `deploy/**`
+  на сервер НЕ возит** — правка `Caddyfile`/юнита в PR сама по себе прод не меняет.
 - **Осталось в backlog:** allowlist CF-диапазонов в ufw (закрыл бы подделку `CF-Connecting-IP` при
   прямом заходе на origin мимо CF); инвалидация сессий при смене пароля; вынос rate-limit в
   durable-стор при горизонтальном масштабировании.
