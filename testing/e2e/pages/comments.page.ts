@@ -115,10 +115,18 @@ export class CommentsPage {
    * Комментарий с привязкой к фрагменту: выделить текст блока (тройной клик),
    * нажать плавающую кнопку якоря (гаснет на scroll/resize/Esc — не скроллить
    * между выделением и кликом), затем отправить из композера с чипом «К фрагменту».
+   * ⚠️ Пара «выделение → кнопка» ретраится целиком: на медленном CI-раннере тройной
+   * клик до гидрации не оставляет выделения, и кнопка не появляется вовсе (красный
+   * smoke PR #40 — оба ретрая теста упали одинаково). Паттерн «мёртвые клики до
+   * гидрации → toPass» — тот же, что в guest/author-спеках.
    */
   async addAnchoredToBlock(blockId: string, text: string): Promise<void> {
-    await this.page.locator(`[data-block-id="${blockId}"]`).click({ clickCount: 3 });
-    await this.page.locator('[aria-label="Прокомментировать выделенный фрагмент"]').click();
+    const anchorButton = this.page.locator('[aria-label="Прокомментировать выделенный фрагмент"]');
+    await expect(async () => {
+      await this.page.locator(`[data-block-id="${blockId}"]`).click({ clickCount: 3 });
+      await expect(anchorButton).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
+    await anchorButton.click();
     await this.composer.fill(text);
     await this.region.getByRole("button", { name: "Отправить" }).first().click();
   }
