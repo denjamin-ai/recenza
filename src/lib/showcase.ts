@@ -31,9 +31,28 @@ export const CATALOG_SORT_LABEL: Record<CatalogSort, string> = {
   top: "Популярные",
 };
 
+/** Фильтр каталога `/?view=all` (ui-feedback-7: явный доступ «только к проверенным»). */
+export const CATALOG_FILTERS = ["all", "verified"] as const;
+export type CatalogFilter = (typeof CATALOG_FILTERS)[number];
+
+export const CATALOG_FILTER_LABEL: Record<CatalogFilter, string> = {
+  all: "Все",
+  verified: "Проверенные",
+};
+
 /** Блог попадает на витрину только с независимым ревью. */
 export function isShowcaseVerified(blog: BlogCardView): boolean {
   return blog.verifiedAt != null && blog.verifiedTier === "independent";
+}
+
+/**
+ * Фильтр каталога «Проверенные» — НЕ витринное правило: считается любой бейдж ревью
+ * (`independent` И `invited`), а не только независимый. Политика «только independent»
+ * (`isShowcaseVerified`) — это пропуск на ГЛАВНУЮ (З-19); каталог же отвечает на вопрос
+ * «какие блоги прошли ревью», и уровень бейджа читатель видит чипом прямо на карточке.
+ */
+export function isReviewVerified(blog: BlogCardView): boolean {
+  return blog.verifiedAt != null;
 }
 
 export function isFeatured(blog: BlogCardView): boolean {
@@ -72,17 +91,42 @@ function verifiedRank(blog: BlogCardView): number {
 }
 
 /**
- * Разбор `?sort=`/`?page=` из URL. Мусор молча становится дефолтом — страница каталога никогда
- * не отвечает 404 из-за параметра сортировки.
+ * Разбор `?sort=`/`?filter=`/`?page=` из URL. Мусор молча становится дефолтом — страница
+ * каталога никогда не отвечает 404 из-за параметра сортировки или фильтра.
  */
-export function parseCatalogParams(sp: { sort?: string; page?: string }): {
+export function parseCatalogParams(sp: { sort?: string; page?: string; filter?: string }): {
   sort: CatalogSort;
+  filter: CatalogFilter;
   page: number;
 } {
   const sort = CATALOG_SORTS.find((s) => s === sp.sort) ?? "new";
+  const filter = CATALOG_FILTERS.find((f) => f === sp.filter) ?? "all";
   const raw = Number.parseInt(sp.page ?? "1", 10);
   const page = Number.isFinite(raw) && raw >= 1 ? Math.min(raw, 1000) : 1;
-  return { sort, page };
+  return { sort, filter, page };
+}
+
+/**
+ * Единственная точка сборки query каталога/витрины (canonical, чипы, пагинация) — иначе порядок
+ * параметров разъезжается между поверхностями и canonical перестаёт совпадать сам с собой.
+ * Дефолты (`filter=all`, `sort=new`, `page=1`) в URL не пишутся. Возвращает строку БЕЗ `?`;
+ * пустая строка = главная без параметров.
+ */
+export function catalogQuery(opts: {
+  /** true — URL каталога (`view=all` + фильтр/сортировка); false — витрина (только страница). */
+  catalog?: boolean;
+  sort?: CatalogSort;
+  filter?: CatalogFilter;
+  page?: number;
+}): string {
+  const params = new URLSearchParams();
+  if (opts.catalog) {
+    params.set("view", "all");
+    if (opts.filter && opts.filter !== "all") params.set("filter", opts.filter);
+    if (opts.sort && opts.sort !== "new") params.set("sort", opts.sort);
+  }
+  if (opts.page && opts.page > 1) params.set("page", String(opts.page));
+  return params.toString();
 }
 
 export interface Paged<T> {

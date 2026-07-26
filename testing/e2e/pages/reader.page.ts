@@ -136,9 +136,11 @@ export class ReaderPage {
     return this.page.getByRole("button", { name: "Меню пользователя" });
   }
 
+  /** Выход через меню аватара; если меню уже открыто вызывающим — не закрывает его повторным кликом. */
   async logout(): Promise<void> {
-    await this.userMenuButton.click();
-    await this.page.getByRole("menuitem", { name: "Выйти" }).click();
+    const item = this.page.getByRole("menuitem", { name: "Выйти" });
+    if (!(await item.isVisible())) await this.userMenuButton.click();
+    await item.click();
   }
 
   /** Блок контента по id (якоря скроллят к [data-block-id], не к id="block-…") */

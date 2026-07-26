@@ -680,18 +680,37 @@ test.describe("Автор (author)", () => {
       await reader.userMenuButton.click();
       const menu = page.getByRole("menu", { name: "Меню пользователя" });
       await expect(menu).toBeVisible();
-      await expect(menu.getByRole("menuitem", { name: "Закладки" })).toBeVisible();
-      await expect(menu.getByRole("menuitem", { name: "Мой профиль" })).toBeVisible();
-      await expect(menu.getByRole("menuitem", { name: "Кабинет автора" })).toBeVisible();
+      // ui-feedback-7: состав и порядок целиком — кабинетные пункты убраны (вход через
+      // «Рабочее место»), одним ассертом ловим и лишний пункт, и перестановку.
+      await expect(menu.getByRole("menuitem")).toHaveText([
+        "Мой профиль",
+        "Рабочее место",
+        "Закладки",
+        "Настройки",
+        "Выйти",
+      ]);
+      await expect(menu.getByRole("menuitem", { name: "Кабинет автора" })).toHaveCount(0);
+      // ui-feedback-7: строки возможностей в шапке панели больше нет — точное «Автор»
+      // в меню не встречается (displayName «Антон Автор» под exact-матч не попадает).
+      await expect(menu.getByText("Автор", { exact: true })).toHaveCount(0);
       // ui-feedback-6 П2: «Сменить аватар» из меню убран (кнопка живёт на своей /u/-странице).
       await expect(menu.getByRole("menuitem", { name: "Сменить аватар" })).toHaveCount(0);
       // Ф13: пункт «Все мои блоги» удалён — каталог общий, свои блоги живут в кабинете.
       await expect(menu.getByRole("menuitem", { name: "Все мои блоги" })).toHaveCount(0);
+      // ui-feedback-7: «Выйти» — реальный клик (строка не была защищена ни одним e2e);
+      // сессия страницы гаснет, шапка становится гостевой. Self-restore ниже идёт через
+      // отдельный api-контекст и от логаута страницы не зависит.
+      await reader.logout();
+      await expect(page.getByRole("banner").getByRole("link", { name: "Войти" })).toBeVisible({
+        timeout: 15_000,
+      });
     });
 
     // Self-restoring: снимаем голос и закладку, оставленные выше.
+    // ⚠️ ui-feedback-7 (находка ревью): голос ставился на DUO_BLOG, а снимался с BLOG —
+    // своего блога автора, где vote всегда 403; повторный голос за DUO_BLOG — реальный toggle-off.
     await throttleMutation(USERS.author.handle);
-    await ctx.post(`/api/blogs/${BLOG.id}/vote`, { data: { value: 1 } });
+    await ctx.post(`/api/blogs/${DUO_BLOG.id}/vote`, { data: { value: 1 } });
     await throttleMutation(USERS.author.handle);
     await ctx.post("/api/bookmarks", { data: { blogId: BLOG.id } });
   });
@@ -749,7 +768,10 @@ test.describe("Автор (author)", () => {
     await expect(dialog.getByRole("heading", { name: "Гид автора" })).toBeVisible();
     // Ф14: текст про приглашение ревьюеров стал ложью — теперь автор оставляет ЗАЯВКУ.
     await expect(dialog.getByText(/оставьте заявку/i)).toBeVisible();
-    await expect(dialog.getByRole("link", { name: /Кабинет автора/ })).toBeVisible();
+    // ui-feedback-7: кабинетных CTA в гиде нет — в кабинеты ведёт «Рабочее место» из меню
+    // аватара; закрытие — «Понятно», крестик, клик по фону или Escape.
+    await expect(dialog.getByRole("link", { name: /Кабинет автора/ })).toHaveCount(0);
+    await expect(dialog.getByRole("button", { name: "Понятно" })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
   });

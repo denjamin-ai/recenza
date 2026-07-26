@@ -18,11 +18,19 @@ import { getFollowedAuthorIds, getVisibleBlogs } from "@/lib/queries/feed";
 import { getCatalog, getShowcase, type ShowcaseView } from "@/lib/queries/showcase";
 import { PromoCarouselSlot } from "@/components/reader/promo-carousel-slot";
 import { BlogIndexCard } from "@/components/reader/blog-index-card";
+import { CatalogFilterNav } from "@/components/reader/catalog-filter-nav";
 import { CatalogPagination } from "@/components/reader/catalog-pagination";
 import { CatalogSortNav } from "@/components/reader/catalog-sort-nav";
 import { siteUrl } from "@/lib/seo";
 import { plural } from "@/lib/plural";
-import { SHOWCASE_PAGE_SIZE, parseCatalogParams, paginate, type CatalogSort } from "@/lib/showcase";
+import {
+  SHOWCASE_PAGE_SIZE,
+  catalogQuery,
+  parseCatalogParams,
+  paginate,
+  type CatalogFilter,
+  type CatalogSort,
+} from "@/lib/showcase";
 import type { BlogCardView } from "@/lib/queries/types";
 import type { PublicUser } from "@/types";
 
@@ -38,29 +46,36 @@ export const dynamic = "force-dynamic";
 export async function generateMetadata({ searchParams }: { searchParams: Search }): Promise<Metadata> {
   const sp = await searchParams;
   const catalog = sp.view === "all";
-  const { sort, page } = parseCatalogParams(sp);
+  const { sort, filter, page } = parseCatalogParams(sp);
 
-  const params = new URLSearchParams();
-  if (catalog) {
-    params.set("view", "all");
-    if (sort !== "new") params.set("sort", sort);
-  }
-  if (page > 1) params.set("page", String(page));
-  const qs = params.toString();
+  // ⚠️ Фильтр обязан попасть в canonical: `filter=verified` — другое содержимое, канонизация
+  // на полный каталог была бы повтором бага Ф15.1. Порядок параметров — единый `catalogQuery`.
+  const qs = catalogQuery({ catalog, sort, filter, page });
+
+  // ui-feedback-7: у отфильтрованного каталога СВОИ title/description — содержимое другое,
+  // одинаковые метаданные читались бы как дубликат. Сортировка/пагинация набор не меняют —
+  // им хватает общего title (прецедент Ф15.1).
+  const verifiedCatalog = catalog && filter === "verified";
 
   return {
     // absolute: шаблон "%s | Recenza" задублировал бы бренд на главной
     title: {
-      absolute: catalog ? "Все блоги | Recenza" : "Recenza — девблоги с редакционным ревью",
+      absolute: verifiedCatalog
+        ? "Все блоги — проверенные | Recenza"
+        : catalog
+          ? "Все блоги | Recenza"
+          : "Recenza — девблоги с редакционным ревью",
     },
-    description: catalog
-      ? "Полный каталог опубликованных девблогов Recenza — с сортировкой и постраничной навигацией."
-      : "Девблоги, прошедшие редакционное ревью: подборка проверенных блогов, каталог и подписки.",
+    description: verifiedCatalog
+      ? "Каталог девблогов Recenza с бейджем ревью — независимым или приглашённого эксперта."
+      : catalog
+        ? "Полный каталог опубликованных девблогов Recenza — с сортировкой и постраничной навигацией."
+        : "Девблоги, прошедшие редакционное ревью: подборка проверенных блогов, каталог и подписки.",
     alternates: { canonical: qs ? `${siteUrl()}/?${qs}` : siteUrl() },
   };
 }
 
-type Search = Promise<{ view?: string; sort?: string; page?: string }>;
+type Search = Promise<{ view?: string; sort?: string; filter?: string; page?: string }>;
 
 
 export default async function HomePage({ searchParams }: { searchParams: Search }) {
@@ -68,9 +83,9 @@ export default async function HomePage({ searchParams }: { searchParams: Search 
   const user = await getCurrentUser();
 
   if (sp.view === "all") {
-    const { sort, page } = parseCatalogParams(sp);
-    const catalog = await getCatalog(sort, page);
-    return <Catalog catalog={catalog} sort={sort} />;
+    const { sort, filter, page } = parseCatalogParams(sp);
+    const catalog = await getCatalog(sort, page, filter);
+    return <Catalog catalog={catalog} sort={sort} filter={filter} />;
   }
 
   if (user) return <ReaderHome user={user} />;
@@ -83,9 +98,11 @@ export default async function HomePage({ searchParams }: { searchParams: Search 
 function Catalog({
   catalog,
   sort,
+  filter,
 }: {
   catalog: Awaited<ReturnType<typeof getCatalog>>;
   sort: CatalogSort;
+  filter: CatalogFilter;
 }) {
   return (
     <div className="mx-auto w-full max-w-[var(--max-content)] px-6 py-10">
@@ -96,15 +113,20 @@ function Catalog({
 
       <PromoCarouselSlot />
 
+      {/* Фильтр — ВНЕ пустой ветки: на пустой выдаче «Проверенных» чип «Все» — путь сброса. */}
+      <CatalogFilterNav active={filter} sort={sort} />
+
       {catalog.total === 0 ? (
         <div className="rounded-[var(--radius-lg)] border border-dashed border-[var(--border)] py-16 text-center">
-          <p className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">Пока нет опубликованных блогов.</p>
+          <p className="text-[length:var(--type-small)] text-[var(--muted-foreground)]">
+            {filter === "verified" ? "Проверенных блогов пока нет." : "Пока нет опубликованных блогов."}
+          </p>
         </div>
       ) : (
         <>
-          <CatalogSortNav active={sort} />
+          <CatalogSortNav active={sort} filter={filter} />
           <BlogGrid blogs={catalog.items} />
-          <CatalogPagination page={catalog.page} pageCount={catalog.pageCount} sort={sort} />
+          <CatalogPagination page={catalog.page} pageCount={catalog.pageCount} sort={sort} filter={filter} />
         </>
       )}
     </div>
@@ -214,12 +236,21 @@ async function ReaderHome({ user }: { user: PublicUser }) {
                 : "Подпишитесь на блог, чтобы получать новые главы здесь."}
             </p>
           </div>
-          <Link
-            href="/?view=all"
-            className="inline-flex min-h-[44px] shrink-0 items-center rounded-[var(--radius-sm)] text-[0.82rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          >
-            Все блоги →
-          </Link>
+          {/* ui-feedback-7: из ленты два явных выхода — весь каталог и сразу «только проверенные». */}
+          <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2">
+            <Link
+              href="/?view=all"
+              className="inline-flex min-h-[44px] items-center rounded-[var(--radius-sm)] text-[0.82rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            >
+              Все блоги →
+            </Link>
+            <Link
+              href={`/?${catalogQuery({ catalog: true, filter: "verified" })}`}
+              className="inline-flex min-h-[44px] items-center rounded-[var(--radius-sm)] text-[0.82rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            >
+              Проверенные →
+            </Link>
+          </div>
         </div>
       </section>
 

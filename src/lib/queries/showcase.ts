@@ -18,8 +18,10 @@ import {
   byVerifiedFreshness,
   catalogComparator,
   isFeatured,
+  isReviewVerified,
   isShowcaseVerified,
   paginate,
+  type CatalogFilter,
   type CatalogSort,
   type Paged,
   type ShowcaseMode,
@@ -76,8 +78,17 @@ export async function getShowcase(opts: { excludeAuthorIds?: string[] } = {}): P
   };
 }
 
-/** Каталог «/?view=all» — ВСЁ опубликованное с сортировкой и пагинацией (З-25). */
-export async function getCatalog(sort: CatalogSort, page: number): Promise<Paged<BlogCardView>> {
+/**
+ * Каталог «/?view=all» — ВСЁ опубликованное с сортировкой и пагинацией (З-25).
+ * ui-feedback-7: фильтр «Проверенные» = любой бейдж ревью (`isReviewVerified`, оба tier) —
+ * это НЕ витринная политика, у той свой предикат (`isShowcaseVerified`, только independent).
+ */
+export async function getCatalog(
+  sort: CatalogSort,
+  page: number,
+  filter: CatalogFilter = "all",
+): Promise<Paged<BlogCardView>> {
   const all = await getVisibleBlogs();
-  return paginate([...all].sort(catalogComparator(sort)), page);
+  const pool = filter === "verified" ? all.filter(isReviewVerified) : [...all];
+  return paginate(pool.sort(catalogComparator(sort)), page);
 }

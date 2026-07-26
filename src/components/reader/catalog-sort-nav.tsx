@@ -2,9 +2,15 @@
 // Server Component на ссылках — состояние живёт в URL, клиентского JS нет.
 
 import Link from "next/link";
-import { CATALOG_SORTS, CATALOG_SORT_LABEL, type CatalogSort } from "@/lib/showcase";
+import {
+  CATALOG_SORTS,
+  CATALOG_SORT_LABEL,
+  catalogQuery,
+  type CatalogFilter,
+  type CatalogSort,
+} from "@/lib/showcase";
 
-export function CatalogSortNav({ active }: { active: CatalogSort }) {
+export function CatalogSortNav({ active, filter }: { active: CatalogSort; filter: CatalogFilter }) {
   return (
     <nav className="mb-6 flex flex-wrap items-center gap-2" aria-label="Сортировка каталога">
       {CATALOG_SORTS.map((sort) => {
@@ -12,7 +18,7 @@ export function CatalogSortNav({ active }: { active: CatalogSort }) {
         return (
           <Link
             key={sort}
-            href={sort === "new" ? "/?view=all" : `/?view=all&sort=${sort}`}
+            href={`/?${catalogQuery({ catalog: true, filter, sort })}`}
             aria-current={current ? "true" : undefined}
             className={`inline-flex min-h-[36px] items-center rounded-[var(--radius-pill)] border px-3 text-[length:var(--type-small)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
               current
