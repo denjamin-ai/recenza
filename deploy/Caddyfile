@@ -13,10 +13,17 @@ recenza.ru {
 		max_size 8MB
 	}
 
+	# ⚠️ Аудит ИБ 2026-07-26: этот handle отдаёт файлы МИМО Node, поэтому security-заголовки из
+	# next.config.ts (они вешаются на роуты Next) сюда НЕ доезжают. До правки загруженные файлы
+	# приходили с одного origin с приложением вообще без nosniff — расхождение с dev, где те же
+	# файлы отдаёт Next из public/ и заголовки есть. Правишь заголовки в next.config.ts — правь и тут.
 	handle_path /uploads/* {
 		root * /srv/recenza/shared/uploads
 		file_server
 		header Cache-Control "public, max-age=86400"
+		header X-Content-Type-Options "nosniff"
+		header X-Frame-Options "DENY"
+		header Content-Security-Policy "default-src 'none'; img-src 'self'; sandbox"
 	}
 
 	# Host сохраняется по умолчанию → same-origin CSRF (assertSameOrigin) работает.

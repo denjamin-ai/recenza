@@ -7,11 +7,19 @@ import bcrypt from "bcryptjs";
 import { getSession } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import {
+  accountKey,
+  checkAccountRate,
   checkLoginRate,
-  clearLoginRate,
+  clearRate,
   clientKey,
-  recordLoginFailure,
+  recordFailure,
 } from "@/lib/rate-limit";
+
+// Ведро на сам админ-аккаунт (аудит ИБ 2026-07-26): IP-ключ приходит из внешнего заголовка,
+// поэтому распределённый перебор ADMIN_PASSWORD_HASH обходит IP-лимит по построению.
+// ⚠️ Обратная сторона (принята владельцем): вход в админку можно запереть снаружи на 15 минут.
+//    Аварийный выход — `sudo systemctl restart recenza` (вёдра in-memory).
+const ADMIN_ACCOUNT = accountKey("admin");
 
 function rateLimited(retryAfter?: number): NextResponse {
   return NextResponse.json(
@@ -28,6 +36,14 @@ export async function POST(req: Request): Promise<NextResponse> {
   const rl = checkLoginRate(key);
   if (!rl.ok) return rateLimited(rl.retryAfter);
 
+  const acctRl = checkAccountRate("admin");
+  if (!acctRl.ok) return rateLimited(acctRl.retryAfter);
+
+  const failed = () => {
+    recordFailure(key);
+    recordFailure(ADMIN_ACCOUNT);
+  };
+
   let password = "";
   try {
     const body = (await req.json()) as { password?: unknown };
@@ -38,7 +54,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
 
   if (!password) {
-    recordLoginFailure(key);
+    failed();
     return NextResponse.json({ error: "Введите пароль." }, { status: 401 });
   }
 
@@ -50,7 +66,7 @@ export async function POST(req: Request): Promise<NextResponse> {
 
   const ok = await bcrypt.compare(password, hash);
   if (!ok) {
-    recordLoginFailure(key);
+    failed();
     return NextResponse.json({ error: "Неверный пароль." }, { status: 401 });
   }
 
@@ -59,7 +75,8 @@ export async function POST(req: Request): Promise<NextResponse> {
   delete session.userId; // инвариант: admin без userId
   await session.save();
 
-  clearLoginRate(key);
+  clearRate(key);
+  clearRate(ADMIN_ACCOUNT);
   return NextResponse.json({ isAdmin: true });
 }
 

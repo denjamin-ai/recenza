@@ -35,6 +35,11 @@ export async function PATCH(req: Request): Promise<NextResponse> {
     } else if (
       typeof body.avatarUrl === "string" &&
       body.avatarUrl.startsWith("/uploads/avatars/") &&
+      // ⚠️ Аудит ИБ 2026-07-26: одного startsWith мало — "/uploads/avatars/../covers/x.png"
+      // проходит префикс, но указывает наружу каталога. Имена файлов генерирует saveUpload
+      // (ulid + расширение), поэтому точек-сегментов в легальном пути не бывает вовсе.
+      !body.avatarUrl.includes("..") &&
+      !body.avatarUrl.includes("\\") &&
       body.avatarUrl.length <= 200
     ) {
       avatarUrl = body.avatarUrl;

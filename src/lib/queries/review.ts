@@ -537,7 +537,13 @@ export async function resolveReviewAccess(chapterId: string): Promise<ReviewAcce
   const session = await getReviewSession(chapterId);
   if (!session) return NextResponse.json({ error: "Глава не найдена." }, { status: 404 });
 
-  if (user.id === session.blog.authorId) return { user, role: "author", session };
+  // Возможность «автор» + владение. ⚠️ Аудит ИБ 2026-07-26: проверка `canAuthor` здесь ОБЯЗАТЕЛЬНА
+  // и симметрична ветке ревьюера ниже. Без неё автор со СНЯТОЙ возможностью сохранял полный доступ
+  // на запись к /api/review/** — включая threads/[id]/apply, который правит блоки главы, — то есть
+  // отзыв возможности переставал действовать вопреки инварианту CLAUDE.md §Гейтинг.
+  if (user.canAuthor && user.id === session.blog.authorId) {
+    return { user, role: "author", session };
+  }
   // Возможность «ревьюер» + фактическое назначение (defense in depth: отзыв возможности админом
   // закрывает доступ, даже если строка chapter_reviewers осталась).
   if (user.isReviewer && isAssignedReviewer(user.handle, session)) {

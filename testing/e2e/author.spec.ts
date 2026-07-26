@@ -21,7 +21,7 @@
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect } from "./fixtures";
 import { throttleMutation } from "./helpers/throttle";
-import { BASE_URL, BLOG, CHAPTERS, HIDDEN_BLOG, USERS } from "./helpers/seed";
+import { BASE_URL, BLOG, CHAPTERS, DUO_BLOG, HIDDEN_BLOG, USERS } from "./helpers/seed";
 import { EditorPage } from "./pages/editor.page";
 import { ReaderPage } from "./pages/reader.page";
 import { CommentsPage } from "./pages/comments.page";
@@ -642,8 +642,21 @@ test.describe("Автор (author)", () => {
     const ctx = await api("author");
 
     await test.step("API: vote/bookmarks под автором → 200; /bookmarks открывается", async () => {
+      // Голосуем за ЧУЖОЙ блог: смысл кейса — возможность реагировать не зависит от роли (Ф13).
       await throttleMutation(USERS.author.handle);
-      expect((await ctx.post(`/api/blogs/${BLOG.id}/vote`, { data: { value: 1 } })).status()).toBe(200);
+      expect(
+        (await ctx.post(`/api/blogs/${DUO_BLOG.id}/vote`, { data: { value: 1 } })).status(),
+      ).toBe(200);
+      // ⚠️ Аудит ИБ 2026-07-26: голос за СВОЙ блог запрещён (накрутка ?sort=top и витрины) —
+      // симметрично давнему запрету голоса за свой комментарий.
+      // Соседняя мутация могла занять action-limit 1/сек → ретраим до устойчивого 403.
+      await expect(async () => {
+        const own = await ctx.post(`/api/blogs/${BLOG.id}/vote`, { data: { value: 1 } });
+        expect(own.status()).toBe(403);
+        expect(((await own.json()) as { error?: string }).error).toBe(
+          "Нельзя голосовать за свой блог.",
+        );
+      }).toPass({ timeout: 15_000 });
       await throttleMutation(USERS.author.handle);
       expect((await ctx.post("/api/bookmarks", { data: { blogId: BLOG.id } })).status()).toBe(200);
       // Подписка на самого себя запрещена по существу (не по роли) — проверяем именно эту причину.

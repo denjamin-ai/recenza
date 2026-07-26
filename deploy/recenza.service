@@ -13,6 +13,11 @@ Type=simple
 User=recenza
 Group=recenza
 WorkingDirectory=/srv/recenza/current
+# ⚠️ Аудит ИБ 2026-07-26: NODE_ENV задаём ЯВНО. От него зависит флаг `secure` у сессионной cookie
+# (src/lib/auth.ts) и требование https-схемы в CSRF-проверке (src/lib/csrf.ts). Раньше это держалось
+# только на том, что standalone-server.js выставляет production сам — флаг безопасности не должен
+# зависеть от детали артефакта сборки. EnvironmentFile идёт ПОСЛЕ и может переопределить при нужде.
+Environment=NODE_ENV=production
 EnvironmentFile=/srv/recenza/shared/env
 ExecStart=/usr/bin/node server.js
 Restart=always

@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { threadReplies, threads } from "@/lib/db/schema";
+import { requireUser } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { hitActionRate } from "@/lib/rate-limit";
 import { createNotifications } from "@/lib/queries/notifications";
@@ -34,7 +35,12 @@ export async function POST(
       .where(eq(threads.id, threadId))
       .limit(1)
   )[0];
-  if (!thread) return NextResponse.json({ error: "Тред не найден." }, { status: 404 });
+  // Гард ДО раскрытия существования треда (аудит ИБ 2026-07-26) — см. resolve/route.ts.
+  if (!thread) {
+    const gate = await requireUser();
+    if (gate instanceof NextResponse) return gate;
+    return NextResponse.json({ error: "Тред не найден." }, { status: 404 });
+  }
 
   const access = await resolveReviewAccess(thread.chapterId);
   if (access instanceof NextResponse) return access;

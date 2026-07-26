@@ -13,15 +13,23 @@ export function assertSameOrigin(req: Request): NextResponse | null {
     return forbidden("Запрос отклонён: отсутствует Origin.");
   }
 
-  let originHost: string;
+  let parsed: URL;
   try {
-    originHost = new URL(origin).host;
+    parsed = new URL(origin);
   } catch {
     return forbidden("Запрос отклонён: некорректный Origin.");
   }
 
-  if (originHost !== host) {
+  if (parsed.host !== host) {
     return forbidden("Запрос отклонён: межсайтовый запрос.");
+  }
+
+  // ⚠️ Аудит ИБ 2026-07-26: схему тоже сверяем. Раньше сравнивался только host, из-за чего
+  // `Origin: http://recenza.ru` принимался на HTTPS-сайте (protocol confusion). На проде это
+  // прикрыто HSTS, но полагаться на внешний рубеж в CSRF-проверке незачем.
+  // В dev/тесте контур http://localhost — поэтому https требуем только в проде.
+  if (process.env.NODE_ENV === "production" && parsed.protocol !== "https:") {
+    return forbidden("Запрос отклонён: небезопасная схема Origin.");
   }
 
   return null;

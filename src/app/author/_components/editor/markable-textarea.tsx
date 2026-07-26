@@ -5,7 +5,10 @@
 
 import { useLayoutEffect, useRef, useState, type TextareaHTMLAttributes } from "react";
 
-const SAFE_URL = /^(https?:\/\/|\/)/i;
+// Та же политика, что у рендерера (src/components/blocks/inline.tsx): http(s) либо ОДИНОЧНЫЙ "/".
+// "//host" и "/\host" — внешние адреса под видом внутренних, отклоняются (аудит ИБ 2026-07-26).
+// Это подсказка автору; решающая проверка — на рендере.
+const SAFE_URL = /^(https?:\/\/|\/(?![/\\]))/i;
 
 export function MarkableTextarea({
   value,

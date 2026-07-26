@@ -7,6 +7,7 @@ import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { chapterRevisions, threads } from "@/lib/db/schema";
+import { requireUser } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { hitActionRate } from "@/lib/rate-limit";
 import { parseJson, stringifyJson } from "@/lib/db/json";
@@ -35,16 +36,22 @@ export async function POST(
       .where(eq(threads.id, threadId))
       .limit(1)
   )[0];
-  if (!thread) return NextResponse.json({ error: "Тред не найден." }, { status: 404 });
-  // Идемпотентность: повторное «применить» закрытого треда снова заменило бы текст (второй replace
-  // найдёт следующее вхождение) — запрещаем.
-  if (thread.status !== "open") return NextResponse.json({ error: "Тред уже закрыт." }, { status: 409 });
+  // Гард ДО раскрытия существования треда (аудит ИБ 2026-07-26) — см. resolve/route.ts.
+  if (!thread) {
+    const gate = await requireUser();
+    if (gate instanceof NextResponse) return gate;
+    return NextResponse.json({ error: "Тред не найден." }, { status: 404 });
+  }
 
   const access = await resolveReviewAccess(thread.chapterId);
   if (access instanceof NextResponse) return access;
   if (access.role !== "author") {
     return NextResponse.json({ error: "Применять правки может только автор." }, { status: 403 });
   }
+
+  // Идемпотентность: повторное «применить» закрытого треда снова заменило бы текст (второй replace
+  // найдёт следующее вхождение) — запрещаем.
+  if (thread.status !== "open") return NextResponse.json({ error: "Тред уже закрыт." }, { status: 409 });
 
   const rl = hitActionRate(`review-apply:${access.user.id}`);
   if (!rl.ok) {

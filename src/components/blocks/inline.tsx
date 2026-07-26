@@ -16,7 +16,14 @@ import { Fragment, type ReactNode } from "react";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 
-const SAFE_URL = /^(https?:\/\/|\/)/i;
+// Абсолютная внешняя ссылка — только http(s).
+const EXTERNAL_URL = /^https?:\/\//i;
+// Внутренний путь — ОДИНОЧНЫЙ "/". ⚠️ Аудит ИБ 2026-07-26: "//evil.com" (протокол-относительный)
+// и "/\evil.com" (браузер нормализует "\"→"/") — это ВНЕШНИЕ адреса, притворяющиеся внутренними.
+// Раньше они проходили как «свои»: ссылка рендерилась без rel="noopener noreferrer nofollow" и
+// без target="_blank", то есть уводила на чужой домен под видом внутренней (фишинг/open-redirect).
+// Политика согласована с isInternalPath() из src/lib/url.ts, где "//" отклоняется намеренно.
+const INTERNAL_PATH = /^\/(?![/\\])/;
 const HAS_MARKUP = /[`*[$]/;
 
 type Token =
@@ -150,11 +157,11 @@ export function renderInline(text: string): ReactNode {
       case "math":
         return renderMath(tok.v, idx);
       case "link": {
-        if (!SAFE_URL.test(tok.url)) {
-          // небезопасный/битый URL — выводим литерал, не делаем ссылку
+        const external = EXTERNAL_URL.test(tok.url);
+        if (!external && !INTERNAL_PATH.test(tok.url)) {
+          // небезопасный/битый URL (в т.ч. javascript:, data:, //host, /\host) — литерал, не ссылка
           return <Fragment key={idx}>{`[${tok.label}](${tok.url})`}</Fragment>;
         }
-        const external = /^https?:\/\//i.test(tok.url);
         return (
           <a
             key={idx}

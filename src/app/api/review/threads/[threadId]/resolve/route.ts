@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { threads } from "@/lib/db/schema";
+import { requireUser } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { hitActionRate } from "@/lib/rate-limit";
 import { resolveReviewAccess } from "@/lib/queries/review";
@@ -25,11 +26,19 @@ export async function POST(
       .where(eq(threads.id, threadId))
       .limit(1)
   )[0];
-  if (!thread) return NextResponse.json({ error: "Тред не найден." }, { status: 404 });
-  if (thread.status !== "open") return NextResponse.json({ error: "Тред уже закрыт." }, { status: 409 });
+  // ⚠️ Аудит ИБ 2026-07-26: гард ИДЁТ ПЕРЕД любыми сведениями о треде. Раньше 404/409 отдавались
+  // до resolveReviewAccess, и посторонний (в т.ч. неаутентифицированный) отличал «треда нет» от
+  // «тред есть и открыт/закрыт» — состояние чужой ревью-сессии утекало наружу.
+  if (!thread) {
+    const gate = await requireUser();
+    if (gate instanceof NextResponse) return gate;
+    return NextResponse.json({ error: "Тред не найден." }, { status: 404 });
+  }
 
   const access = await resolveReviewAccess(thread.chapterId);
   if (access instanceof NextResponse) return access;
+
+  if (thread.status !== "open") return NextResponse.json({ error: "Тред уже закрыт." }, { status: 409 });
 
   const rl = hitActionRate(`review-resolve:${access.user.id}`);
   if (!rl.ok) {
