@@ -33,8 +33,8 @@ test.describe("FEATURED — витрина главной (Фаза 15)", () => 
     const reader = new ReaderPage(page);
     await reader.gotoFeed();
 
-    await test.step("h1 «Проверенные блоги» — проверенных в сиде ровно порог (3)", async () => {
-      await expect(reader.homeHeading("Проверенные блоги")).toBeVisible();
+    await test.step("h1 «Лента» (uif-10: режимных заголовков витрины нет), список — витринный", async () => {
+      await expect(reader.homeHeading("Лента")).toBeVisible();
     });
 
     await test.step("все три independent-блога на витрине", async () => {
@@ -47,8 +47,9 @@ test.describe("FEATURED — витрина главной (Фаза 15)", () => 
       await expect(page.getByText(INVITED_BLOG.title)).toHaveCount(0);
     });
 
-    await test.step("закреплённый редакцией блог показан отдельной секцией, даже без бейджа", async () => {
-      await expect(page.getByRole("heading", { name: "Выбор редакции" })).toBeVisible();
+    await test.step("закреплённый редакцией блог в подборке, даже без бейджа (uif-10: без секций)", async () => {
+      // Заголовка «Выбор редакции» на главной больше нет — закрепление видно самим составом.
+      await expect(page.getByRole("heading", { name: "Выбор редакции" })).toHaveCount(0);
       await expect(reader.blogCard(FEATURED_BLOG.title)).toBeVisible();
     });
   });
@@ -128,7 +129,7 @@ test.describe("FEATURED — витрина главной (Фаза 15)", () => 
     });
   });
 
-  test("FEATURED-04 @critical: проверенных стало меньше порога → витрину ведёт «Выбор редакции»", async ({
+  test("FEATURED-04 @critical: скрытие проверенного блога убирает его с главной; подборка редакции остаётся", async ({
     api,
     asGuest,
   }) => {
@@ -144,9 +145,9 @@ test.describe("FEATURED — витрина главной (Фаза 15)", () => 
       expect(res.status()).toBe(200);
     });
 
-    await test.step("главная переключилась в режим редакции", async () => {
+    await test.step("главная: h1 всё тот же «Лента» (uif-10: режимного заголовка нет), состав обновился", async () => {
       await reader.gotoFeed();
-      await expect(reader.homeHeading("Выбор редакции")).toBeVisible();
+      await expect(reader.homeHeading("Лента")).toBeVisible();
       await expect(reader.blogCard(FEATURED_BLOG.title)).toBeVisible();
       // Скрытый блог исчезает отовсюду — это гейт `blogs.hidden`, а не витринная политика.
       await expect(page.getByText(VERIFIED_BLOGS.ops.title)).toHaveCount(0);
