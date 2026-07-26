@@ -366,6 +366,30 @@ systemd EnvironmentFile, значения в одинарных кавычках
 Провижининг нового сервера — однократно `deploy/provision.sh` (root; параметры
 `AMNEZIA_UDP_PORT`, `DEPLOY_PUBKEY`).
 
+⚠️ **`deploy.yml` возит ТОЛЬКО приложение. Конфиги из `deploy/**` он на сервер НЕ доставляет.**
+`Caddyfile`, `recenza.service`, таймеры и `provision.sh` — это эталоны в репозитории; на живом
+сервере они правятся вручную по SSH (`/etc/caddy/Caddyfile`, `/etc/systemd/system/recenza.service`).
+Правка такого файла в PR **сама по себе ничего не меняет на проде** — нужен отдельный шаг:
+```bash
+# Caddy: сначала валидация, только потом reload — битый конфиг положит сайт
+caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile && systemctl reload caddy
+# systemd: после правки юнита
+systemctl daemon-reload && systemctl restart recenza
+```
+Перед правкой — копия рядом (`cp -a … /root/<файл>.bak-$(date +%F-%H%M%S)`).
+
+**Применено вручную 2026-07-26** (аудит ИБ, PR #37) — при пересоздании сервера `provision.sh`
+и `Caddyfile` из репозитория дадут это же состояние:
+- `chmod 700 /srv/recenza/shared/data` — группа `caddy` (она в группе `recenza` ради `uploads`)
+  читала `blog.prod.db` со всеми bcrypt-хэшами;
+- security-заголовки на `handle_path /uploads/*` в Caddyfile (эти файлы идут мимо Next, поэтому
+  заголовки из `next.config.ts` на них не распространяются);
+- `Environment=NODE_ENV=production` в юните — от него зависит флаг `secure` у сессионной cookie.
+
+⚠️ Заголовки на уже закэшированных Cloudflare файлах `/uploads/*` появятся не сразу:
+`Cache-Control: max-age=86400`, старые копии живут до суток (проверять с cache-buster
+`?cb=$(date +%s)` или напрямую в origin через `--resolve`).
+
 ### 6.4 Runbook
 
 - **Откат релиза:** `ln -sfn /srv/recenza/releases/<прежний> /srv/recenza/current &&
