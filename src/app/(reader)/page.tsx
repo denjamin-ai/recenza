@@ -1,9 +1,10 @@
 // Главная (ui-feedback-4 П2, прототип public/feed.jsx): без поиска, карточки БЛОГОВ.
-// ui-feedback-8/9 (решение владельца): ЕДИНАЯ лента с чип-рядом «Подписки/Все/Проверенные»
+// ui-feedback-8/9/10 (решение владельца): ЕДИНАЯ лента с чип-рядом «Подписки/Все/Проверенные»
 // (nav «Фильтр ленты» — НЕ «Разделы ленты», на то имя негативные e2e-ассерты). h1 един —
-// «Лента» и на подписках, и в каталоге: состояние показывают чипы, а не заголовок; arrow-ссылок
-// («Все блоги →» и т.п.) на лентовых поверхностях больше нет — чипы есть и на витрине гостя
-// (без активного).
+// «Лента» на подписках, в каталоге И у гостя: состояние показывают чипы, а не заголовок;
+// arrow-ссылок («Все блоги →» и т.п.) на лентовых поверхностях больше нет — чипы есть и на
+// витрине гостя (без активного). Режимных заголовков витрины («Выбор редакции»/«Проверенные
+// блоги») на главной больше нет — подборка идёт одним списком (uif-10).
 //
 // ⚠️ Фаза 15 сменила смысл главной ГОСТЯ: это ВИТРИНА, а не каталог. На неё попадают только блоги
 // с независимым бейджем («Проверено на Recenza»); уровень `invited` — прозрачность, а не пропуск
@@ -139,19 +140,22 @@ function Catalog({
   );
 }
 
-/** Витрина гостя: проверенные блоги либо подборка редакции, пока порог не набран. */
+/**
+ * Главная гостя (ui-feedback-10, решение владельца): тот же экран «Лента» с чипами, что у
+ * вошедшего, но список — ВИТРИННАЯ подборка Ф15 одним полотном: закреплённые редакцией первыми,
+ * затем независимо проверенные (дедуп уже в `getShowcase()`). Правила отбора НЕ менялись —
+ * с главной ушли только заголовки витрины: «Выбор редакции» остался концептом админки
+ * (/admin/featured), «Проверенные блоги» — чипом фильтра; режимный h1 удалён.
+ */
 function Showcase({ showcase, page }: { showcase: ShowcaseView; page: number }) {
-  const { mode, featured, blogs } = showcase;
-  const editorialLed = mode === "editorial" && featured.length > 0;
-  const rest = paginate(blogs, page);
+  const { featured, blogs } = showcase;
+  const feed = paginate([...featured, ...blogs], page);
 
   return (
     <div className="mx-auto w-full max-w-[var(--max-content)] px-6 py-10">
-      <h1 className="mb-3">{editorialLed ? "Выбор редакции" : "Проверенные блоги"}</h1>
+      <h1 className="mb-3">Лента</h1>
       <p className="mb-6 max-w-2xl text-[length:var(--type-small)] leading-relaxed text-[var(--muted-foreground)]">
-        {editorialLed
-          ? "Блогов, прошедших независимое ревью, пока немного — подборку ведёт редакция."
-          : "Блоги, главы которых прошли независимое ревью на Recenza."}
+        Блоги, прошедшие независимое ревью, и выбор редакции.
       </p>
 
       <PromoCarouselSlot />
@@ -160,30 +164,14 @@ function Showcase({ showcase, page }: { showcase: ShowcaseView; page: number }) 
           Без активного чипа: витрина — не состояние каталога, aria-current здесь врал бы. */}
       <FeedFilterNav showSubs={false} />
 
-      {featured.length > 0 && (
+      {feed.total > 0 ? (
         <section className="py-6">
-          {!editorialLed && (
-            <h2 className="mb-4 text-[0.8rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-              Выбор редакции
-            </h2>
-          )}
-          <BlogGrid blogs={featured} />
+          <BlogGrid blogs={feed.items} />
+          <CatalogPagination page={feed.page} pageCount={feed.pageCount} />
         </section>
+      ) : (
+        <ShowcaseEmpty />
       )}
-
-      {rest.total > 0 && (
-        <section className={`py-6 ${featured.length > 0 ? "border-t border-[var(--border)]" : ""}`}>
-          {featured.length > 0 && (
-            <h2 className="mb-4 text-[0.8rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-              Проверенные блоги
-            </h2>
-          )}
-          <BlogGrid blogs={rest.items} />
-          <CatalogPagination page={rest.page} pageCount={rest.pageCount} />
-        </section>
-      )}
-
-      {featured.length === 0 && rest.total === 0 && <ShowcaseEmpty />}
     </div>
   );
 }

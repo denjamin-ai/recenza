@@ -20,13 +20,15 @@ test.describe("Гость (аноним)", () => {
     const { page } = asGuest;
     const reader = new ReaderPage(page);
 
-    await test.step("главная отдаётся гостю: «Войти» в шапке, h1 витрины, карточка блога, табов нет", async () => {
+    await test.step("главная отдаётся гостю: «Войти» в шапке, h1 «Лента», карточка блога, табов нет", async () => {
       await reader.gotoFeed();
       await expect(page.getByRole("banner").getByRole("link", { name: "Войти" })).toBeVisible();
       // ui-feedback-4 П2: карточки БЛОГОВ, без табов «Лента/Каталог/Подписки» и поиска.
-      // ⚠️ Ф15: главная перестала быть каталогом — это ВИТРИНА проверенных блогов; каталог
-      // «Все блоги» переехал на `/?view=all` (подробности отбора — flows/featured.spec.ts).
-      await expect(reader.homeHeading("Проверенные блоги")).toBeVisible();
+      // ⚠️ Ф15 (содержимое) + uif-10 (рамка): СПИСОК — витринная подборка проверенных,
+      // но h1 един — «Лента», чипы «Все/Проверенные» без активного; каталог на `/?view=all`
+      // (подробности отбора — flows/featured.spec.ts).
+      await expect(reader.homeHeading("Лента")).toBeVisible();
+      await expect(reader.feedFilterNav.getByRole("link", { name: "Подписки" })).toHaveCount(0);
       await expect(reader.blogCard(BLOG.title)).toBeVisible();
       await expect(page.getByRole("navigation", { name: "Разделы ленты" })).toHaveCount(0);
       await expect(page.getByRole("searchbox")).toHaveCount(0);
