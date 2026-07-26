@@ -85,9 +85,13 @@ test.describe("FEATURED — витрина главной (Фаза 15)", () => 
     await expect(reader.blogCard(FEATURED_BLOG.title)).toBeVisible();
 
     await test.step("фильтр «Проверенные» — любой бейдж (independent + invited), без бейджа — мимо (ui-feedback-7)", async () => {
+      // ui-feedback-8: у ГОСТЯ в чип-ряду нет «Подписок» — личной ленты у него нет.
+      await expect(
+        page.getByRole("navigation", { name: "Фильтр ленты" }).getByRole("link", { name: "Подписки" }),
+      ).toHaveCount(0);
       // «Проверенные» — подстрока чипа сортировки «Сначала проверенные»: скоупим на nav фильтра.
       await page
-        .getByRole("navigation", { name: "Фильтр каталога" })
+        .getByRole("navigation", { name: "Фильтр ленты" })
         .getByRole("link", { name: "Проверенные" })
         .click();
       await page.waitForURL(/filter=verified/);
@@ -106,7 +110,7 @@ test.describe("FEATURED — витрина главной (Фаза 15)", () => 
       expect(page.url()).toContain("filter=verified");
       await expect(reader.blogCard(FEATURED_BLOG.title)).toHaveCount(0);
       await page
-        .getByRole("navigation", { name: "Фильтр каталога" })
+        .getByRole("navigation", { name: "Фильтр ленты" })
         .getByRole("link", { name: "Все", exact: true })
         .click();
       await expect(reader.blogCard(FEATURED_BLOG.title)).toBeVisible();

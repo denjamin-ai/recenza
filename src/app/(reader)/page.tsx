@@ -1,4 +1,7 @@
-// Главная (ui-feedback-4 П2, прототип public/feed.jsx): БЕЗ табов/поиска/фильтров, карточки БЛОГОВ.
+// Главная (ui-feedback-4 П2, прототип public/feed.jsx): без поиска, карточки БЛОГОВ.
+// ui-feedback-8 (решение владельца): у вошедшего — ЕДИНАЯ лента с чип-рядом «Подписки/Все/
+// Проверенные» (nav «Фильтр ленты» — НЕ «Разделы ленты», на то имя негативные e2e-ассерты);
+// витрина гостя — без изменений (Ф15).
 //
 // ⚠️ Фаза 15 сменила смысл главной: это ВИТРИНА, а не каталог. На неё попадают только блоги с
 // независимым бейджем («Проверено на Recenza»); уровень `invited` — прозрачность, а не пропуск
@@ -18,13 +21,12 @@ import { getFollowedAuthorIds, getVisibleBlogs } from "@/lib/queries/feed";
 import { getCatalog, getShowcase, type ShowcaseView } from "@/lib/queries/showcase";
 import { PromoCarouselSlot } from "@/components/reader/promo-carousel-slot";
 import { BlogIndexCard } from "@/components/reader/blog-index-card";
-import { CatalogFilterNav } from "@/components/reader/catalog-filter-nav";
 import { CatalogPagination } from "@/components/reader/catalog-pagination";
 import { CatalogSortNav } from "@/components/reader/catalog-sort-nav";
+import { FeedFilterNav } from "@/components/reader/feed-filter-nav";
 import { siteUrl } from "@/lib/seo";
 import { plural } from "@/lib/plural";
 import {
-  SHOWCASE_PAGE_SIZE,
   catalogQuery,
   parseCatalogParams,
   paginate,
@@ -85,7 +87,7 @@ export default async function HomePage({ searchParams }: { searchParams: Search 
   if (sp.view === "all") {
     const { sort, filter, page } = parseCatalogParams(sp);
     const catalog = await getCatalog(sort, page, filter);
-    return <Catalog catalog={catalog} sort={sort} filter={filter} />;
+    return <Catalog catalog={catalog} sort={sort} filter={filter} viewerLoggedIn={user != null} />;
   }
 
   if (user) return <ReaderHome user={user} />;
@@ -99,10 +101,13 @@ function Catalog({
   catalog,
   sort,
   filter,
+  viewerLoggedIn,
 }: {
   catalog: Awaited<ReturnType<typeof getCatalog>>;
   sort: CatalogSort;
   filter: CatalogFilter;
+  /** ui-feedback-8: вошедшему в чип-ряду показывается и «Подписки» — обратный путь в личную ленту. */
+  viewerLoggedIn: boolean;
 }) {
   return (
     <div className="mx-auto w-full max-w-[var(--max-content)] px-6 py-10">
@@ -114,7 +119,7 @@ function Catalog({
       <PromoCarouselSlot />
 
       {/* Фильтр — ВНЕ пустой ветки: на пустой выдаче «Проверенных» чип «Все» — путь сброса. */}
-      <CatalogFilterNav active={filter} sort={sort} />
+      <FeedFilterNav active={filter} sort={sort} showSubs={viewerLoggedIn} />
 
       {catalog.total === 0 ? (
         <div className="rounded-[var(--radius-lg)] border border-dashed border-[var(--border)] py-16 text-center">
@@ -208,49 +213,33 @@ function ShowcaseEmpty() {
   );
 }
 
-/** «Ваша лента» читателя (прототип HomeScreen/ReaderFeed): hero + «Подписки» + витрина. */
+/**
+ * «Ваша лента» вошедшего — ЕДИНАЯ лента (ui-feedback-8, решение владельца): один список под
+ * чип-рядом «Подписки / Все / Проверенные», дефолт — «Подписки» (`/` без параметров).
+ * Hero-ссылки ui-feedback-7 и секция открытий с витрины УБРАНЫ — «Все» и «Проверенные»
+ * достижимы чипами (те же URL каталога, что и раньше).
+ */
 async function ReaderHome({ user }: { user: PublicUser }) {
   const followedIds = await getFollowedAuthorIds(user.id);
   const followedSet = new Set(followedIds);
   // ⚠️ «Подписки» витринной политикой НЕ фильтруются: подписка — явный выбор читателя, и прятать
   // от него блог автора, на которого он подписан, только потому что у блога нет бейджа, нельзя.
   const followed = (await getVisibleBlogs()).filter((b) => followedSet.has(b.author.id));
-  const showcase = await getShowcase({ excludeAuthorIds: followedIds });
-  const hasFollows = followedIds.length > 0;
-  // Витрина в ленте — без пагинации: у читателя есть «Все блоги →», а бесконечная выдача
-  // на личной странице ему не нужна (жёсткий срез `others.slice(0, 4)` из ui-feedback-4 снят, З-25).
-  const discover = [...showcase.featured, ...showcase.blogs].slice(0, SHOWCASE_PAGE_SIZE);
+  const hasFollows = followed.length > 0;
 
   return (
     <div className="mx-auto w-full max-w-[var(--max-content)] px-6 py-10">
       <section className="pb-10 pt-4 sm:pt-8">
-        <div className="flex flex-wrap items-start justify-between gap-6">
-          <div className="min-w-0">
-            <p className="mb-2 text-[0.7rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-              @{user.handle}
-            </p>
-            <h1 className="mb-3">Ваша лента</h1>
-            <p className="max-w-xl text-[length:var(--type-small)] leading-relaxed text-[var(--muted-foreground)]">
-              {hasFollows
-                ? "Свежие главы из блогов, на которые вы подписаны."
-                : "Подпишитесь на блог, чтобы получать новые главы здесь."}
-            </p>
-          </div>
-          {/* ui-feedback-7: из ленты два явных выхода — весь каталог и сразу «только проверенные». */}
-          <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2">
-            <Link
-              href="/?view=all"
-              className="inline-flex min-h-[44px] items-center rounded-[var(--radius-sm)] text-[0.82rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-            >
-              Все блоги →
-            </Link>
-            <Link
-              href={`/?${catalogQuery({ catalog: true, filter: "verified" })}`}
-              className="inline-flex min-h-[44px] items-center rounded-[var(--radius-sm)] text-[0.82rem] text-[var(--muted-foreground)] transition-colors hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-            >
-              Проверенные →
-            </Link>
-          </div>
+        <div className="min-w-0">
+          <p className="mb-2 text-[0.7rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
+            @{user.handle}
+          </p>
+          <h1 className="mb-3">Ваша лента</h1>
+          <p className="max-w-xl text-[length:var(--type-small)] leading-relaxed text-[var(--muted-foreground)]">
+            {hasFollows
+              ? "Свежие главы из блогов, на которые вы подписаны."
+              : "Подпишитесь на блог, чтобы получать новые главы здесь."}
+          </p>
         </div>
       </section>
 
@@ -260,14 +249,14 @@ async function ReaderHome({ user }: { user: PublicUser }) {
         <PromoCarouselSlot />
       </div>
 
-      {followed.length > 0 && (
-        <section className="py-6">
-          <h2 className="mb-4 text-[0.8rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">Подписки</h2>
+      {/* Без обёртки с pt-*: у карусели свой mb-6 — ритм «карусель → чипы» тот же, что в каталоге. */}
+      <FeedFilterNav active="subs" showSubs />
+
+      {hasFollows ? (
+        <section className="py-4">
           <BlogGrid blogs={followed} />
         </section>
-      )}
-
-      {!hasFollows && (
+      ) : (
         <section className="py-10 text-center">
           <p className="mb-4 text-[length:var(--type-small)] text-[var(--muted-foreground)]">У вас пока нет подписок.</p>
           <Link
@@ -277,21 +266,6 @@ async function ReaderHome({ user }: { user: PublicUser }) {
             Найти блоги в каталоге →
           </Link>
         </section>
-      )}
-
-      {discover.length > 0 && (
-        <section className={`py-6 ${followed.length > 0 ? "border-t border-[var(--border)]" : ""}`}>
-          <h2 className="mb-4 text-[0.8rem] font-semibold uppercase tracking-wider text-[var(--muted-foreground)]">
-            {showcase.mode === "editorial" ? "Выбор редакции" : "Проверенные блоги"}
-          </h2>
-          <BlogGrid blogs={discover} />
-        </section>
-      )}
-
-      {discover.length === 0 && hasFollows && (
-        <p className="border-t border-[var(--border)] py-6 text-center text-[length:var(--type-small)] text-[var(--muted-foreground)]">
-          Проверенных блогов за пределами ваших подписок пока нет.
-        </p>
       )}
     </div>
   );

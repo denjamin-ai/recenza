@@ -377,42 +377,46 @@ test.describe("Читатель", () => {
     expect(res.status()).toBe(403);
   });
 
-  // ── TC-READER-21 — «Ваша лента» (ui-feedback-4, П2: ролевой сплит главной) ───
+  // ── TC-READER-21 — единая лента вошедшего (ui-feedback-8) ────────────────────
 
-  test("TC-READER-21 @regression: главная читателя — «Ваша лента» с секцией «Подписки», переход «Все блоги →» в каталог", async ({
+  test("TC-READER-21 @regression: главная читателя — единая лента: чипы «Подписки/Все/Проверенные» переключают выдачу", async ({
     asReader,
   }) => {
     const { page } = asReader;
     const reader = new ReaderPage(page, USERS.reader.handle);
+    const feedNav = () => page.getByRole("navigation", { name: "Фильтр ленты" });
 
-    await test.step("«Ваша лента»: h1, @handle, секция «Подписки» с блогом подписанного автора", async () => {
+    await test.step("дефолт — «Подписки»: h1 «Ваша лента», активный чип, карточка подписки", async () => {
       await reader.gotoFeed();
       await expect(reader.homeHeading("Ваша лента")).toBeVisible();
       await expect(page.getByText(`@${USERS.reader.handle}`)).toBeVisible();
-      // seed: reader подписан на author → его блог в секции «Подписки» (карточка БЛОГА, не главы).
-      await expect(page.getByRole("heading", { name: "Подписки", exact: true })).toBeVisible();
+      // seed: reader подписан на author → его блог в выдаче «Подписок» (карточка БЛОГА, не главы).
+      await expect(feedNav().getByRole("link", { name: "Подписки" })).toHaveAttribute("aria-current", "true");
       await expect(reader.blogCard(BLOG.title)).toBeVisible();
-      // Табов «Лента/Каталог/Подписки» и поиска больше нет.
+      // ui-feedback-8: секций «Подписки»/«Проверенные блоги» под лентой больше нет — один список.
+      await expect(page.getByRole("heading", { name: "Подписки", exact: true })).toHaveCount(0);
+      // Табов «Лента/Каталог/Подписки» (ui-feedback-4) и поиска по-прежнему нет.
       await expect(page.getByRole("navigation", { name: "Разделы ленты" })).toHaveCount(0);
       await expect(page.getByRole("searchbox")).toHaveCount(0);
     });
 
-    await test.step("«Все блоги →» ведёт в каталог (?view=all): h1 «Все блоги»", async () => {
-      await page.getByRole("link", { name: "Все блоги →" }).first().click();
+    await test.step("чип «Все» → каталог; «Проверенные» → фильтр по бейджу; «Подписки» возвращает в ленту", async () => {
+      await feedNav().getByRole("link", { name: "Все", exact: true }).click();
       await page.waitForURL(/\/\?view=all/);
       await expect(reader.homeHeading("Все блоги")).toBeVisible();
-      await expect(reader.blogCard(BLOG.title)).toBeVisible();
-    });
+      // Каталог показывает всё — включая закреплённый без бейджа.
+      await expect(reader.blogCard(FEATURED_BLOG.title)).toBeVisible();
 
-    await test.step("«Проверенные →» из hero — каталог с фильтром по бейджу (ui-feedback-7)", async () => {
-      await reader.gotoFeed();
-      await page.getByRole("link", { name: "Проверенные →" }).click();
+      await feedNav().getByRole("link", { name: "Проверенные" }).click();
       await page.waitForURL(/filter=verified/);
-      await expect(reader.homeHeading("Все блоги")).toBeVisible();
       // BLOG — независимый бейдж, фильтр проходит; FEATURED_BLOG закреплён редакцией, но
       // бейджа не имеет — из «Проверенных» выпадает (закрепление ≠ ревью).
       await expect(reader.blogCard(BLOG.title)).toBeVisible();
       await expect(reader.blogCard(FEATURED_BLOG.title)).toHaveCount(0);
+
+      await feedNav().getByRole("link", { name: "Подписки" }).click();
+      await expect(reader.homeHeading("Ваша лента")).toBeVisible();
+      await expect(reader.blogCard(BLOG.title)).toBeVisible();
     });
   });
 
