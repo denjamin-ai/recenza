@@ -17,6 +17,10 @@ chmod 750 /srv/recenza /srv/recenza/shared
 # Caddy отдаёт /uploads/* напрямую с диска — ему нужен group-r/x доступ к shared/uploads
 # (найдено HTTPS-smoke'ом Фазы 12: без этого file_server отвечал 403).
 chmod -R g+rX /srv/recenza/shared/uploads
+# ⚠️ Аудит ИБ 2026-07-26: ...но ТОЛЬКО к uploads. Ради этого доступа caddy состоит в группе recenza
+# (см. ниже usermod -aG), а shared/data создавался с 755 — то есть веб-сервер мог читать
+# blog.prod.db со всеми bcrypt-хэшами пользователей. Каталог БД закрываем на владельца.
+chmod 700 /srv/recenza/shared/data
 
 echo "== 2. SSH-ключ деплоя =="
 install -d -m 700 -o recenza -g recenza /home/recenza/.ssh

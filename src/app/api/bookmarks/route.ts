@@ -8,6 +8,7 @@ import { blogs, bookmarks } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { hitActionRate } from "@/lib/rate-limit";
+import { resolveEngageableBlog } from "@/lib/queries/engagement";
 
 async function readState(userId: string, blogId: string) {
   const [markRow, blogRow] = await Promise.all([
@@ -49,7 +50,9 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "Некорректное тело запроса." }, { status: 400 });
   }
 
-  const blogRow = (await db.select({ id: blogs.id }).from(blogs).where(eq(blogs.id, blogId)).limit(1))[0];
+  // Гейт видимости (аудит ИБ 2026-07-26): закладка накручивала денормализованный
+  // blogs.bookmarkCount на черновиках и скрытых блогах. Единый 404 — без оракула существования.
+  const blogRow = await resolveEngageableBlog(blogId);
   if (!blogRow) return NextResponse.json({ error: "Блог не найден." }, { status: 404 });
 
   try {

@@ -22,6 +22,8 @@ import type { CommentAnchor } from "@/types";
 
 const MAX_TEXT = 4000;
 const MAX_QUOTE = 600;
+// blockId — ulid (26 симв.) либо короткий слаг заголовка; с запасом.
+const MAX_BLOCK_ID = 128;
 
 export async function POST(req: Request): Promise<NextResponse> {
   const csrf = assertSameOrigin(req);
@@ -77,6 +79,12 @@ export async function POST(req: Request): Promise<NextResponse> {
       (body.anchor as CommentAnchor).blockId
     ) {
       const a = body.anchor as CommentAnchor;
+      // ⚠️ Аудит ИБ 2026-07-26: text и quote резались, а blockId проверялся только на `typeof`
+      // — без лимита длины. Тело route handler'а в Next ничем не ограничено (кроме Caddy 8МБ),
+      // так что один комментарий мог унести в БД многомегабайтный якорь.
+      if (a.blockId.length > MAX_BLOCK_ID) {
+        return NextResponse.json({ error: "Некорректный якорь." }, { status: 400 });
+      }
       anchor = {
         blockId: a.blockId,
         ...(typeof a.quote === "string" && a.quote.trim()

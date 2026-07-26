@@ -28,10 +28,26 @@ export const MAX_UPLOAD_BYTES = 4 * 1024 * 1024; // 4 МБ
 
 /** Magic-bytes: MIME из multipart доверять нельзя — сверяем сигнатуру содержимого. */
 export function sniffImageMime(data: Uint8Array): keyof typeof ALLOWED_MIME | null {
-  if (data.length >= 8 && data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) {
+  // Аудит ИБ 2026-07-26: проверяем сигнатуры ЦЕЛИКОМ. Раньше PNG сверялся по 4 байтам из 8, а JPEG
+  // по 3 — «FF D8 FF» + произвольный хвост принимался и сохранялся как .jpg (полиглот).
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    data.length >= 8 &&
+    data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47 &&
+    data[4] === 0x0d && data[5] === 0x0a && data[6] === 0x1a && data[7] === 0x0a
+  ) {
     return "image/png";
   }
-  if (data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) {
+  // JPEG: FF D8 FF + валидный маркер сегмента (E0-EF APPn / DB DQT / EE Adobe / C0 SOF0 / C4 DHT).
+  // Проверять EOI в конце файла НЕ станем: у реальных снимков за EOI часто идёт метаданный хвост,
+  // и строгая проверка отвергала бы валидные фото. Полиглот здесь добивается не сигнатурой, а тем,
+  // что расширение берётся из СНИФФЕННОГО типа (всегда .jpg) и Caddy отдаёт его с nosniff.
+  if (
+    data.length >= 4 &&
+    data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff &&
+    ((data[3] >= 0xe0 && data[3] <= 0xef) ||
+      data[3] === 0xdb || data[3] === 0xee || data[3] === 0xc0 || data[3] === 0xc4)
+  ) {
     return "image/jpeg";
   }
   if (

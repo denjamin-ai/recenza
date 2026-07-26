@@ -10,11 +10,19 @@ import { users } from "@/lib/db/schema";
 import { getCurrentUser, getSession, toPublicUser } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import {
+  accountKey,
+  checkAccountRate,
   checkLoginRate,
-  clearLoginRate,
+  clearRate,
   clientKey,
-  recordLoginFailure,
+  recordFailure,
 } from "@/lib/rate-limit";
+
+// Фиктивный хэш для выравнивания времени ответа (аудит ИБ 2026-07-26). Раньше ветки «нет такого
+// handle» и «заблокирован» возвращались ДО bcrypt.compare, а валидный handle платил полную цену
+// хэширования — единый текст ошибки обесценивался измеримой разницей во времени (перечисление
+// аккаунтов). Считается один раз при импорте; сравнивается с заведомо неподходящим паролем.
+const DUMMY_HASH = bcrypt.hashSync("recenza-timing-equalizer", 10);
 
 function rateLimited(retryAfter?: number): NextResponse {
   return NextResponse.json(
@@ -48,22 +56,32 @@ export async function POST(req: Request): Promise<NextResponse> {
   }
 
   if (!handle || !password) {
-    recordLoginFailure(key);
+    recordFailure(key);
     return loginFailed();
   }
+
+  // Второе ведро — на сам аккаунт: IP-ключ приходит из внешнего заголовка, поэтому распределённый
+  // перебор одного handle обходит IP-лимит по построению (аудит ИБ 2026-07-26).
+  const acct = accountKey(handle);
+  const acctRl = checkAccountRate(handle);
+  if (!acctRl.ok) return rateLimited(acctRl.retryAfter);
+
+  const failed = () => {
+    recordFailure(key);
+    recordFailure(acct);
+    return loginFailed();
+  };
 
   const row = await db.query.users.findFirst({ where: eq(users.handle, handle) });
   // Заблокированный пользователь не входит (binding); причину не раскрываем.
+  // Фиктивный compare — чтобы время ответа не выдавало существование/статус аккаунта.
   if (!row || row.isBlocked) {
-    recordLoginFailure(key);
-    return loginFailed();
+    await bcrypt.compare(password, DUMMY_HASH);
+    return failed();
   }
 
   const ok = await bcrypt.compare(password, row.passwordHash);
-  if (!ok) {
-    recordLoginFailure(key);
-    return loginFailed();
-  }
+  if (!ok) return failed();
 
   const session = await getSession();
   session.isAdmin = false; // инвариант: пользователь без isAdmin=true
@@ -72,7 +90,8 @@ export async function POST(req: Request): Promise<NextResponse> {
   // возможности админом не действовал бы до перелогина.
   await session.save();
 
-  clearLoginRate(key);
+  clearRate(key);
+  clearRate(acct);
   return NextResponse.json({ user: toPublicUser(row) });
 }
 

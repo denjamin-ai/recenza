@@ -26,8 +26,19 @@ export async function POST(req: Request): Promise<NextResponse> {
   // Ранний отказ ДО буферизации тела (security-ревью Ф12: formData() читает всё в память —
   // без этой проверки большие POST могли бы уронить единственный Node-процесс по OOM).
   // Второй рубеж — request_body max_size в Caddy.
-  const declared = Number(req.headers.get("content-length") ?? "");
-  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+  // ⚠️ Аудит ИБ 2026-07-26: Content-Length ОБЯЗАТЕЛЕН. Раньше проверка была
+  // `Number.isFinite(declared) && declared > MAX`, а `Number("")` = NaN → запрос без заголовка
+  // (chunked transfer-encoding) проскакивал мимо и попадал прямо в formData(), который буферизует
+  // тело целиком — ровно тот OOM, который эта проверка и должна предотвращать.
+  const raw = req.headers.get("content-length");
+  const declared = raw === null ? NaN : Number(raw);
+  if (!Number.isFinite(declared)) {
+    return NextResponse.json(
+      { error: "Требуется заголовок Content-Length." },
+      { status: 411 },
+    );
+  }
+  if (declared > MAX_BODY_BYTES) {
     return NextResponse.json(
       { error: "Файл больше 4 МБ. Сожмите изображение и попробуйте снова." },
       { status: 413 },
@@ -41,8 +52,10 @@ export async function POST(req: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "Ожидается multipart/form-data." }, { status: 400 });
   }
 
+  // Object.hasOwn, не `in`: `in` матчит ключи Object.prototype ("toString", "constructor",
+  // "__proto__"), то есть allowlist формально пробивался (аудит ИБ 2026-07-26).
   const kind = form.get("kind");
-  if (typeof kind !== "string" || !(kind in UPLOAD_DIRS)) {
+  if (typeof kind !== "string" || !Object.hasOwn(UPLOAD_DIRS, kind)) {
     return NextResponse.json(
       { error: "kind: article, cover, donation, banner или avatar." },
       { status: 400 },
@@ -82,7 +95,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       { status: 400 },
     );
   }
-  if (!(file.type in ALLOWED_MIME)) {
+  if (!Object.hasOwn(ALLOWED_MIME, file.type)) {
     return NextResponse.json(
       { error: "Допустимы только PNG, JPEG и WebP." },
       { status: 400 },

@@ -6,10 +6,11 @@
 import { NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { blogVotes, blogs } from "@/lib/db/schema";
+import { blogVotes } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth";
 import { assertSameOrigin } from "@/lib/csrf";
 import { hitActionRate } from "@/lib/rate-limit";
+import { resolveEngageableBlog } from "@/lib/queries/engagement";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -58,10 +59,15 @@ export async function POST(req: Request, ctx: Ctx): Promise<NextResponse> {
     return NextResponse.json({ error: "Некорректное тело запроса." }, { status: 400 });
   }
 
-  const blogRow = (
-    await db.select({ id: blogs.id }).from(blogs).where(eq(blogs.id, blogId)).limit(1)
-  )[0];
+  // Гейт видимости (аудит ИБ 2026-07-26): голосовать можно только за публично видимый блог.
+  // Единый 404 и на «нет такого», и на «не виден» — иначе роут выдаёт существование скрытого.
+  const blogRow = await resolveEngageableBlog(blogId);
   if (!blogRow) return NextResponse.json({ error: "Блог не найден." }, { status: 404 });
+
+  // Запрет голоса за свой блог — симметрично comments/[id]/vote (накрутка ?sort=top и витрины).
+  if (blogRow.authorId === userId) {
+    return NextResponse.json({ error: "Нельзя голосовать за свой блог." }, { status: 403 });
+  }
 
   try {
     const result = await db.transaction(async (tx) => {

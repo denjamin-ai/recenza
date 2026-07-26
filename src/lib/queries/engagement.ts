@@ -5,7 +5,15 @@
 
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { blogVotes, bookmarks, follows } from "@/lib/db/schema";
+import {
+  blogVotes,
+  blogs,
+  bookmarks,
+  chapterRevisions,
+  chapters,
+  follows,
+  users,
+} from "@/lib/db/schema";
 
 export interface ReaderEngagement {
   score: number;
@@ -58,4 +66,41 @@ export async function getReaderEngagement(args: {
     isBookmarked: bookmarkRow.length > 0,
     isFollowing: followRow.length > 0,
   };
+}
+
+/**
+ * Гейт мутаций реакций (голос/закладка): блог должен быть ПУБЛИЧНО ВИДЕН.
+ *
+ * ⚠️ Аудит ИБ 2026-07-26. Раньше vote/bookmarks проверяли только «строка блога существует», из-за
+ * чего реагировать можно было на черновик, на блог скрытого админом автора и на блог, скрытый по
+ * жалобе (`hidden`). Последствия: накрутка `blogs.bookmarkCount` и `?sort=top` на невидимом
+ * контенте + разница 200/404 как оракул существования. Условия совпадают с читательскими
+ * поверхностями (`feed.ts`, `chapters.ts`): не скрыт, автор не заблокирован и сохранил `canAuthor`,
+ * есть хотя бы одна published-ревизия.
+ *
+ * @returns `{ id, authorId }` либо `null` — вызывающий обязан отдать ЕДИНЫЙ 404 и на «нет такого»,
+ *          и на «не виден», иначе роут снова станет оракулом.
+ */
+export async function resolveEngageableBlog(
+  blogId: string,
+): Promise<{ id: string; authorId: string } | null> {
+  const row = (
+    await db
+      .select({ id: blogs.id, authorId: blogs.authorId })
+      .from(blogs)
+      .innerJoin(users, eq(blogs.authorId, users.id))
+      .innerJoin(chapters, eq(chapters.blogId, blogs.id))
+      .innerJoin(chapterRevisions, eq(chapterRevisions.chapterId, chapters.id))
+      .where(
+        and(
+          eq(blogs.id, blogId),
+          eq(blogs.hidden, false),
+          eq(users.isBlocked, false),
+          eq(users.canAuthor, true),
+          eq(chapterRevisions.status, "published"),
+        ),
+      )
+      .limit(1)
+  )[0];
+  return row ?? null;
 }
