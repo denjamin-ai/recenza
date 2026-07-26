@@ -386,9 +386,10 @@ test.describe("Читатель", () => {
     const reader = new ReaderPage(page, USERS.reader.handle);
     const feedNav = () => page.getByRole("navigation", { name: "Фильтр ленты" });
 
-    await test.step("дефолт — «Подписки»: h1 «Ваша лента», активный чип, карточка подписки", async () => {
+    await test.step("дефолт — «Подписки»: h1 «Лента», активный чип, карточка подписки", async () => {
       await reader.gotoFeed();
-      await expect(reader.homeHeading("Ваша лента")).toBeVisible();
+      // ui-feedback-9: h1 един на подписках и в каталоге — состояние различает только чип.
+      await expect(reader.homeHeading("Лента")).toBeVisible();
       await expect(page.getByText(`@${USERS.reader.handle}`)).toBeVisible();
       // seed: reader подписан на author → его блог в выдаче «Подписок» (карточка БЛОГА, не главы).
       await expect(feedNav().getByRole("link", { name: "Подписки" })).toHaveAttribute("aria-current", "true");
@@ -403,7 +404,12 @@ test.describe("Читатель", () => {
     await test.step("чип «Все» → каталог; «Проверенные» → фильтр по бейджу; «Подписки» возвращает в ленту", async () => {
       await feedNav().getByRole("link", { name: "Все", exact: true }).click();
       await page.waitForURL(/\/\?view=all/);
-      await expect(reader.homeHeading("Все блоги")).toBeVisible();
+      // h1 остаётся «Лента» — состояние каталога подтверждают URL, активный чип и выдача.
+      await expect(reader.homeHeading("Лента")).toBeVisible();
+      await expect(feedNav().getByRole("link", { name: "Все", exact: true })).toHaveAttribute(
+        "aria-current",
+        "true",
+      );
       // Каталог показывает всё — включая закреплённый без бейджа.
       await expect(reader.blogCard(FEATURED_BLOG.title)).toBeVisible();
 
@@ -415,7 +421,11 @@ test.describe("Читатель", () => {
       await expect(reader.blogCard(FEATURED_BLOG.title)).toHaveCount(0);
 
       await feedNav().getByRole("link", { name: "Подписки" }).click();
-      await expect(reader.homeHeading("Ваша лента")).toBeVisible();
+      // Возврат домой различаем по активному чипу «Подписки» (h1 тот же «Лента»).
+      await expect(feedNav().getByRole("link", { name: "Подписки" })).toHaveAttribute(
+        "aria-current",
+        "true",
+      );
       await expect(reader.blogCard(BLOG.title)).toBeVisible();
     });
   });
@@ -431,7 +441,7 @@ test.describe("Читатель", () => {
     const reader = new ReaderPage(page, USERS.reader.handle);
     const comments = new CommentsPage(page, USERS.reader.handle);
 
-    await test.step("«Ваша лента»: чип уровня на карточке блога из «Подписок»", async () => {
+    await test.step("лента «Подписок»: чип уровня на карточке блога", async () => {
       await reader.gotoFeed();
       await expect(reader.blogCard(BLOG.title).getByText("Проверено на Recenza")).toBeVisible();
     });
